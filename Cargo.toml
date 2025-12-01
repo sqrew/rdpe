@@ -1,0 +1,11 @@
+[package]
+name = "rdpe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck = { version = "1.24.0", features = ["derive"] }
+glam = "0.29"
+pollster = "0.4"
+wgpu = "27.0.1"
+winit = "0.30.12"
