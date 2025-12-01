@@ -1,20 +1,22 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
-use winit::{
-    application::ApplicationHandler,
-    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
-    event_loop::ActiveEventLoop,
-    window::{Window, WindowId},
-};
+use winit::window::Window;
 
-use crate::shader::{Particle, Uniforms, COMPUTE_SOURCE, SHADER_SOURCE};
-
-const NUM_PARTICLES: u32 = 10000;
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const WORKGROUP_SIZE: u32 = 256;
+
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct Uniforms {
+    view_proj: [[f32; 4]; 4],
+    time: f32,
+    delta_time: f32,
+    _padding: [f32; 2],
+}
 
 pub struct Camera {
     pub yaw: f32,
@@ -45,12 +47,6 @@ impl Camera {
     }
 }
 
-fn pseudo_random(seed: u32) -> f32 {
-    let x = seed.wrapping_mul(1103515245).wrapping_add(12345);
-    let x = x ^ (x >> 16);
-    (x & 0x7FFFFFFF) as f32 / 0x7FFFFFFF as f32
-}
-
 pub struct GpuState {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -70,7 +66,14 @@ pub struct GpuState {
 }
 
 impl GpuState {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(
+        window: Arc<Window>,
+        particle_data: &[u8],
+        num_particles: u32,
+        particle_stride: usize,
+        compute_shader_src: &str,
+        render_shader_src: &str,
+    ) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -123,35 +126,9 @@ impl GpuState {
 
         let depth_texture = create_depth_texture(&device, &config);
 
-        // Create particles with positions and random velocities
-        let particles: Vec<Particle> = (0..NUM_PARTICLES)
-            .map(|i| {
-                let t = i as f32 / NUM_PARTICLES as f32;
-                let theta = t * std::f32::consts::TAU * 20.0;
-                let phi = (t * 2.0 - 1.0).acos();
-                let r = 0.5 + 0.5 * ((t * 50.0).sin() * 0.5 + 0.5);
-
-                // Random velocity using pseudo-random function
-                let vx = (pseudo_random(i * 3) - 0.5) * 2.0;
-                let vy = (pseudo_random(i * 3 + 1) - 0.5) * 2.0;
-                let vz = (pseudo_random(i * 3 + 2) - 0.5) * 2.0;
-
-                Particle {
-                    position: [
-                        r * phi.sin() * theta.cos(),
-                        r * phi.sin() * theta.sin(),
-                        r * phi.cos(),
-                    ],
-                    _pad0: 0.0,
-                    velocity: [vx, vy, vz],
-                    _pad1: 0.0,
-                }
-            })
-            .collect();
-
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
-            contents: bytemuck::cast_slice(&particles),
+            contents: particle_data,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE,
         });
 
@@ -174,7 +151,7 @@ impl GpuState {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Render bind group layout (uniforms only)
+        // Render bind group layout
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Uniform Bind Group Layout"),
@@ -199,7 +176,7 @@ impl GpuState {
             }],
         });
 
-        // Compute bind group layout (particles + uniforms)
+        // Compute bind group layout
         let compute_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Compute Bind Group Layout"),
@@ -242,26 +219,27 @@ impl GpuState {
             ],
         });
 
-        // Render shader and pipeline
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        // Render pipeline
+        let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
-            source: wgpu::ShaderSource::Wgsl(SHADER_SOURCE.into()),
+            source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
         });
 
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&uniform_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[&uniform_bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module: &render_shader,
                 entry_point: Some("vs_main"),
                 buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Particle>() as wgpu::BufferAddress,
+                    array_stride: particle_stride as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &[wgpu::VertexAttribute {
                         offset: 0,
@@ -272,7 +250,7 @@ impl GpuState {
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module: &render_shader,
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
@@ -302,17 +280,18 @@ impl GpuState {
             cache: None,
         });
 
-        // Compute shader and pipeline
+        // Compute pipeline
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Compute Shader"),
-            source: wgpu::ShaderSource::Wgsl(COMPUTE_SOURCE.into()),
+            source: wgpu::ShaderSource::Wgsl(compute_shader_src.into()),
         });
 
-        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Compute Pipeline Layout"),
-            bind_group_layouts: &[&compute_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Compute Pipeline Layout"),
+                bind_group_layouts: &[&compute_bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
         let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Compute Pipeline"),
@@ -337,7 +316,7 @@ impl GpuState {
             uniform_bind_group,
             compute_bind_group,
             depth_texture,
-            num_particles: NUM_PARTICLES,
+            num_particles,
             camera,
             start_time: now,
             last_frame_time: now,
@@ -390,7 +369,7 @@ impl GpuState {
                 label: Some("Render Encoder"),
             });
 
-        // Compute pass - update particle positions
+        // Compute pass
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("Compute Pass"),
@@ -400,7 +379,7 @@ impl GpuState {
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
 
-            let workgroups = (self.num_particles + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+            let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
         }
 
@@ -466,99 +445,4 @@ fn create_depth_texture(
         view_formats: &[],
     });
     texture.create_view(&wgpu::TextureViewDescriptor::default())
-}
-
-pub struct App {
-    window: Option<Arc<Window>>,
-    gpu_state: Option<GpuState>,
-    mouse_pressed: bool,
-    last_mouse_pos: Option<(f64, f64)>,
-}
-
-impl App {
-    pub fn new() -> Self {
-        Self {
-            window: None,
-            gpu_state: None,
-            mouse_pressed: false,
-            last_mouse_pos: None,
-        }
-    }
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_none() {
-            let window_attrs = Window::default_attributes()
-                .with_title("RDPE - Reaction Diffusion Particle Engine")
-                .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
-
-            let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
-            self.window = Some(window.clone());
-            self.gpu_state = Some(pollster::block_on(GpuState::new(window)));
-        }
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
-            WindowEvent::Resized(physical_size) => {
-                if let Some(gpu_state) = &mut self.gpu_state {
-                    gpu_state.resize(physical_size);
-                }
-            }
-            WindowEvent::MouseInput { state, button, .. } => {
-                if button == MouseButton::Left {
-                    self.mouse_pressed = state == ElementState::Pressed;
-                    if !self.mouse_pressed {
-                        self.last_mouse_pos = None;
-                    }
-                }
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                if self.mouse_pressed {
-                    if let Some((last_x, last_y)) = self.last_mouse_pos {
-                        let dx = position.x - last_x;
-                        let dy = position.y - last_y;
-
-                        if let Some(gpu_state) = &mut self.gpu_state {
-                            gpu_state.camera.yaw -= dx as f32 * 0.005;
-                            gpu_state.camera.pitch += dy as f32 * 0.005;
-                            gpu_state.camera.pitch = gpu_state.camera.pitch.clamp(-1.5, 1.5);
-                        }
-                    }
-                    self.last_mouse_pos = Some((position.x, position.y));
-                }
-            }
-            WindowEvent::MouseWheel { delta, .. } => {
-                let scroll = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.1,
-                };
-                if let Some(gpu_state) = &mut self.gpu_state {
-                    gpu_state.camera.distance -= scroll * 0.3;
-                    gpu_state.camera.distance = gpu_state.camera.distance.clamp(0.5, 20.0);
-                }
-            }
-            WindowEvent::RedrawRequested => {
-                if let Some(gpu_state) = &mut self.gpu_state {
-                    match gpu_state.render() {
-                        Ok(_) => {}
-                        Err(wgpu::SurfaceError::Lost) => gpu_state.resize(winit::dpi::PhysicalSize {
-                            width: gpu_state.config.width,
-                            height: gpu_state.config.height,
-                        }),
-                        Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                        Err(e) => eprintln!("Render error: {:?}", e),
-                    }
-                }
-                if let Some(window) = &self.window {
-                    window.request_redraw();
-                }
-            }
-            _ => {}
-        }
-    }
 }

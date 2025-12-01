@@ -480,6 +480,9 @@ name = "glam"
 version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
+dependencies = [
+ "bytemuck",
+]
 
 [[package]]
 name = "glow"
@@ -1277,8 +1280,18 @@ dependencies = [
  "bytemuck",
  "glam",
  "pollster",
+ "rdpe-derive",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "rdpe-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
