@@ -2,6 +2,7 @@
 
 use crate::gpu::GpuState;
 use crate::rules::Rule;
+use crate::spatial::{SpatialConfig, MORTON_WGSL, NEIGHBOR_UTILS_WGSL};
 use crate::ParticleTrait;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -20,6 +21,7 @@ pub struct Simulation<P: ParticleTrait> {
     bounds: f32,
     spawner: Option<Box<dyn Fn(u32, u32) -> P + Send + Sync>>,
     rules: Vec<Rule>,
+    spatial_config: SpatialConfig,
     _phantom: PhantomData<P>,
 }
 
@@ -31,6 +33,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             bounds: 1.0,
             spawner: None,
             rules: Vec::new(),
+            spatial_config: SpatialConfig::default(),
             _phantom: PhantomData,
         }
     }
@@ -63,19 +66,36 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Configure spatial hashing (cell size and grid resolution).
+    /// Only needed if using neighbor-based rules.
+    pub fn with_spatial_config(mut self, cell_size: f32, grid_resolution: u32) -> Self {
+        self.spatial_config = SpatialConfig::new(cell_size, grid_resolution);
+        self
+    }
+
+    /// Check if any rules require neighbor queries
+    fn has_neighbor_rules(&self) -> bool {
+        self.rules.iter().any(|r| r.requires_neighbors())
+    }
+
     /// Generate the compute shader WGSL code.
     fn generate_compute_shader(&self) -> String {
         let particle_struct = P::WGSL_STRUCT;
+        let has_neighbors = self.has_neighbor_rules();
 
-        let rules_code: String = self
+        // Generate non-neighbor rules
+        let simple_rules_code: String = self
             .rules
             .iter()
+            .filter(|r| !r.requires_neighbors())
             .map(|r| r.to_wgsl(self.bounds))
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        format!(
-            r#"{particle_struct}
+        if !has_neighbors {
+            // Simple shader without neighbor queries
+            format!(
+                r#"{particle_struct}
 
 struct Uniforms {{
     view_proj: mat4x4<f32>,
@@ -100,7 +120,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     var p = particles[index];
 
-{rules_code}
+{simple_rules_code}
 
     // Integrate velocity
     p.position += p.velocity * uniforms.delta_time;
@@ -108,7 +128,138 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     particles[index] = p;
 }}
 "#
-        )
+            )
+        } else {
+            // Complex shader with neighbor queries
+            let neighbor_rules_code: String = self
+                .rules
+                .iter()
+                .filter(|r| r.requires_neighbors())
+                .map(|r| r.to_neighbor_wgsl())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let post_neighbor_code: String = self
+                .rules
+                .iter()
+                .filter(|r| r.requires_neighbors())
+                .map(|r| r.to_post_neighbor_wgsl())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+
+            // Check if we need cohesion/alignment accumulators
+            let needs_cohesion = self.rules.iter().any(|r| matches!(r, Rule::Cohere { .. }));
+            let needs_alignment = self.rules.iter().any(|r| matches!(r, Rule::Align { .. }));
+
+            let accumulator_vars = {
+                let mut vars = String::new();
+                if needs_cohesion {
+                    vars.push_str("    var cohesion_sum = vec3<f32>(0.0);\n    var cohesion_count = 0.0;\n");
+                }
+                if needs_alignment {
+                    vars.push_str("    var alignment_sum = vec3<f32>(0.0);\n    var alignment_count = 0.0;\n");
+                }
+                vars
+            };
+
+            format!(
+                r#"{particle_struct}
+
+{MORTON_WGSL}
+
+{NEIGHBOR_UTILS_WGSL}
+
+struct Uniforms {{
+    view_proj: mat4x4<f32>,
+    time: f32,
+    delta_time: f32,
+}};
+
+struct SpatialParams {{
+    cell_size: f32,
+    grid_resolution: u32,
+    num_particles: u32,
+    _pad: u32,
+}};
+
+@group(0) @binding(0)
+var<storage, read_write> particles: array<Particle>;
+
+@group(0) @binding(1)
+var<uniform> uniforms: Uniforms;
+
+@group(0) @binding(2)
+var<storage, read> sorted_indices: array<u32>;
+
+@group(0) @binding(3)
+var<storage, read> cell_start: array<u32>;
+
+@group(0) @binding(4)
+var<storage, read> cell_end: array<u32>;
+
+@group(0) @binding(5)
+var<uniform> spatial: SpatialParams;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
+    let index = global_id.x;
+    let num_particles = arrayLength(&particles);
+
+    if index >= num_particles {{
+        return;
+    }}
+
+    var p = particles[index];
+    let my_pos = p.position;
+    let my_cell = pos_to_cell(my_pos, spatial.cell_size, spatial.grid_resolution);
+
+{accumulator_vars}
+    // Neighbor iteration
+    for (var offset_idx = 0u; offset_idx < 27u; offset_idx++) {{
+        let neighbor_morton = neighbor_cell_morton(my_cell, offset_idx, spatial.grid_resolution);
+
+        if neighbor_morton == 0xFFFFFFFFu {{
+            continue; // Out of bounds
+        }}
+
+        let start = cell_start[neighbor_morton];
+        let end = cell_end[neighbor_morton];
+
+        if start == 0xFFFFFFFFu {{
+            continue; // Empty cell
+        }}
+
+        for (var j = start; j < end; j++) {{
+            let other_idx = sorted_indices[j];
+
+            if other_idx == index {{
+                continue; // Skip self
+            }}
+
+            let other = particles[other_idx];
+            let neighbor_pos = other.position;
+            let neighbor_vel = other.velocity;
+            let diff = my_pos - neighbor_pos;
+            let neighbor_dist = length(diff);
+            let neighbor_dir = select(vec3<f32>(0.0), diff / neighbor_dist, neighbor_dist > 0.0001);
+
+{neighbor_rules_code}
+        }}
+    }}
+
+{post_neighbor_code}
+
+{simple_rules_code}
+
+    // Integrate velocity
+    p.position += p.velocity * uniforms.delta_time;
+
+    particles[index] = p;
+}}
+"#
+            )
+        }
     }
 
     /// Generate the render shader WGSL code.
@@ -185,6 +336,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             .take()
             .expect("Must provide a spawner with .with_spawner()");
 
+        let has_neighbors = self.has_neighbor_rules();
+
         // Generate shaders before moving self
         let compute_shader = self.generate_compute_shader();
         let render_shader = self.generate_render_shader();
@@ -198,6 +351,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             particle_count: self.particle_count,
             compute_shader,
             render_shader,
+            has_neighbors,
+            spatial_config: self.spatial_config,
         };
 
         let event_loop = EventLoop::new().unwrap();
@@ -218,6 +373,8 @@ pub(crate) struct SimConfig {
     pub particle_count: u32,
     pub compute_shader: String,
     pub render_shader: String,
+    pub has_neighbors: bool,
+    pub spatial_config: SpatialConfig,
 }
 
 struct App<P: ParticleTrait> {
@@ -263,6 +420,8 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 std::mem::size_of::<P::Gpu>(),
                 &self.config.compute_shader,
                 &self.config.render_shader,
+                self.config.has_neighbors,
+                self.config.spatial_config,
             )));
         }
     }

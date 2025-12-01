@@ -1,3 +1,5 @@
+mod spatial_gpu;
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -5,6 +7,9 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
+
+pub use spatial_gpu::SpatialGpu;
+use crate::spatial::SpatialConfig;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const WORKGROUP_SIZE: u32 = 256;
@@ -63,6 +68,8 @@ pub struct GpuState {
     pub camera: Camera,
     start_time: Instant,
     last_frame_time: Instant,
+    // Optional spatial hashing
+    spatial: Option<SpatialGpu>,
 }
 
 impl GpuState {
@@ -73,6 +80,8 @@ impl GpuState {
         particle_stride: usize,
         compute_shader_src: &str,
         render_shader_src: &str,
+        has_neighbors: bool,
+        spatial_config: SpatialConfig,
     ) -> Self {
         let size = window.inner_size();
 
@@ -151,6 +160,13 @@ impl GpuState {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Create spatial hashing if needed
+        let spatial = if has_neighbors {
+            Some(SpatialGpu::new(&device, &particle_buffer, num_particles, spatial_config))
+        } else {
+            None
+        };
+
         // Render bind group layout
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -176,9 +192,110 @@ impl GpuState {
             }],
         });
 
-        // Compute bind group layout
-        let compute_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        // Compute bind group layout - different depending on whether we have neighbors
+        let (compute_bind_group_layout, compute_bind_group) = if let Some(ref spatial) = spatial {
+            // With neighbors: particles, uniforms, sorted_indices, cell_start, cell_end, spatial_params
+            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Compute Bind Group Layout (with neighbors)"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Compute Bind Group (with neighbors)"),
+                layout: &layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: particle_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: uniform_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: spatial.particle_indices_a.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: spatial.cell_start.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: spatial.cell_end.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: spatial.spatial_params_buffer.as_entire_binding(),
+                    },
+                ],
+            });
+
+            (layout, bind_group)
+        } else {
+            // Without neighbors: just particles and uniforms
+            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Compute Bind Group Layout"),
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
@@ -204,20 +321,23 @@ impl GpuState {
                 ],
             });
 
-        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Compute Bind Group"),
-            layout: &compute_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: particle_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
-        });
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Compute Bind Group"),
+                layout: &layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: particle_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: uniform_buffer.as_entire_binding(),
+                    },
+                ],
+            });
+
+            (layout, bind_group)
+        };
 
         // Render pipeline
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -320,6 +440,7 @@ impl GpuState {
             camera,
             start_time: now,
             last_frame_time: now,
+            spatial,
         }
     }
 
@@ -368,6 +489,11 @@ impl GpuState {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+
+        // Spatial hashing pass (if enabled)
+        if let Some(ref spatial) = self.spatial {
+            spatial.execute(&mut encoder, &self.queue);
+        }
 
         // Compute pass
         {

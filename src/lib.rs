@@ -29,6 +29,7 @@
 mod gpu;
 mod rules;
 mod simulation;
+mod spatial;
 
 pub use bytemuck;
 pub use glam::{Vec2, Vec3, Vec4};

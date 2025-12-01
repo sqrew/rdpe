@@ -24,12 +24,37 @@ pub enum Rule {
     /// Repel from a point with given strength and radius
     RepelFrom { point: Vec3, strength: f32, radius: f32 },
 
+    // --- Neighbor-based rules (require spatial hashing) ---
+
+    /// Particle-particle collision with radius and response strength
+    Collide { radius: f32, response: f32 },
+
+    /// Separation (avoid crowding neighbors)
+    Separate { radius: f32, strength: f32 },
+
+    /// Cohesion (steer towards average position of neighbors)
+    Cohere { radius: f32, strength: f32 },
+
+    /// Alignment (match velocity of neighbors)
+    Align { radius: f32, strength: f32 },
+
     /// Custom WGSL code snippet (advanced users)
     Custom(String),
 }
 
 impl Rule {
-    /// Generate WGSL code for this rule
+    /// Returns true if this rule requires spatial hashing (neighbor queries)
+    pub fn requires_neighbors(&self) -> bool {
+        matches!(
+            self,
+            Rule::Collide { .. }
+                | Rule::Separate { .. }
+                | Rule::Cohere { .. }
+                | Rule::Align { .. }
+        )
+    }
+
+    /// Generate WGSL code for this rule (non-neighbor rules only)
     pub(crate) fn to_wgsl(&self, bounds: f32) -> String {
         match self {
             Rule::Gravity(g) => format!(
@@ -99,6 +124,77 @@ impl Rule {
             ),
 
             Rule::Custom(code) => format!("    // Custom rule\n{}", code),
+
+            // Neighbor rules generate code through to_neighbor_wgsl
+            Rule::Collide { .. }
+            | Rule::Separate { .. }
+            | Rule::Cohere { .. }
+            | Rule::Align { .. } => String::new(),
+        }
+    }
+
+    /// Generate WGSL code for neighbor-based rules
+    /// This code runs inside the neighbor iteration loop
+    pub(crate) fn to_neighbor_wgsl(&self) -> String {
+        match self {
+            Rule::Collide { radius, response } => format!(
+                r#"            // Collision
+            if neighbor_dist < {radius} && neighbor_dist > 0.0001 {{
+                let overlap = {radius} - neighbor_dist;
+                let push = neighbor_dir * (overlap * {response});
+                p.velocity += push;
+            }}"#
+            ),
+
+            Rule::Separate { radius, strength } => format!(
+                r#"            // Separation
+            if neighbor_dist < {radius} && neighbor_dist > 0.0001 {{
+                let force = ({radius} - neighbor_dist) / {radius};
+                p.velocity += neighbor_dir * force * {strength} * uniforms.delta_time;
+            }}"#
+            ),
+
+            Rule::Cohere { radius, strength: _ } => format!(
+                r#"            // Cohesion (accumulate for averaging)
+            if neighbor_dist < {radius} {{
+                cohesion_sum += neighbor_pos;
+                cohesion_count += 1.0;
+            }}"#
+            ),
+
+            Rule::Align { radius, strength } => format!(
+                r#"            // Alignment (accumulate for averaging)
+            if neighbor_dist < {radius} {{
+                alignment_sum += neighbor_vel;
+                alignment_count += 1.0;
+            }}"#
+            ),
+
+            _ => String::new(),
+        }
+    }
+
+    /// Generate post-neighbor-loop code (for averaging rules like cohere/align)
+    pub(crate) fn to_post_neighbor_wgsl(&self) -> String {
+        match self {
+            Rule::Cohere { strength, .. } => format!(
+                r#"    // Apply cohesion
+    if cohesion_count > 0.0 {{
+        let center = cohesion_sum / cohesion_count;
+        let to_center = center - p.position;
+        p.velocity += normalize(to_center) * {strength} * uniforms.delta_time;
+    }}"#
+            ),
+
+            Rule::Align { strength, .. } => format!(
+                r#"    // Apply alignment
+    if alignment_count > 0.0 {{
+        let avg_vel = alignment_sum / alignment_count;
+        p.velocity += (avg_vel - p.velocity) * {strength} * uniforms.delta_time;
+    }}"#
+            ),
+
+            _ => String::new(),
         }
     }
 }
