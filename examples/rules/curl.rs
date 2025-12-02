@@ -73,8 +73,8 @@ fn main() {
         .with_rule(Rule::Lifetime(4.0))
         // === Curl Noise Flow ===
         .with_rule(Rule::Curl {
-            scale: 2.0,      // Medium flow structures
-            strength: 1.5,   // Gentle swirling
+            scale: 2.0,    // Medium flow structures
+            strength: 1.5, // Gentle swirling
         })
         // Rising motion
         .with_rule(Rule::Acceleration(Vec3::new(0.0, 0.8, 0.0)))

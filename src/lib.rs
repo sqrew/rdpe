@@ -103,20 +103,22 @@
 mod emitter;
 mod gpu;
 mod interactions;
-mod rules;
+pub mod rules;
 pub mod shader_utils;
 mod simulation;
 mod spatial;
 mod uniforms;
+pub mod visuals;
 
 pub use bytemuck;
 pub use emitter::Emitter;
 pub use glam::{Vec2, Vec3, Vec4};
 pub use interactions::InteractionMatrix;
 pub use rdpe_derive::{Particle, ParticleType};
-pub use rules::Rule;
+pub use rules::{Falloff, Rule};
 pub use simulation::Simulation;
 pub use uniforms::{CustomUniforms, UniformValue, UpdateContext};
+pub use visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VisualConfig};
 
 /// Trait automatically implemented by `#[derive(Particle)]`.
 ///
@@ -204,9 +206,10 @@ pub trait ParticleTrait: Clone + Send + Sync {
 pub mod prelude {
     pub use crate::emitter::Emitter;
     pub use crate::interactions::InteractionMatrix;
-    pub use crate::rules::Rule;
+    pub use crate::rules::{Falloff, Rule};
     pub use crate::simulation::Simulation;
     pub use crate::uniforms::{CustomUniforms, UpdateContext};
+    pub use crate::visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VisualConfig};
     pub use crate::ParticleTrait;
     pub use crate::{Vec2, Vec3, Vec4};
     pub use rdpe_derive::{Particle, ParticleType};

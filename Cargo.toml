@@ -18,6 +18,11 @@ rdpe-derive = { path = "rdpe-derive" }
 
 [dev-dependencies]
 rand = "0.8"
+criterion = "0.5"
+
+[[bench]]
+name = "shader_gen"
+harness = false
 
 [[example]]
 name = "boids"
@@ -51,6 +56,43 @@ path = "examples/rules/turbulence.rs"
 [[example]]
 name = "orbit"
 path = "examples/rules/orbit.rs"
+
+[[example]]
+name = "neighbors"
+path = "examples/rules/neighbors.rs"
+
+[[example]]
+name = "nbody"
+path = "examples/rules/nbody.rs"
+
+[[example]]
+name = "fluid"
+path = "examples/rules/fluid.rs"
+
+[[example]]
+name = "magnetism"
+path = "examples/rules/magnetism.rs"
+
+[[example]]
+name = "point_gravity"
+path = "examples/rules/point_gravity.rs"
+
+[[example]]
+name = "spring"
+path = "examples/rules/spring.rs"
+
+[[example]]
+name = "oscillate"
+path = "examples/rules/oscillate.rs"
+
+# Benchmarks
+[[example]]
+name = "bench_simple"
+path = "examples/bench_simple.rs"
+
+[[example]]
+name = "bench_neighbors"
+path = "examples/bench_neighbors.rs"
 
 # Experimental/creative examples in experimental/ subdirectory
 [[example]]

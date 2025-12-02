@@ -701,6 +701,7 @@ fn create_prefix_sum_bind_group(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_scatter_bind_group(
     device: &wgpu::Device,
     pipeline: &wgpu::ComputePipeline,

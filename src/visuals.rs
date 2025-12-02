@@ -1,0 +1,421 @@
+//! Visual configuration for particle rendering.
+//!
+//! This module provides rendering options that control how particles appear,
+//! separate from the behavioral rules that control how they move.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! Simulation::<MyParticle>::new()
+//!     .with_visuals(|v| {
+//!         v.blend_mode(BlendMode::Additive);
+//!         v.shape(ParticleShape::Circle);
+//!         v.palette(Palette::Viridis, ColorMapping::Speed);
+//!     })
+//!     .with_rule(Rule::Gravity(9.8))
+//!     .run();
+//! ```
+
+use glam::Vec3;
+
+/// Pre-defined color palettes for particle rendering.
+///
+/// These palettes are sampled based on a [`ColorMapping`] to automatically
+/// color particles without needing to set colors manually.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Palette {
+    /// No palette - use particle's own color (default).
+    #[default]
+    None,
+
+    /// Viridis - perceptually uniform, colorblind-friendly (purple to yellow).
+    Viridis,
+
+    /// Magma - perceptually uniform (black to yellow through red).
+    Magma,
+
+    /// Plasma - perceptually uniform (purple to yellow through pink).
+    Plasma,
+
+    /// Inferno - perceptually uniform (black to yellow through red/orange).
+    Inferno,
+
+    /// Rainbow - classic rainbow gradient (red through violet).
+    Rainbow,
+
+    /// Sunset - warm oranges and pinks.
+    Sunset,
+
+    /// Ocean - cool blues and teals.
+    Ocean,
+
+    /// Fire - black through red, orange, yellow, white.
+    Fire,
+
+    /// Ice - white through light blue to deep blue.
+    Ice,
+
+    /// Neon - vibrant cyberpunk colors (pink, cyan, purple).
+    Neon,
+
+    /// Forest - natural greens and browns.
+    Forest,
+
+    /// Grayscale - black to white.
+    Grayscale,
+}
+
+impl Palette {
+    /// Get the color stops for this palette (5 colors).
+    pub fn colors(&self) -> [Vec3; 5] {
+        match self {
+            Palette::None => [
+                Vec3::new(1.0, 1.0, 1.0),
+                Vec3::new(1.0, 1.0, 1.0),
+                Vec3::new(1.0, 1.0, 1.0),
+                Vec3::new(1.0, 1.0, 1.0),
+                Vec3::new(1.0, 1.0, 1.0),
+            ],
+            Palette::Viridis => [
+                Vec3::new(0.267, 0.004, 0.329), // Dark purple
+                Vec3::new(0.282, 0.140, 0.458), // Purple
+                Vec3::new(0.127, 0.566, 0.551), // Teal
+                Vec3::new(0.369, 0.789, 0.383), // Green
+                Vec3::new(0.993, 0.906, 0.144), // Yellow
+            ],
+            Palette::Magma => [
+                Vec3::new(0.001, 0.0, 0.014),   // Black
+                Vec3::new(0.329, 0.071, 0.435), // Purple
+                Vec3::new(0.716, 0.215, 0.475), // Pink
+                Vec3::new(0.994, 0.541, 0.380), // Orange
+                Vec3::new(0.987, 0.991, 0.749), // Light yellow
+            ],
+            Palette::Plasma => [
+                Vec3::new(0.050, 0.030, 0.528), // Dark blue
+                Vec3::new(0.494, 0.012, 0.658), // Purple
+                Vec3::new(0.798, 0.280, 0.470), // Pink
+                Vec3::new(0.973, 0.580, 0.254), // Orange
+                Vec3::new(0.940, 0.975, 0.131), // Yellow
+            ],
+            Palette::Inferno => [
+                Vec3::new(0.001, 0.0, 0.014),   // Black
+                Vec3::new(0.341, 0.063, 0.429), // Purple
+                Vec3::new(0.735, 0.216, 0.330), // Red
+                Vec3::new(0.988, 0.645, 0.198), // Orange
+                Vec3::new(0.988, 1.0, 0.644),   // Light yellow
+            ],
+            Palette::Rainbow => [
+                Vec3::new(1.0, 0.0, 0.0),   // Red
+                Vec3::new(1.0, 1.0, 0.0),   // Yellow
+                Vec3::new(0.0, 1.0, 0.0),   // Green
+                Vec3::new(0.0, 1.0, 1.0),   // Cyan
+                Vec3::new(0.5, 0.0, 1.0),   // Purple
+            ],
+            Palette::Sunset => [
+                Vec3::new(0.1, 0.0, 0.2),   // Dark purple
+                Vec3::new(0.5, 0.0, 0.5),   // Purple
+                Vec3::new(1.0, 0.2, 0.4),   // Pink
+                Vec3::new(1.0, 0.5, 0.2),   // Orange
+                Vec3::new(1.0, 0.9, 0.4),   // Yellow
+            ],
+            Palette::Ocean => [
+                Vec3::new(0.0, 0.05, 0.15), // Deep blue
+                Vec3::new(0.0, 0.2, 0.4),   // Dark blue
+                Vec3::new(0.0, 0.4, 0.6),   // Blue
+                Vec3::new(0.2, 0.6, 0.8),   // Light blue
+                Vec3::new(0.6, 0.9, 1.0),   // Cyan
+            ],
+            Palette::Fire => [
+                Vec3::new(0.1, 0.0, 0.0),   // Dark red
+                Vec3::new(0.5, 0.0, 0.0),   // Red
+                Vec3::new(1.0, 0.3, 0.0),   // Orange
+                Vec3::new(1.0, 0.7, 0.0),   // Yellow-orange
+                Vec3::new(1.0, 1.0, 0.8),   // White-yellow
+            ],
+            Palette::Ice => [
+                Vec3::new(1.0, 1.0, 1.0),   // White
+                Vec3::new(0.8, 0.9, 1.0),   // Light blue
+                Vec3::new(0.4, 0.7, 1.0),   // Blue
+                Vec3::new(0.1, 0.4, 0.8),   // Medium blue
+                Vec3::new(0.0, 0.1, 0.4),   // Dark blue
+            ],
+            Palette::Neon => [
+                Vec3::new(1.0, 0.0, 0.5),   // Pink
+                Vec3::new(0.5, 0.0, 1.0),   // Purple
+                Vec3::new(0.0, 0.5, 1.0),   // Blue
+                Vec3::new(0.0, 1.0, 1.0),   // Cyan
+                Vec3::new(0.5, 1.0, 0.5),   // Green
+            ],
+            Palette::Forest => [
+                Vec3::new(0.1, 0.05, 0.0),  // Dark brown
+                Vec3::new(0.3, 0.15, 0.05), // Brown
+                Vec3::new(0.2, 0.4, 0.1),   // Dark green
+                Vec3::new(0.3, 0.6, 0.2),   // Green
+                Vec3::new(0.5, 0.8, 0.3),   // Light green
+            ],
+            Palette::Grayscale => [
+                Vec3::new(0.0, 0.0, 0.0),   // Black
+                Vec3::new(0.25, 0.25, 0.25),
+                Vec3::new(0.5, 0.5, 0.5),
+                Vec3::new(0.75, 0.75, 0.75),
+                Vec3::new(1.0, 1.0, 1.0),   // White
+            ],
+        }
+    }
+}
+
+/// How to map particle properties to palette colors.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum ColorMapping {
+    /// Use the particle's own color field (default).
+    #[default]
+    None,
+
+    /// Map particle index to color (creates bands/stripes).
+    Index,
+
+    /// Map particle speed to color (slow = start, fast = end).
+    Speed {
+        /// Minimum speed (maps to palette start).
+        min: f32,
+        /// Maximum speed (maps to palette end).
+        max: f32,
+    },
+
+    /// Map particle age to color (young = start, old = end).
+    Age {
+        /// Maximum age for full palette range.
+        max_age: f32,
+    },
+
+    /// Map Y position to color (bottom = start, top = end).
+    PositionY {
+        /// Minimum Y (maps to palette start).
+        min: f32,
+        /// Maximum Y (maps to palette end).
+        max: f32,
+    },
+
+    /// Map distance from origin to color.
+    Distance {
+        /// Maximum distance for full palette range.
+        max_dist: f32,
+    },
+
+    /// Random color per particle (uses particle index as seed).
+    Random,
+}
+
+/// Blend mode for particle rendering.
+///
+/// Controls how particle colors combine with the background and each other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BlendMode {
+    /// Standard alpha blending (default).
+    ///
+    /// Particles blend based on their alpha value. Good for solid,
+    /// opaque-looking particles.
+    #[default]
+    Alpha,
+
+    /// Additive blending.
+    ///
+    /// Particle colors are added together, creating a glowing effect.
+    /// Overlapping particles become brighter. Perfect for fire, magic,
+    /// energy effects, and anything that should "glow".
+    Additive,
+
+    /// Multiplicative blending.
+    ///
+    /// Colors are multiplied, darkening the result. Useful for shadows,
+    /// smoke, or atmospheric effects.
+    Multiply,
+}
+
+/// Particle shape for rendering.
+///
+/// Controls the visual shape of each particle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ParticleShape {
+    /// Soft circle with smooth falloff (default).
+    #[default]
+    Circle,
+
+    /// Hard-edged circle.
+    CircleHard,
+
+    /// Square shape.
+    Square,
+
+    /// Ring/donut shape.
+    Ring,
+
+    /// Star shape.
+    Star,
+
+    /// Point (single pixel, fastest).
+    Point,
+}
+
+/// Configuration for particle visuals.
+///
+/// Built using the closure passed to [`Simulation::with_visuals`].
+#[derive(Debug, Clone)]
+pub struct VisualConfig {
+    /// Blend mode for particle rendering.
+    pub blend_mode: BlendMode,
+    /// Particle shape.
+    pub shape: ParticleShape,
+    /// Trail length (0 = no trails).
+    pub trail_length: u32,
+    /// Whether to draw connections between nearby particles.
+    pub connections_enabled: bool,
+    /// Radius for particle connections.
+    pub connections_radius: f32,
+    /// Whether to stretch particles in velocity direction.
+    pub velocity_stretch: bool,
+    /// Maximum stretch factor for velocity stretching.
+    pub velocity_stretch_factor: f32,
+    /// Color palette for automatic coloring.
+    pub palette: Palette,
+    /// How to map particle properties to palette colors.
+    pub color_mapping: ColorMapping,
+}
+
+impl Default for VisualConfig {
+    fn default() -> Self {
+        Self {
+            blend_mode: BlendMode::Alpha,
+            shape: ParticleShape::Circle,
+            trail_length: 0,
+            connections_enabled: false,
+            connections_radius: 0.1,
+            velocity_stretch: false,
+            velocity_stretch_factor: 2.0,
+            palette: Palette::None,
+            color_mapping: ColorMapping::None,
+        }
+    }
+}
+
+impl VisualConfig {
+    /// Create a new visual config with defaults.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the blend mode.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.blend_mode(BlendMode::Additive); // Glowy particles
+    /// })
+    /// ```
+    pub fn blend_mode(&mut self, mode: BlendMode) -> &mut Self {
+        self.blend_mode = mode;
+        self
+    }
+
+    /// Set the particle shape.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.shape(ParticleShape::Star);
+    /// })
+    /// ```
+    pub fn shape(&mut self, shape: ParticleShape) -> &mut Self {
+        self.shape = shape;
+        self
+    }
+
+    /// Enable particle trails.
+    ///
+    /// Trails render a fading history of particle positions.
+    ///
+    /// # Arguments
+    ///
+    /// * `length` - Number of previous positions to render (0 = disabled)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.trails(10); // 10-frame trails
+    /// })
+    /// ```
+    pub fn trails(&mut self, length: u32) -> &mut Self {
+        self.trail_length = length;
+        self
+    }
+
+    /// Enable connections between nearby particles.
+    ///
+    /// Draws lines between particles within the specified radius.
+    /// Creates web-like or network visualizations.
+    ///
+    /// # Arguments
+    ///
+    /// * `radius` - Maximum distance for connections
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.connections(0.15); // Connect particles within 0.15 units
+    /// })
+    /// ```
+    pub fn connections(&mut self, radius: f32) -> &mut Self {
+        self.connections_enabled = true;
+        self.connections_radius = radius;
+        self
+    }
+
+    /// Enable velocity-based stretching.
+    ///
+    /// Particles stretch in their direction of motion, creating
+    /// a speed-blur effect.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_factor` - Maximum stretch multiplier (e.g., 3.0 = 3x longer)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.velocity_stretch(3.0); // Stretch up to 3x in motion direction
+    /// })
+    /// ```
+    pub fn velocity_stretch(&mut self, max_factor: f32) -> &mut Self {
+        self.velocity_stretch = true;
+        self.velocity_stretch_factor = max_factor;
+        self
+    }
+
+    /// Set a color palette with automatic mapping.
+    ///
+    /// Overrides particle colors with palette colors based on the mapping.
+    ///
+    /// # Arguments
+    ///
+    /// * `palette` - The color palette to use
+    /// * `mapping` - How to map particle properties to colors
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     // Color by speed using the fire palette
+    ///     v.palette(Palette::Fire, ColorMapping::Speed { min: 0.0, max: 2.0 });
+    /// })
+    /// ```
+    pub fn palette(&mut self, palette: Palette, mapping: ColorMapping) -> &mut Self {
+        self.palette = palette;
+        self.color_mapping = mapping;
+        self
+    }
+}

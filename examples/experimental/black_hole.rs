@@ -18,10 +18,11 @@ use rdpe::prelude::*;
 
 #[derive(Clone, Copy, PartialEq)]
 #[repr(u32)]
+#[allow(dead_code)] // Variants reserved for future use
 enum Matter {
-    Disk = 0,    // Orbiting accretion disk
+    Disk = 0,      // Orbiting accretion disk
     Infalling = 1, // Falling into the hole
-    Jet = 2,     // Ejected polar jets
+    Jet = 2,       // Ejected polar jets
 }
 
 impl From<Matter> for u32 {

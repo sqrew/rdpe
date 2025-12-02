@@ -55,6 +55,7 @@ use crate::rules::Rule;
 use crate::shader_utils;
 use crate::spatial::{SpatialConfig, MORTON_WGSL, NEIGHBOR_UTILS_WGSL};
 use crate::uniforms::{CustomUniforms, UniformValue, UpdateContext};
+use crate::visuals::VisualConfig;
 use crate::ParticleTrait;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -64,6 +65,9 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
+
+/// Type alias for the update callback to reduce complexity.
+type UpdateCallback = Box<dyn FnMut(&mut UpdateContext) + Send>;
 
 /// A particle simulation builder.
 ///
@@ -134,11 +138,13 @@ pub struct Simulation<P: ParticleTrait> {
     /// Custom uniforms for user-defined shader data.
     custom_uniforms: CustomUniforms,
     /// Callback for updating custom uniforms each frame.
-    update_callback: Option<Box<dyn FnMut(&mut UpdateContext) + Send>>,
+    update_callback: Option<UpdateCallback>,
     /// Custom WGSL functions that can be called from rules.
     custom_functions: Vec<String>,
     /// Configuration for spatial hashing (neighbor queries).
     spatial_config: SpatialConfig,
+    /// Visual rendering configuration.
+    visual_config: VisualConfig,
     /// Phantom data for the particle type.
     _phantom: PhantomData<P>,
 }
@@ -171,6 +177,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             update_callback: None,
             custom_functions: Vec::new(),
             spatial_config: SpatialConfig::default(),
+            visual_config: VisualConfig::default(),
             _phantom: PhantomData,
         }
     }
@@ -574,6 +581,40 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Configure visual rendering options.
+    ///
+    /// Visuals control how particles are rendered, separate from the behavioral
+    /// rules that control how they move.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rdpe::prelude::*;
+    ///
+    /// Simulation::<Ball>::new()
+    ///     .with_visuals(|v| {
+    ///         v.blend_mode(BlendMode::Additive);  // Glowy particles
+    ///         v.shape(ParticleShape::Circle);
+    ///     })
+    ///     .with_rule(Rule::Gravity(9.8))
+    ///     .run();
+    /// ```
+    ///
+    /// # Available Options
+    ///
+    /// - `blend_mode()` - Alpha, Additive, or Multiply blending
+    /// - `shape()` - Circle, Square, Ring, Star, Point
+    /// - `trails()` - Render position history as trails
+    /// - `connections()` - Draw lines between nearby particles
+    /// - `velocity_stretch()` - Stretch particles in motion direction
+    pub fn with_visuals<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(&mut VisualConfig),
+    {
+        configure(&mut self.visual_config);
+        self
+    }
+
     /// Check if any rules require neighbor queries
     fn has_neighbor_rules(&self) -> bool {
         self.rules.iter().any(|r| r.requires_neighbors()) || self.interaction_matrix.is_some()
@@ -687,11 +728,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
                 .collect::<Vec<_>>()
                 .join("\n\n");
 
-            // Check if we need cohesion/alignment/chase/evade accumulators
+            // Check if we need various accumulators
             let needs_cohesion = self.rules.iter().any(|r| r.needs_cohesion_accumulator());
             let needs_alignment = self.rules.iter().any(|r| r.needs_alignment_accumulator());
             let needs_chase = self.rules.iter().any(|r| r.needs_chase_accumulator());
             let needs_evade = self.rules.iter().any(|r| r.needs_evade_accumulator());
+            let needs_viscosity = self.rules.iter().any(|r| r.needs_viscosity_accumulator());
+            let needs_pressure = self.rules.iter().any(|r| r.needs_pressure_accumulator());
+            let needs_surface_tension = self.rules.iter().any(|r| r.needs_surface_tension_accumulator());
+            let needs_avoid = self.rules.iter().any(|r| r.needs_avoid_accumulator());
 
             // Generate interaction matrix code if present
             let (interaction_init, interaction_neighbor, interaction_post) =
@@ -719,11 +764,23 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
                 if needs_evade {
                     vars.push_str("    var evade_nearest_dist = 1000.0;\n    var evade_nearest_pos = vec3<f32>(0.0);\n");
                 }
+                if needs_viscosity {
+                    vars.push_str("    var viscosity_sum = vec3<f32>(0.0);\n    var viscosity_weight = 0.0;\n");
+                }
+                if needs_pressure {
+                    vars.push_str("    var pressure_density = 0.0;\n    var pressure_force = vec3<f32>(0.0);\n");
+                }
+                if needs_surface_tension {
+                    vars.push_str("    var surface_neighbor_count = 0.0;\n    var surface_center_sum = vec3<f32>(0.0);\n");
+                }
+                if needs_avoid {
+                    vars.push_str("    var avoid_sum = vec3<f32>(0.0);\n    var avoid_count = 0.0;\n");
+                }
                 // Add interaction matrix init
                 if !interaction_init.is_empty() {
-                    vars.push_str("\n");
+                    vars.push('\n');
                     vars.push_str(&interaction_init);
-                    vars.push_str("\n");
+                    vars.push('\n');
                 }
                 vars
             };
@@ -732,7 +789,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             let neighbor_rules_code = {
                 let mut code = neighbor_rules_code;
                 if !interaction_neighbor.is_empty() {
-                    code.push_str("\n");
+                    code.push('\n');
                     code.push_str(&interaction_neighbor);
                 }
                 code
@@ -866,15 +923,91 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     /// Generate the render shader WGSL code.
     fn generate_render_shader(&self) -> String {
-        let (color_input, color_expr) = match P::COLOR_FIELD {
-            Some(_) => (
-                "@location(1) particle_color: vec3<f32>,".to_string(),
-                "particle_color".to_string(),
-            ),
-            None => (
-                String::new(),
-                "normalize(particle_pos) * 0.5 + 0.5".to_string(),
-            ),
+        use crate::visuals::{ColorMapping, Palette};
+
+        // Determine if we're using a palette
+        let use_palette = !matches!(self.visual_config.palette, Palette::None);
+
+        // Generate palette constants and sampling function if using palette
+        let (palette_code, color_expr) = if use_palette {
+            let colors = self.visual_config.palette.colors();
+            let palette_consts = format!(
+                r#"
+// Palette colors
+const PALETTE_0: vec3<f32> = vec3<f32>({}, {}, {});
+const PALETTE_1: vec3<f32> = vec3<f32>({}, {}, {});
+const PALETTE_2: vec3<f32> = vec3<f32>({}, {}, {});
+const PALETTE_3: vec3<f32> = vec3<f32>({}, {}, {});
+const PALETTE_4: vec3<f32> = vec3<f32>({}, {}, {});
+
+fn sample_palette(t: f32) -> vec3<f32> {{
+    let t_clamped = clamp(t, 0.0, 1.0);
+    let scaled = t_clamped * 4.0;
+    let idx = u32(floor(scaled));
+    let frac = fract(scaled);
+
+    var c0: vec3<f32>;
+    var c1: vec3<f32>;
+
+    switch idx {{
+        case 0u: {{ c0 = PALETTE_0; c1 = PALETTE_1; }}
+        case 1u: {{ c0 = PALETTE_1; c1 = PALETTE_2; }}
+        case 2u: {{ c0 = PALETTE_2; c1 = PALETTE_3; }}
+        case 3u: {{ c0 = PALETTE_3; c1 = PALETTE_4; }}
+        default: {{ c0 = PALETTE_4; c1 = PALETTE_4; }}
+    }}
+
+    return mix(c0, c1, frac);
+}}
+"#,
+                colors[0].x, colors[0].y, colors[0].z,
+                colors[1].x, colors[1].y, colors[1].z,
+                colors[2].x, colors[2].y, colors[2].z,
+                colors[3].x, colors[3].y, colors[3].z,
+                colors[4].x, colors[4].y, colors[4].z,
+            );
+
+            // Generate the mapping expression
+            let mapping_expr = match self.visual_config.color_mapping {
+                ColorMapping::None => "0.5".to_string(), // Default to middle of palette
+                ColorMapping::Index => format!(
+                    "f32(instance_index) / f32({}u)",
+                    self.particle_count.max(1)
+                ),
+                ColorMapping::PositionY { min, max } => format!(
+                    "clamp((particle_pos.y - {}) / ({} - {}), 0.0, 1.0)",
+                    min, max, min
+                ),
+                ColorMapping::Distance { max_dist } => format!(
+                    "clamp(length(particle_pos) / {}, 0.0, 1.0)",
+                    max_dist
+                ),
+                ColorMapping::Random => {
+                    // PCG-style hash for random but consistent color per particle
+                    "fract(sin(f32(instance_index) * 12.9898) * 43758.5453)".to_string()
+                },
+                // Speed and Age need velocity/age passed to shader - fall back to index
+                ColorMapping::Speed { .. } | ColorMapping::Age { .. } => {
+                    format!("f32(instance_index) / f32({}u)", self.particle_count.max(1))
+                }
+            };
+
+            let color_expr = format!("sample_palette({})", mapping_expr);
+            (palette_consts, color_expr)
+        } else {
+            // No palette - use particle color or position-based
+            let color_expr = match P::COLOR_FIELD {
+                Some(_) => "particle_color".to_string(),
+                None => "normalize(particle_pos) * 0.5 + 0.5".to_string(),
+            };
+            (String::new(), color_expr)
+        };
+
+        // Color input attribute (only if has color field AND not using palette)
+        let color_input = if P::COLOR_FIELD.is_some() && !use_palette {
+            "@location(1) particle_color: vec3<f32>,"
+        } else {
+            ""
         };
 
         format!(
@@ -886,7 +1019,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
-
+{palette_code}
 struct VertexOutput {{
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec3<f32>,
@@ -896,6 +1029,7 @@ struct VertexOutput {{
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
     @location(0) particle_pos: vec3<f32>,
     {color_input}
     @location(2) alive: u32,
@@ -1017,10 +1151,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             render_shader,
             has_neighbors,
             spatial_config: self.spatial_config,
+            visual_config: self.visual_config,
             color_offset: P::COLOR_OFFSET,
             alive_offset: P::ALIVE_OFFSET,
             scale_offset: P::SCALE_OFFSET,
             custom_uniform_size,
+            particle_size: self.particle_size,
         };
 
         let event_loop = EventLoop::new().unwrap();
@@ -1059,6 +1195,8 @@ pub(crate) struct SimConfig {
     pub has_neighbors: bool,
     /// Spatial hashing configuration.
     pub spatial_config: SpatialConfig,
+    /// Visual rendering configuration.
+    pub visual_config: VisualConfig,
     /// Byte offset of color field in particle struct, if any.
     pub color_offset: Option<u32>,
     /// Byte offset of alive field in particle struct.
@@ -1067,6 +1205,8 @@ pub(crate) struct SimConfig {
     pub scale_offset: u32,
     /// Size of custom uniforms in bytes.
     pub custom_uniform_size: usize,
+    /// Base particle render size.
+    pub particle_size: f32,
 }
 
 struct App<P: ParticleTrait> {
@@ -1078,7 +1218,11 @@ struct App<P: ParticleTrait> {
     last_mouse_pos: Option<(f64, f64)>,
     current_mouse_ndc: Option<glam::Vec2>,
     custom_uniforms: CustomUniforms,
-    update_callback: Option<Box<dyn FnMut(&mut UpdateContext) + Send>>,
+    update_callback: Option<UpdateCallback>,
+    // FPS tracking
+    frame_count: u32,
+    fps_update_time: std::time::Instant,
+    current_fps: f32,
 }
 
 impl<P: ParticleTrait + 'static> App<P> {
@@ -1086,7 +1230,7 @@ impl<P: ParticleTrait + 'static> App<P> {
         particles: Vec<P>,
         config: SimConfig,
         custom_uniforms: CustomUniforms,
-        update_callback: Option<Box<dyn FnMut(&mut UpdateContext) + Send>>,
+        update_callback: Option<UpdateCallback>,
     ) -> Self {
         // Convert user particles to GPU format
         let gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
@@ -1101,6 +1245,9 @@ impl<P: ParticleTrait + 'static> App<P> {
             current_mouse_ndc: None,
             custom_uniforms,
             update_callback,
+            frame_count: 0,
+            fps_update_time: std::time::Instant::now(),
+            current_fps: 0.0,
         }
     }
 }
@@ -1129,6 +1276,11 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 self.config.alive_offset,
                 self.config.scale_offset,
                 self.config.custom_uniform_size,
+                self.config.visual_config.blend_mode,
+                self.config.visual_config.trail_length,
+                self.config.particle_size,
+                self.config.visual_config.connections_enabled,
+                self.config.visual_config.connections_radius,
             )));
         }
     }
@@ -1187,6 +1339,26 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::RedrawRequested => {
+                // FPS tracking
+                self.frame_count += 1;
+                let elapsed = self.fps_update_time.elapsed().as_secs_f32();
+                if elapsed >= 0.5 {
+                    self.current_fps = self.frame_count as f32 / elapsed;
+                    self.frame_count = 0;
+                    self.fps_update_time = std::time::Instant::now();
+
+                    // Update window title with FPS
+                    if let Some(window) = &self.window {
+                        let title = format!(
+                            "RDPE | {} particles | {:.1} FPS | {:.2}ms",
+                            self.config.particle_count,
+                            self.current_fps,
+                            1000.0 / self.current_fps.max(0.001)
+                        );
+                        window.set_title(&title);
+                    }
+                }
+
                 // Get time info once
                 let (time, delta_time) = if let Some(gpu_state) = &mut self.gpu_state {
                     gpu_state.get_time_info()

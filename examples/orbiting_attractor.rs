@@ -85,8 +85,8 @@ fn main() {
             );
 
             // Pulse: gather for 3 sec, scatter for 1 sec
-            let cycle = t % 4.0;
-            let strength = if cycle < 3.0 {
+            let cycle = t % 10.0;
+            let strength = if cycle < 9.0 {
                 3.0 // Attract
             } else {
                 -5.0 // Repel
@@ -108,6 +108,5 @@ fn main() {
         ))
         .with_rule(Rule::Drag(2.0))
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.0 })
-        .with_rule(Rule::WrapWalls)
         .run();
 }

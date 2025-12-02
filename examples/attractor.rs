@@ -82,10 +82,7 @@ fn main() {
             if ctx.mouse_pressed() {
                 if let Some(mouse) = ctx.mouse_ndc() {
                     // Map NDC (-1 to 1) to world space (approximate)
-                    ctx.set(
-                        "attractor",
-                        Vec3::new(mouse.x * 2.0, mouse.y * 2.0, 0.0),
-                    );
+                    ctx.set("attractor", Vec3::new(mouse.x * 2.0, mouse.y * 2.0, 0.0));
                     ctx.set("strength", 5.0f32);
                 }
             } else {
