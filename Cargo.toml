@@ -8,13 +8,22 @@ license = "MIT"
 [workspace]
 members = [".", "rdpe-derive"]
 
+[features]
+default = []
+egui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
+
 [dependencies]
 bytemuck = { version = "1.24.0", features = ["derive"] }
 glam = { version = "0.29", features = ["bytemuck"] }
 pollster = "0.4"
-wgpu = "27.0.1"
+wgpu = "24.0"
 winit = "0.30.12"
 rdpe-derive = { path = "rdpe-derive" }
+
+# Optional egui support
+egui = { version = "0.31", optional = true }
+egui-wgpu = { version = "0.31", optional = true }
+egui-winit = { version = "0.31", optional = true }
 
 [dev-dependencies]
 rand = "0.8"
@@ -94,6 +103,16 @@ path = "examples/bench_simple.rs"
 name = "bench_neighbors"
 path = "examples/bench_neighbors.rs"
 
+# Inbox (particle communication) examples
+[[example]]
+name = "inbox"
+path = "examples/inbox.rs"
+
+[[example]]
+name = "slime_mold"
+path = "examples/slime_mold.rs"
+required-features = ["egui"]
+
 # Experimental/creative examples in experimental/ subdirectory
 [[example]]
 name = "cosmic_jellyfish"
@@ -110,3 +129,50 @@ path = "examples/experimental/black_hole.rs"
 [[example]]
 name = "thought_storm"
 path = "examples/experimental/thought_storm.rs"
+
+[[example]]
+name = "plasma_storm"
+path = "examples/experimental/plasma_storm.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "fluid_galaxy"
+path = "examples/experimental/fluid_galaxy.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "murmuration"
+path = "examples/experimental/murmuration.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "ethereal_web"
+path = "examples/experimental/ethereal_web.rs"
+
+[[example]]
+name = "neon_assault"
+path = "examples/experimental/neon_assault.rs"
+
+[[example]]
+name = "neon_assault_interactive"
+path = "examples/experimental/neon_assault_interactive.rs"
+required-features = ["egui"]
+
+# Egui examples (require --features egui)
+[[example]]
+name = "egui_controls"
+path = "examples/egui_controls.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "egui_interactive"
+path = "examples/egui_interactive.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "custom_shader"
+path = "examples/custom_shader.rs"
+
+[[example]]
+name = "post_process"
+path = "examples/post_process.rs"

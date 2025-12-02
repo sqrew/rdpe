@@ -176,35 +176,46 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
-<p>RDPE includes many self-documented examples in the <code>examples/</code> directory. Each example contains detailed comments explaining the concepts it demonstrates.</p>
+<p>RDPE includes many self-documented examples. Each example contains detailed comments explaining the concepts it demonstrates.</p>
 <h2 id="running-examples"><a class="header" href="#running-examples">Running Examples</a></h2>
 <pre><code class="language-bash">cargo run --example &lt;name&gt;
 </code></pre>
-<h2 id="available-examples"><a class="header" href="#available-examples">Available Examples</a></h2>
+<h2 id="multi-feature-examples"><a class="header" href="#multi-feature-examples">Multi-Feature Examples</a></h2>
+<p>These showcase combinations of rules and features:</p>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>getting_started</code></td><td>Minimal RDPE simulation - start here!</td></tr>
-<tr><td><code>bouncing</code></td><td>Particles bouncing off walls</td></tr>
 <tr><td><code>fountain</code></td><td>Cone emitter with gravity and lifecycle</td></tr>
-<tr><td><code>boids</code></td><td>Classic flocking algorithm with spatial hashing</td></tr>
+<tr><td><code>boids</code></td><td>Classic flocking algorithm (Separate + Cohere + Align)</td></tr>
 <tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between types</td></tr>
 <tr><td><code>infection</code></td><td>SIR model with Convert rule</td></tr>
 <tr><td><code>particle_life</code></td><td>Emergent behavior from interaction matrix</td></tr>
-<tr><td><code>attractor</code></td><td>Mouse-controlled attraction force</td></tr>
-<tr><td><code>orbit</code></td><td>Time-animated orbiting attractor</td></tr>
+<tr><td><code>attractor</code></td><td>Mouse-controlled attraction with custom uniforms</td></tr>
+<tr><td><code>orbiting_attractor</code></td><td>Time-animated orbiting attractor</td></tr>
 <tr><td><code>noisy</code></td><td>Flow field using built-in noise functions</td></tr>
 <tr><td><code>swirl</code></td><td>Custom WGSL functions for vortex effect</td></tr>
-<tr><td><code>explosion</code></td><td>Burst emitter for one-shot effects</td></tr>
+<tr><td><code>explosion</code></td><td>Burst emitter + FadeOut + ShrinkOut + ColorOverLife</td></tr>
 <tr><td><code>rain</code></td><td>Box emitter for environmental particles</td></tr>
 <tr><td><code>rocket</code></td><td>Downward cone emitter for thrust</td></tr>
 <tr><td><code>sphere_shell</code></td><td>Sphere emitter for 3D distributions</td></tr>
 </tbody></table>
 </div>
+<h2 id="single-rule-examples"><a class="header" href="#single-rule-examples">Single-Rule Examples</a></h2>
+<p>Located in <code>examples/rules/</code>, each demonstrates one specific rule:</p>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Rule</th></tr></thead><tbody>
+<tr><td><code>bounce_walls</code></td><td><code>Rule::BounceWalls</code></td></tr>
+<tr><td><code>vortex</code></td><td><code>Rule::Vortex</code></td></tr>
+<tr><td><code>turbulence</code></td><td><code>Rule::Turbulence</code></td></tr>
+<tr><td><code>orbit</code></td><td><code>Rule::Orbit</code></td></tr>
+<tr><td><code>curl</code></td><td><code>Rule::Curl</code></td></tr>
+</tbody></table>
+</div>
 <h2 id="learning-path"><a class="header" href="#learning-path">Learning Path</a></h2>
 <ol>
-<li><strong>Start with basics</strong>: <code>getting_started</code>, <code>bouncing</code>, <code>fountain</code></li>
+<li><strong>Start with basics</strong>: <code>getting_started</code>, <code>bounce_walls</code>, <code>fountain</code></li>
 <li><strong>Explore interactions</strong>: <code>boids</code>, <code>predator_prey</code>, <code>infection</code>, <code>particle_life</code></li>
-<li><strong>Custom shaders</strong>: <code>attractor</code>, <code>orbit</code>, <code>noisy</code>, <code>swirl</code></li>
+<li><strong>Custom shaders</strong>: <code>attractor</code>, <code>orbiting_attractor</code>, <code>noisy</code>, <code>swirl</code></li>
 <li><strong>Emitter types</strong>: <code>explosion</code>, <code>rain</code>, <code>rocket</code>, <code>sphere_shell</code></li>
+<li><strong>Force rules</strong>: <code>vortex</code>, <code>turbulence</code>, <code>orbit</code>, <code>curl</code></li>
 </ol>
 <p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>
 

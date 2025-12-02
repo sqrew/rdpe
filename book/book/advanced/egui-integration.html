@@ -1,0 +1,495 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Egui Integration - RDPE - Reaction Diffusion Particle Engine</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="egui-integration"><a class="header" href="#egui-integration">Egui Integration</a></h1>
+<p>RDPE supports <a href="https://github.com/emilk/egui">egui</a> for adding interactive UI controls to your simulations. This enables real-time parameter tuning, debug displays, and rich user interfaces.</p>
+<h2 id="enabling-egui"><a class="header" href="#enabling-egui">Enabling Egui</a></h2>
+<p>Add the <code>egui</code> feature to your <code>Cargo.toml</code>:</p>
+<pre><code class="language-toml">[dependencies]
+rdpe = { version = "0.1", features = ["egui"] }
+</code></pre>
+<p>Or run examples with:</p>
+<pre><code class="language-bash">cargo run --example egui_interactive --features egui
+</code></pre>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
+<p>Use <code>.with_ui()</code> to add an egui callback:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    // ... particle setup ...
+    .with_ui(|ctx| {
+        egui::Window::new("Controls")
+            .show(ctx, |ui| {
+                ui.label("Hello from egui!");
+            });
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>The callback receives an <code>&amp;egui::Context</code> and runs every frame. You can create windows, panels, sliders, buttons, and any other egui widgets.</p>
+<h2 id="connecting-ui-to-simulation"><a class="header" href="#connecting-ui-to-simulation">Connecting UI to Simulation</a></h2>
+<p>The real power comes from connecting UI controls to simulation parameters. This requires:</p>
+<ol>
+<li><strong>Custom uniforms</strong> - GPU-side parameters the shader reads</li>
+<li><strong>Update callback</strong> - Syncs Rust values to uniforms each frame</li>
+<li><strong>Shared state</strong> - Connects UI to the update callback</li>
+</ol>
+<h3 id="the-pattern-arcmutex"><a class="header" href="#the-pattern-arcmutex">The Pattern: Arc&lt;Mutex<T>&gt;</a></h3>
+<p>Since both callbacks need access to the same state and must be <code>Send</code>, use <code>Arc&lt;Mutex&lt;T&gt;&gt;</code>:</p>
+<pre><pre class="playground"><code class="language-rust">use std::sync::{Arc, Mutex};
+
+// Define your parameters
+struct SimState {
+    gravity: f32,
+    speed: f32,
+}
+
+impl Default for SimState {
+    fn default() -&gt; Self {
+        Self { gravity: 0.5, speed: 1.0 }
+    }
+}
+
+fn main() {
+    // Create shared state
+    let state = Arc::new(Mutex::new(SimState::default()));
+    let ui_state = state.clone();      // Clone for UI callback
+    let update_state = state.clone();  // Clone for update callback
+
+    Simulation::&lt;Particle&gt;::new()
+        // Declare uniforms (must match defaults!)
+        .with_uniform::&lt;f32&gt;("gravity", 0.5)
+        .with_uniform::&lt;f32&gt;("speed", 1.0)
+
+        // UI callback - modifies shared state
+        .with_ui(move |ctx| {
+            let mut s = ui_state.lock().unwrap();
+            egui::Window::new("Controls").show(ctx, |ui| {
+                ui.add(egui::Slider::new(&amp;mut s.gravity, 0.0..=2.0).text("Gravity"));
+                ui.add(egui::Slider::new(&amp;mut s.speed, 0.1..=3.0).text("Speed"));
+            });
+        })
+
+        // Update callback - syncs state to GPU uniforms
+        .with_update(move |ctx| {
+            let s = update_state.lock().unwrap();
+            ctx.set("gravity", s.gravity);
+            ctx.set("speed", s.speed);
+        })
+
+        // Shader reads uniforms
+        .with_rule(Rule::Custom(r#"
+            p.velocity.y -= uniforms.gravity * uniforms.delta_time;
+            p.position += p.velocity * uniforms.delta_time * uniforms.speed;
+        "#.into()))
+
+        .run();
+}</code></pre></pre>
+<h3 id="flow-summary"><a class="header" href="#flow-summary">Flow Summary</a></h3>
+<pre><code>┌─────────────┐     ┌───────────────────┐     ┌─────────────┐
+│   Egui UI   │────▶│  Arc&lt;Mutex&lt;State&gt;&gt;│────▶│  Uniforms   │
+│  (sliders)  │     │   (shared state)  │     │   (GPU)     │
+└─────────────┘     └───────────────────┘     └─────────────┘
+       │                     │                      │
+       │    .with_ui()       │    .with_update()    │    Rule::Custom
+       └─────────────────────┴──────────────────────┴─────────────────▶ Shader
+</code></pre>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<p>Here's a full interactive simulation:</p>
+<pre><pre class="playground"><code class="language-rust">use rand::Rng;
+use rdpe::prelude::*;
+use std::sync::{Arc, Mutex};
+
+#[derive(Particle, Clone)]
+struct Ball {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+}
+
+struct SimState {
+    gravity: f32,
+    drag: f32,
+    bounce: f32,
+}
+
+impl Default for SimState {
+    fn default() -&gt; Self {
+        Self { gravity: 1.0, drag: 0.5, bounce: 0.8 }
+    }
+}
+
+fn main() {
+    let mut rng = rand::thread_rng();
+
+    let state = Arc::new(Mutex::new(SimState::default()));
+    let ui_state = state.clone();
+    let update_state = state.clone();
+
+    let particles: Vec&lt;_&gt; = (0..5000)
+        .map(|_| {
+            let pos = Vec3::new(
+                rng.gen_range(-0.8..0.8),
+                rng.gen_range(0.0..0.8),
+                rng.gen_range(-0.8..0.8),
+            );
+            let vel = Vec3::ZERO;
+            let hue = rng.gen_range(0.0..1.0);
+            let color = Vec3::new(hue, 0.8, 1.0); // HSV-ish
+            (pos, vel, color)
+        })
+        .collect();
+
+    Simulation::&lt;Ball&gt;::new()
+        .with_particle_count(5000)
+        .with_bounds(1.0)
+        .with_spawner(move |i, _| {
+            let (pos, vel, color) = particles[i as usize];
+            Ball { position: pos, velocity: vel, color }
+        })
+        .with_uniform::&lt;f32&gt;("gravity", 1.0)
+        .with_uniform::&lt;f32&gt;("drag", 0.5)
+        .with_uniform::&lt;f32&gt;("bounce", 0.8)
+
+        .with_ui(move |ctx| {
+            let mut s = ui_state.lock().unwrap();
+            egui::Window::new("Physics Controls")
+                .default_pos([10.0, 10.0])
+                .show(ctx, |ui| {
+                    ui.heading("Parameters");
+                    ui.add(egui::Slider::new(&amp;mut s.gravity, 0.0..=5.0).text("Gravity"));
+                    ui.add(egui::Slider::new(&amp;mut s.drag, 0.0..=2.0).text("Drag"));
+                    ui.add(egui::Slider::new(&amp;mut s.bounce, 0.0..=1.0).text("Bounce"));
+
+                    ui.separator();
+                    if ui.button("Reset").clicked() {
+                        *s = SimState::default();
+                    }
+                });
+        })
+
+        .with_update(move |ctx| {
+            let s = update_state.lock().unwrap();
+            ctx.set("gravity", s.gravity);
+            ctx.set("drag", s.drag);
+            ctx.set("bounce", s.bounce);
+        })
+
+        .with_rule(Rule::Custom(r#"
+            let dt = uniforms.delta_time;
+
+            // Gravity
+            p.velocity.y -= uniforms.gravity * dt;
+
+            // Drag
+            p.velocity *= 1.0 - uniforms.drag * dt;
+
+            // Integrate
+            p.position += p.velocity * dt;
+
+            // Floor bounce
+            if p.position.y &lt; -0.95 {
+                p.position.y = -0.95;
+                p.velocity.y = abs(p.velocity.y) * uniforms.bounce;
+            }
+        "#.into()))
+
+        .with_rule(Rule::BounceWalls)
+        .run();
+}</code></pre></pre>
+<h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
+<h3 id="mutex-performance"><a class="header" href="#mutex-performance">Mutex Performance</a></h3>
+<p>Don't worry about <code>Mutex</code> overhead - both callbacks run on the main thread, so there's no contention. Lock/unlock is ~20ns, negligible at 60fps.</p>
+<h3 id="initial-values-must-match"><a class="header" href="#initial-values-must-match">Initial Values Must Match</a></h3>
+<p>Always ensure <code>.with_uniform()</code> values match your <code>Default</code> implementation:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// These MUST match!
+.with_uniform::&lt;f32&gt;("gravity", 0.5)  // Uniform default
+// ...
+impl Default for SimState {
+    fn default() -&gt; Self {
+        Self { gravity: 0.5, ... }    // State default
+    }
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="type-annotations"><a class="header" href="#type-annotations">Type Annotations</a></h3>
+<p>Use explicit type annotations for uniform values:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_uniform::&lt;f32&gt;("value", 1.0)    // Good
+.with_uniform("value", 1.0f32)        // Also good
+.with_uniform("value", 1.0)           // May cause type inference issues
+<span class="boring">}</span></code></pre></pre>
+<h3 id="egui-widgets"><a class="header" href="#egui-widgets">Egui Widgets</a></h3>
+<p>Common egui widgets for simulations:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Slider with range
+ui.add(egui::Slider::new(&amp;mut value, 0.0..=10.0).text("Label"));
+
+// Checkbox
+ui.checkbox(&amp;mut enabled, "Enable feature");
+
+// Button
+if ui.button("Reset").clicked() {
+    // handle click
+}
+
+// Color picker
+ui.color_edit_button_rgb(&amp;mut color);
+
+// Collapsing section
+ui.collapsing("Advanced", |ui| {
+    // nested widgets
+});
+<span class="boring">}</span></code></pre></pre>
+<h3 id="window-positioning"><a class="header" href="#window-positioning">Window Positioning</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>egui::Window::new("Title")
+    .default_pos([10.0, 10.0])    // Initial position
+    .resizable(false)             // Fixed size
+    .collapsible(true)            // Can collapse
+    .show(ctx, |ui| { ... });
+<span class="boring">}</span></code></pre></pre>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<p>Run the interactive examples:</p>
+<pre><code class="language-bash"># Basic UI demo (controls don't affect simulation)
+cargo run --example egui_controls --features egui
+
+# Full interactive controls
+cargo run --example egui_interactive --features egui
+
+# Creative examples with egui
+cargo run --example plasma_storm --features egui
+cargo run --example fluid_galaxy --features egui
+cargo run --example murmuration --features egui
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../advanced/shader-utilities.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../advanced/performance.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../advanced/shader-utilities.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../advanced/performance.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

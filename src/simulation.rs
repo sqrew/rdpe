@@ -145,6 +145,16 @@ pub struct Simulation<P: ParticleTrait> {
     spatial_config: SpatialConfig,
     /// Visual rendering configuration.
     visual_config: VisualConfig,
+    /// Whether particle communication inbox is enabled.
+    inbox_enabled: bool,
+    /// Custom fragment shader code (replaces default fragment body).
+    custom_fragment_shader: Option<String>,
+    /// Whether egui UI is enabled.
+    #[cfg(feature = "egui")]
+    egui_enabled: bool,
+    /// UI callback for egui (called each frame).
+    #[cfg(feature = "egui")]
+    ui_callback: Option<Box<dyn FnMut(&egui::Context) + Send + 'static>>,
     /// Phantom data for the particle type.
     _phantom: PhantomData<P>,
 }
@@ -178,6 +188,12 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             custom_functions: Vec::new(),
             spatial_config: SpatialConfig::default(),
             visual_config: VisualConfig::default(),
+            inbox_enabled: false,
+            custom_fragment_shader: None,
+            #[cfg(feature = "egui")]
+            egui_enabled: false,
+            #[cfg(feature = "egui")]
+            ui_callback: None,
             _phantom: PhantomData,
         }
     }
@@ -402,6 +418,83 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Enable particle-to-particle communication via inbox buffers.
+    ///
+    /// When enabled, particles can send values to other particles' "inbox"
+    /// during neighbor iteration. Each particle has 4 inbox channels (vec4).
+    /// Values are accumulated atomically and cleared each frame.
+    ///
+    /// # WGSL Functions
+    ///
+    /// - `inbox_send(target_idx, channel, value)` - Send float to particle's inbox
+    /// - `inbox_receive_at(index, channel)` - Read inbox channel for particle (returns f32)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Particle>::new()
+    ///     .with_inbox()
+    ///     .with_spatial_config(0.2, 32)
+    ///     .with_rule(Rule::NeighborCustom(r#"
+    ///         // Transfer 10% of energy to neighbor
+    ///         if neighbor_dist < 0.1 {
+    ///             inbox_send(other_idx, 0u, p.energy * 0.1);
+    ///             p.energy *= 0.9;
+    ///         }
+    ///     "#.into()))
+    ///     .with_rule(Rule::Custom(r#"
+    ///         // Receive accumulated energy
+    ///         p.energy += inbox_receive_at(index, 0u);
+    ///     "#.into()))
+    ///     .run();
+    /// ```
+    ///
+    /// # Technical Details
+    ///
+    /// The inbox uses atomic i32 operations with fixed-point encoding (16.16 format).
+    /// This provides ~0.00001 precision in the range ±32768.
+    pub fn with_inbox(mut self) -> Self {
+        self.inbox_enabled = true;
+        self
+    }
+
+    /// Set a custom fragment shader for particle rendering.
+    ///
+    /// The custom shader code replaces the default fragment shader body. Your code
+    /// has access to:
+    ///
+    /// - `in.uv` - UV coordinates on the particle quad (-1 to 1 range)
+    /// - `in.color` - The computed color for this particle (vec3)
+    /// - `uniforms.time` - Current simulation time (f32)
+    ///
+    /// Your code must return a `vec4<f32>` (RGBA color output).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_fragment_shader(r#"
+    ///         // Glowing particles with pulsing animation
+    ///         let dist = length(in.uv);
+    ///         let pulse = sin(uniforms.time * 3.0) * 0.2 + 0.8;
+    ///         let glow = 1.0 / (dist * dist * 4.0 + 0.1) * pulse;
+    ///         let color = in.color * glow;
+    ///         return vec4<f32>(color, glow * 0.5);
+    ///     "#)
+    ///     .run();
+    /// ```
+    ///
+    /// # Effects you can create
+    ///
+    /// - **Glow**: Use `1.0 / (dist * dist + epsilon)` for radial glow
+    /// - **Rings**: Use `smoothstep` on distance to create ring shapes
+    /// - **Animation**: Use `uniforms.time` for pulsing, rotation, etc.
+    /// - **Custom shapes**: Discard fragments with `discard;` to cut out shapes
+    pub fn with_fragment_shader(mut self, wgsl_code: &str) -> Self {
+        self.custom_fragment_shader = Some(wgsl_code.to_string());
+        self
+    }
+
     /// Add a particle emitter for runtime spawning.
     ///
     /// Emitters respawn dead particles at a configurable rate. Use with
@@ -615,6 +708,63 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Enable egui UI overlay.
+    ///
+    /// When enabled, you can use the `with_ui` method to add interactive
+    /// controls to your simulation.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_egui()
+    ///     .with_spawner(|_, _| Ball::default())
+    ///     .run();
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Requires the `egui` feature to be enabled.
+    #[cfg(feature = "egui")]
+    pub fn with_egui(mut self) -> Self {
+        self.egui_enabled = true;
+        self
+    }
+
+    /// Set a UI callback for egui rendering.
+    ///
+    /// This enables egui and provides a callback that will be called each frame
+    /// to render custom UI. The callback receives the egui Context which you
+    /// can use to create windows, panels, and widgets.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use egui;
+    ///
+    /// Simulation::<Ball>::new()
+    ///     .with_ui(|ctx| {
+    ///         egui::Window::new("Controls").show(ctx, |ui| {
+    ///             ui.label("Hello from egui!");
+    ///         });
+    ///     })
+    ///     .with_spawner(|_, _| Ball::default())
+    ///     .run();
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Requires the `egui` feature to be enabled.
+    #[cfg(feature = "egui")]
+    pub fn with_ui<F>(mut self, callback: F) -> Self
+    where
+        F: FnMut(&egui::Context) + Send + 'static,
+    {
+        self.egui_enabled = true;
+        self.ui_callback = Some(Box::new(callback));
+        self
+    }
+
     /// Check if any rules require neighbor queries
     fn has_neighbor_rules(&self) -> bool {
         self.rules.iter().any(|r| r.requires_neighbors()) || self.interaction_matrix.is_some()
@@ -664,6 +814,42 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             )
         };
 
+        // Generate inbox binding and helper functions if enabled
+        let (inbox_binding, inbox_helpers) = if self.inbox_enabled {
+            let binding = r#"
+// Particle communication inbox (4 channels per particle)
+// Uses atomic i32 with fixed-point encoding for thread-safe accumulation
+@group(1) @binding(0)
+var<storage, read_write> inbox: array<array<atomic<i32>, 4>>;
+"#;
+
+            let helpers = r#"
+// Fixed-point scale for inbox values (16.16 format)
+const INBOX_SCALE: f32 = 65536.0;
+
+// Send a float value to another particle's inbox channel
+// Values are accumulated atomically across all senders
+fn inbox_send(target_idx: u32, channel: u32, value: f32) {
+    let scaled = i32(clamp(value, -32768.0, 32767.0) * INBOX_SCALE);
+    atomicAdd(&inbox[target_idx][channel], scaled);
+}
+
+// Receive accumulated value from inbox channel
+// Returns the sum of all values sent to this particle's channel
+// my_idx should be the current particle's index
+fn inbox_receive_at(my_idx: u32, channel: u32) -> f32 {
+    let scaled = atomicLoad(&inbox[my_idx][channel]);
+    return f32(scaled) / INBOX_SCALE;
+}
+
+// Convenience macro-like variable that will be replaced with actual index
+// Note: Use inbox_receive_at(index, channel) for the full form
+"#;
+            (binding.to_string(), helpers.to_string())
+        } else {
+            (String::new(), String::new())
+        };
+
         if !has_neighbors {
             // Simple shader without neighbor queries
             format!(
@@ -680,7 +866,8 @@ var<storage, read_write> particles: array<Particle>;
 
 @group(0) @binding(1)
 var<uniform> uniforms: Uniforms;
-
+{inbox_binding}
+{inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
@@ -844,7 +1031,8 @@ var<storage, read> cell_end: array<u32>;
 
 @group(0) @binding(5)
 var<uniform> spatial: SpatialParams;
-
+{inbox_binding}
+{inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
@@ -1073,15 +1261,16 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
-    let dist = length(in.uv);
-    if dist > 1.0 {{
-        discard;
-    }}
-    let alpha = 1.0 - smoothstep(0.5, 1.0, dist);
-    return vec4<f32>(in.color, alpha);
+{fragment_body}
 }}
 "#,
-            particle_size = self.particle_size
+            particle_size = self.particle_size,
+            fragment_body = self.custom_fragment_shader.as_ref().map(|s| s.as_str()).unwrap_or(r#"    let dist = length(in.uv);
+    if dist > 1.0 {
+        discard;
+    }
+    let alpha = 1.0 - smoothstep(0.5, 1.0, dist);
+    return vec4<f32>(in.color, alpha);"#)
         )
     }
 
@@ -1157,11 +1346,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             scale_offset: P::SCALE_OFFSET,
             custom_uniform_size,
             particle_size: self.particle_size,
+            inbox_enabled: self.inbox_enabled,
+            #[cfg(feature = "egui")]
+            egui_enabled: self.egui_enabled,
         };
 
         let event_loop = EventLoop::new().unwrap();
         event_loop.set_control_flow(ControlFlow::Poll);
 
+        #[cfg(feature = "egui")]
+        let mut app = App::<P>::new(
+            particles,
+            config,
+            self.custom_uniforms,
+            self.update_callback,
+            self.ui_callback,
+        );
+        #[cfg(not(feature = "egui"))]
         let mut app = App::<P>::new(
             particles,
             config,
@@ -1207,6 +1408,11 @@ pub(crate) struct SimConfig {
     pub custom_uniform_size: usize,
     /// Base particle render size.
     pub particle_size: f32,
+    /// Whether particle inbox communication is enabled.
+    pub inbox_enabled: bool,
+    /// Whether egui is enabled.
+    #[cfg(feature = "egui")]
+    pub egui_enabled: bool,
 }
 
 struct App<P: ParticleTrait> {
@@ -1219,6 +1425,8 @@ struct App<P: ParticleTrait> {
     current_mouse_ndc: Option<glam::Vec2>,
     custom_uniforms: CustomUniforms,
     update_callback: Option<UpdateCallback>,
+    #[cfg(feature = "egui")]
+    ui_callback: Option<Box<dyn FnMut(&egui::Context) + Send + 'static>>,
     // FPS tracking
     frame_count: u32,
     fps_update_time: std::time::Instant,
@@ -1231,6 +1439,7 @@ impl<P: ParticleTrait + 'static> App<P> {
         config: SimConfig,
         custom_uniforms: CustomUniforms,
         update_callback: Option<UpdateCallback>,
+        #[cfg(feature = "egui")] ui_callback: Option<Box<dyn FnMut(&egui::Context) + Send + 'static>>,
     ) -> Self {
         // Convert user particles to GPU format
         let gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
@@ -1245,6 +1454,8 @@ impl<P: ParticleTrait + 'static> App<P> {
             current_mouse_ndc: None,
             custom_uniforms,
             update_callback,
+            #[cfg(feature = "egui")]
+            ui_callback,
             frame_count: 0,
             fps_update_time: std::time::Instant::now(),
             current_fps: 0.0,
@@ -1281,11 +1492,28 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 self.config.particle_size,
                 self.config.visual_config.connections_enabled,
                 self.config.visual_config.connections_radius,
+                self.config.inbox_enabled,
+                self.config.visual_config.background_color,
+                self.config.visual_config.post_process_shader.as_deref(),
+                #[cfg(feature = "egui")]
+                self.config.egui_enabled,
             )));
         }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        // Pass events to egui first (if enabled)
+        #[cfg(feature = "egui")]
+        let egui_consumed = {
+            if let Some(gpu_state) = &mut self.gpu_state {
+                gpu_state.on_window_event(&event)
+            } else {
+                false
+            }
+        };
+        #[cfg(not(feature = "egui"))]
+        let egui_consumed = false;
+
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -1296,7 +1524,8 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                if button == MouseButton::Left {
+                // Only process if egui didn't consume the event
+                if !egui_consumed && button == MouseButton::Left {
                     self.mouse_pressed = state == ElementState::Pressed;
                     if !self.mouse_pressed {
                         self.last_mouse_pos = None;
@@ -1304,7 +1533,7 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                // Track mouse position in NDC for custom uniforms
+                // Track mouse position in NDC for custom uniforms (always)
                 if let Some(gpu_state) = &self.gpu_state {
                     let w = gpu_state.config.width as f32;
                     let h = gpu_state.config.height as f32;
@@ -1313,8 +1542,8 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                     self.current_mouse_ndc = Some(glam::Vec2::new(ndc_x, ndc_y));
                 }
 
-                // Camera drag
-                if self.mouse_pressed {
+                // Camera drag (only if egui didn't consume)
+                if !egui_consumed && self.mouse_pressed {
                     if let Some((last_x, last_y)) = self.last_mouse_pos {
                         let dx = position.x - last_x;
                         let dy = position.y - last_y;
@@ -1329,13 +1558,16 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let scroll = match delta {
-                    MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.1,
-                };
-                if let Some(gpu_state) = &mut self.gpu_state {
-                    gpu_state.camera.distance -= scroll * 0.3;
-                    gpu_state.camera.distance = gpu_state.camera.distance.clamp(0.5, 20.0);
+                // Only process if egui didn't consume the event
+                if !egui_consumed {
+                    let scroll = match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y,
+                        MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.1,
+                    };
+                    if let Some(gpu_state) = &mut self.gpu_state {
+                        gpu_state.camera.distance -= scroll * 0.3;
+                        gpu_state.camera.distance = gpu_state.camera.distance.clamp(0.5, 20.0);
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {
@@ -1387,7 +1619,19 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
 
                 if let Some(gpu_state) = &mut self.gpu_state {
                     let bytes_ref = custom_bytes.as_deref();
-                    match gpu_state.render(time, delta_time, bytes_ref) {
+
+                    #[cfg(feature = "egui")]
+                    let result = {
+                        if let Some(ref mut ui_cb) = self.ui_callback {
+                            gpu_state.render_with_ui(time, delta_time, bytes_ref, ui_cb)
+                        } else {
+                            gpu_state.render(time, delta_time, bytes_ref)
+                        }
+                    };
+                    #[cfg(not(feature = "egui"))]
+                    let result = gpu_state.render(time, delta_time, bytes_ref);
+
+                    match result {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => {
                             gpu_state.resize(winit::dpi::PhysicalSize {

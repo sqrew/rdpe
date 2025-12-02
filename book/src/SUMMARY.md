@@ -17,6 +17,7 @@
 - [Custom Uniforms](./advanced/custom-uniforms.md)
 - [Custom Functions](./advanced/custom-functions.md)
 - [Shader Utilities](./advanced/shader-utilities.md)
+- [Egui Integration](./advanced/egui-integration.md)
 - [Performance Tips](./advanced/performance.md)
 
 # Examples

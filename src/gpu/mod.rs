@@ -1,5 +1,11 @@
 mod spatial_gpu;
 
+#[cfg(feature = "egui")]
+mod egui_integration;
+
+#[cfg(feature = "egui")]
+pub use egui_integration::EguiIntegration;
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -48,7 +54,6 @@ struct Uniforms {
     view_proj: [[f32; 4]; 4],
     time: f32,
     delta_time: f32,
-    _padding: [f32; 2],
 }
 
 pub struct Camera {
@@ -121,6 +126,27 @@ pub struct GpuState {
     connection_render_pipeline: Option<wgpu::RenderPipeline>,
     connection_render_bind_group: Option<wgpu::BindGroup>,
     max_connections: u32,
+    // Particle communication inbox
+    inbox_buffer: Option<wgpu::Buffer>,
+    inbox_bind_group: Option<wgpu::BindGroup>,
+    inbox_enabled: bool,
+    // Background clear color
+    background_color: Vec3,
+    // Post-processing
+    post_process_enabled: bool,
+    offscreen_texture: Option<wgpu::Texture>,
+    offscreen_view: Option<wgpu::TextureView>,
+    offscreen_depth_texture: Option<wgpu::Texture>,
+    offscreen_depth_view: Option<wgpu::TextureView>,
+    post_process_pipeline: Option<wgpu::RenderPipeline>,
+    post_process_bind_group: Option<wgpu::BindGroup>,
+    post_process_bind_group_layout: Option<wgpu::BindGroupLayout>,
+    scene_sampler: Option<wgpu::Sampler>,
+    // Egui integration (when feature enabled)
+    #[cfg(feature = "egui")]
+    egui: Option<EguiIntegration>,
+    #[cfg(feature = "egui")]
+    window: Arc<Window>,
 }
 
 impl GpuState {
@@ -147,6 +173,10 @@ impl GpuState {
         particle_size: f32,
         connections_enabled: bool,
         connections_radius: f32,
+        inbox_enabled: bool,
+        background_color: Vec3,
+        post_process_shader: Option<&str>,
+        #[cfg(feature = "egui")] egui_enabled: bool,
     ) -> Self {
         let size = window.inner_size();
 
@@ -155,7 +185,7 @@ impl GpuState {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window.clone()).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -167,14 +197,15 @@ impl GpuState {
             .unwrap();
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("Device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: Default::default(),
-                trace: Default::default(),
-                experimental_features: Default::default(),
-            })
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                    memory_hints: Default::default(),
+                },
+                None, // trace path
+            )
             .await
             .unwrap();
 
@@ -216,7 +247,6 @@ impl GpuState {
             view_proj: view_proj.to_cols_array_2d(),
             time: 0.0,
             delta_time: 0.0,
-            _padding: [0.0; 2],
         };
 
         // Base uniform size + custom uniforms (aligned to 16 bytes for uniform buffer)
@@ -241,13 +271,27 @@ impl GpuState {
             None
         };
 
-        // Render bind group layout
+        // Create inbox buffer for particle communication (4 atomic i32 channels per particle)
+        let inbox_buffer = if inbox_enabled {
+            // 4 i32 values per particle = 16 bytes per particle
+            let inbox_size = (num_particles as usize) * 16;
+            Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Inbox Buffer"),
+                size: inbox_size as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }))
+        } else {
+            None
+        };
+
+        // Render bind group layout (visible to both vertex and fragment for custom shaders)
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Uniform Bind Group Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -504,7 +548,8 @@ impl GpuState {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
-                depth_write_enabled: true,
+                // Disable depth writes for additive blending so particles can blend through each other
+                depth_write_enabled: !matches!(blend_mode, BlendMode::Additive),
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
@@ -520,12 +565,50 @@ impl GpuState {
             source: wgpu::ShaderSource::Wgsl(compute_shader_src.into()),
         });
 
-        let compute_pipeline_layout =
+        // Create inbox bind group layout and bind group if enabled
+        let (inbox_bind_group_layout, inbox_bind_group) = if let Some(ref inbox_buf) = inbox_buffer {
+            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Inbox Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Inbox Bind Group"),
+                layout: &layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: inbox_buf.as_entire_binding(),
+                }],
+            });
+
+            (Some(layout), Some(bind_group))
+        } else {
+            (None, None)
+        };
+
+        // Build compute pipeline layout with optional inbox bind group
+        let compute_pipeline_layout = if let Some(ref inbox_layout) = inbox_bind_group_layout {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Compute Pipeline Layout"),
+                bind_group_layouts: &[&compute_bind_group_layout, inbox_layout],
+                push_constant_ranges: &[],
+            })
+        } else {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Compute Pipeline Layout"),
                 bind_group_layouts: &[&compute_bind_group_layout],
                 push_constant_ranges: &[],
-            });
+            })
+        };
 
         let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: Some("Compute Pipeline"),
@@ -1387,6 +1470,215 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         let now = Instant::now();
 
+        // Post-processing setup
+        let post_process_enabled = post_process_shader.is_some();
+        let (offscreen_texture, offscreen_view, offscreen_depth_texture, offscreen_depth_view,
+             post_process_pipeline, post_process_bind_group, post_process_bind_group_layout, scene_sampler) =
+            if let Some(shader_code) = post_process_shader {
+                // Create offscreen render target
+                let offscreen_tex = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("Offscreen Texture"),
+                    size: wgpu::Extent3d {
+                        width: config.width,
+                        height: config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                });
+                let offscreen_v = offscreen_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+                // Offscreen depth buffer
+                let offscreen_depth_tex = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("Offscreen Depth Texture"),
+                    size: wgpu::Extent3d {
+                        width: config.width,
+                        height: config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: DEPTH_FORMAT,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                });
+                let offscreen_depth_v = offscreen_depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+                // Sampler for the scene texture
+                let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                    label: Some("Scene Sampler"),
+                    address_mode_u: wgpu::AddressMode::ClampToEdge,
+                    address_mode_v: wgpu::AddressMode::ClampToEdge,
+                    address_mode_w: wgpu::AddressMode::ClampToEdge,
+                    mag_filter: wgpu::FilterMode::Linear,
+                    min_filter: wgpu::FilterMode::Linear,
+                    mipmap_filter: wgpu::FilterMode::Nearest,
+                    ..Default::default()
+                });
+
+                // Post-process shader
+                let post_shader_src = format!(
+                    r#"
+struct PostUniforms {{
+    time: f32,
+    resolution: vec2<f32>,
+    _pad: f32,
+}};
+
+struct VertexOutput {{
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}};
+
+@group(0) @binding(0)
+var scene: texture_2d<f32>;
+@group(0) @binding(1)
+var scene_sampler: sampler;
+@group(0) @binding(2)
+var<uniform> uniforms: PostUniforms;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {{
+    // Fullscreen triangle
+    var positions = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0),
+    );
+    var uvs = array<vec2<f32>, 3>(
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(2.0, 1.0),
+        vec2<f32>(0.0, -1.0),
+    );
+
+    var out: VertexOutput;
+    out.clip_position = vec4<f32>(positions[vertex_index], 0.0, 1.0);
+    out.uv = uvs[vertex_index];
+    return out;
+}}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
+{shader_code}
+}}
+"#,
+                    shader_code = shader_code
+                );
+
+                let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("Post-Process Shader"),
+                    source: wgpu::ShaderSource::Wgsl(post_shader_src.into()),
+                });
+
+                // Bind group layout
+                let pp_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Post-Process Bind Group Layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                    ],
+                });
+
+                // We need a small uniform buffer for time/resolution
+                // This will be created separately and updated in render
+
+                let pp_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Post-Process Bind Group"),
+                    layout: &pp_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&offscreen_v),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: uniform_buffer.as_entire_binding(), // Reuse main uniform buffer (time is at offset 64)
+                        },
+                    ],
+                });
+
+                let pp_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Post-Process Pipeline Layout"),
+                    bind_group_layouts: &[&pp_bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+
+                let pp_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("Post-Process Pipeline"),
+                    layout: Some(&pp_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &post_shader,
+                        entry_point: Some("vs_main"),
+                        buffers: &[],
+                        compilation_options: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &post_shader,
+                        entry_point: Some("fs_main"),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: config.format,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: Default::default(),
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        ..Default::default()
+                    },
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview: None,
+                    cache: None,
+                });
+
+                (Some(offscreen_tex), Some(offscreen_v), Some(offscreen_depth_tex), Some(offscreen_depth_v),
+                 Some(pp_pipeline), Some(pp_bind_group), Some(pp_bind_group_layout), Some(sampler))
+            } else {
+                (None, None, None, None, None, None, None, None)
+            };
+
+        // Initialize egui if feature enabled
+        #[cfg(feature = "egui")]
+        let egui = if egui_enabled {
+            Some(EguiIntegration::new(&device, config.format, &window))
+        } else {
+            None
+        };
+
         Self {
             surface,
             device,
@@ -1420,6 +1712,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             connection_render_pipeline,
             connection_render_bind_group,
             max_connections,
+            inbox_buffer,
+            inbox_bind_group,
+            inbox_enabled,
+            background_color,
+            post_process_enabled,
+            offscreen_texture,
+            offscreen_view,
+            offscreen_depth_texture,
+            offscreen_depth_view,
+            post_process_pipeline,
+            post_process_bind_group,
+            post_process_bind_group_layout,
+            scene_sampler,
+            #[cfg(feature = "egui")]
+            egui,
+            #[cfg(feature = "egui")]
+            window,
         }
     }
 
@@ -1429,7 +1738,96 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture = create_depth_texture(&self.device, &self.config);
+
+            // Recreate offscreen textures if post-processing is enabled
+            if self.post_process_enabled {
+                // Recreate offscreen color texture
+                let offscreen_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("Offscreen Texture"),
+                    size: wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: self.config.format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                });
+                let offscreen_view = offscreen_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                // Recreate offscreen depth texture
+                let offscreen_depth_texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("Offscreen Depth Texture"),
+                    size: wgpu::Extent3d {
+                        width: self.config.width,
+                        height: self.config.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Depth32Float,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                });
+                let offscreen_depth_view = offscreen_depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                // Recreate post-process bind group with new texture view
+                if let Some(ref layout) = self.post_process_bind_group_layout {
+                    let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Post-Process Bind Group"),
+                        layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&offscreen_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(self.scene_sampler.as_ref().unwrap()),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: self.uniform_buffer.as_entire_binding(),
+                            },
+                        ],
+                    });
+                    self.post_process_bind_group = Some(bind_group);
+                }
+
+                self.offscreen_texture = Some(offscreen_texture);
+                self.offscreen_view = Some(offscreen_view);
+                self.offscreen_depth_texture = Some(offscreen_depth_texture);
+                self.offscreen_depth_view = Some(offscreen_depth_view);
+            }
         }
+    }
+
+    /// Process a winit event through egui.
+    ///
+    /// Returns true if egui consumed the event (don't pass to camera controls).
+    #[cfg(feature = "egui")]
+    pub fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
+        if let Some(ref mut egui) = self.egui {
+            egui.on_window_event(&self.window, event)
+        } else {
+            false
+        }
+    }
+
+    /// Check if egui is enabled.
+    #[cfg(feature = "egui")]
+    pub fn egui_enabled(&self) -> bool {
+        self.egui.is_some()
+    }
+
+    /// Get mutable access to egui context for running UI.
+    #[cfg(feature = "egui")]
+    pub fn egui_ctx(&self) -> Option<&egui::Context> {
+        self.egui.as_ref().map(|e| &e.ctx)
     }
 
     /// Get current time and delta time, updating internal state.
@@ -1451,7 +1849,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             view_proj: view_proj.to_cols_array_2d(),
             time,
             delta_time,
-            _padding: [0.0; 2],
         };
 
         // Write base uniforms
@@ -1469,7 +1866,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         }
     }
 
+    /// Render without UI (original method for backwards compatibility).
     pub fn render(&mut self, time: f32, delta_time: f32, custom_uniform_bytes: Option<&[u8]>) -> Result<(), wgpu::SurfaceError> {
+        #[cfg(feature = "egui")]
+        {
+            self.render_with_ui(time, delta_time, custom_uniform_bytes, |_| {})
+        }
+        #[cfg(not(feature = "egui"))]
+        {
+            self.render_internal(time, delta_time, custom_uniform_bytes)
+        }
+    }
+
+    /// Render with egui UI callback.
+    #[cfg(feature = "egui")]
+    pub fn render_with_ui<F>(
+        &mut self,
+        time: f32,
+        delta_time: f32,
+        custom_uniform_bytes: Option<&[u8]>,
+        ui_callback: F,
+    ) -> Result<(), wgpu::SurfaceError>
+    where
+        F: FnOnce(&egui::Context),
+    {
+        use egui_integration::EguiFrameOutput;
+
         self.update_uniforms(time, delta_time, custom_uniform_bytes);
 
         let output = self.surface.get_current_texture()?;
@@ -1477,15 +1899,41 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        // Process egui frame before creating encoder
+        let egui_output: Option<EguiFrameOutput> = if let Some(ref mut egui) = self.egui {
+            egui.begin_frame(&self.window);
+            ui_callback(&egui.ctx);
+            Some(egui.end_frame(&self.window))
+        } else {
+            None
+        };
+
+        let screen_descriptor = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: self.window.scale_factor() as f32,
+        };
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
 
+        // Prepare egui textures and buffers (before render pass)
+        if let (Some(ref mut egui), Some(ref egui_out)) = (&mut self.egui, &egui_output) {
+            egui.prepare(&self.device, &self.queue, &mut encoder, egui_out, &screen_descriptor);
+        }
+
         // Spatial hashing pass (if enabled)
         if let Some(ref spatial) = self.spatial {
             spatial.execute(&mut encoder, &self.queue);
+        }
+
+        // Clear inbox buffer before compute pass
+        if let Some(ref inbox_buf) = self.inbox_buffer {
+            let inbox_size = (self.num_particles as usize) * 16;
+            let zeros = vec![0u8; inbox_size];
+            self.queue.write_buffer(inbox_buf, 0, &zeros);
         }
 
         // Compute pass
@@ -1497,6 +1945,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
+
+            // Set inbox bind group if enabled
+            if let Some(ref inbox_bg) = self.inbox_bind_group {
+                compute_pass.set_bind_group(1, inbox_bg, &[]);
+            }
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
@@ -1534,26 +1987,36 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
         }
 
-        // Render pass
+        // Render pass - render to offscreen texture if post-processing, otherwise to screen
+        let render_target = if self.post_process_enabled {
+            self.offscreen_view.as_ref().unwrap()
+        } else {
+            &view
+        };
+        let depth_target = if self.post_process_enabled {
+            self.offscreen_depth_view.as_ref().unwrap()
+        } else {
+            &self.depth_texture
+        };
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: render_target,
                     resolve_target: None,
-                    depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.02,
-                            g: 0.02,
-                            b: 0.05,
+                            r: self.background_color.x as f64,
+                            g: self.background_color.y as f64,
+                            b: self.background_color.z as f64,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture,
+                    view: depth_target,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
@@ -1586,6 +2049,230 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
             render_pass.draw(0..6, 0..self.num_particles);
+        }
+
+        // Post-processing pass (if enabled)
+        if let (Some(ref pipeline), Some(ref bind_group)) = (&self.post_process_pipeline, &self.post_process_bind_group) {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Post-Process Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_bind_group(0, bind_group, &[]);
+            render_pass.draw(0..3, 0..1); // Fullscreen triangle
+        }
+
+        // Render egui on top of everything (separate render pass for proper blending)
+        if let (Some(ref egui), Some(ref egui_out)) = (&self.egui, &egui_output) {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Egui Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Don't clear - draw over particles
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            // SAFETY: egui-wgpu requires RenderPass<'static> but the pass is used synchronously
+            // within this scope and dropped before encoder.finish(). This transmute is safe
+            // because the render pass doesn't escape this block.
+            let render_pass: &mut wgpu::RenderPass<'static> = unsafe {
+                std::mem::transmute(&mut render_pass)
+            };
+            egui.renderer().render(render_pass, &egui_out.paint_jobs, &screen_descriptor);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        // Cleanup egui textures
+        if let (Some(ref mut egui), Some(ref egui_out)) = (&mut self.egui, &egui_output) {
+            egui.cleanup(egui_out);
+        }
+
+        Ok(())
+    }
+
+    /// Internal render without egui (used when feature disabled).
+    #[cfg(not(feature = "egui"))]
+    fn render_internal(&mut self, time: f32, delta_time: f32, custom_uniform_bytes: Option<&[u8]>) -> Result<(), wgpu::SurfaceError> {
+        self.update_uniforms(time, delta_time, custom_uniform_bytes);
+
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        // Spatial hashing pass (if enabled)
+        if let Some(ref spatial) = self.spatial {
+            spatial.execute(&mut encoder, &self.queue);
+        }
+
+        // Clear inbox buffer before compute pass
+        if let Some(ref inbox_buf) = self.inbox_buffer {
+            let inbox_size = (self.num_particles as usize) * 16;
+            let zeros = vec![0u8; inbox_size];
+            self.queue.write_buffer(inbox_buf, 0, &zeros);
+        }
+
+        // Compute pass
+        {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Compute Pass"),
+                timestamp_writes: None,
+            });
+
+            compute_pass.set_pipeline(&self.compute_pipeline);
+            compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
+
+            // Set inbox bind group if enabled
+            if let Some(ref inbox_bg) = self.inbox_bind_group {
+                compute_pass.set_bind_group(1, inbox_bg, &[]);
+            }
+
+            let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
+            compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Trail compute pass (after particles are updated)
+        if let (Some(ref pipeline), Some(ref bind_group)) = (&self.trail_compute_pipeline, &self.trail_compute_bind_group) {
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Trail Compute Pass"),
+                timestamp_writes: None,
+            });
+
+            compute_pass.set_pipeline(pipeline);
+            compute_pass.set_bind_group(0, bind_group, &[]);
+
+            let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
+            compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Connection compute pass (find pairs within radius)
+        if let (Some(ref count_buffer), Some(ref pipeline), Some(ref bind_group)) =
+            (&self.connection_count_buffer, &self.connection_compute_pipeline, &self.connection_compute_bind_group) {
+            // Reset connection count to 0
+            self.queue.write_buffer(count_buffer, 0, &[0u8; 4]);
+
+            let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Connection Compute Pass"),
+                timestamp_writes: None,
+            });
+
+            compute_pass.set_pipeline(pipeline);
+            compute_pass.set_bind_group(0, bind_group, &[]);
+
+            let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
+            compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Render pass - render to offscreen texture if post-processing, otherwise to screen
+        let render_target = if self.post_process_enabled {
+            self.offscreen_view.as_ref().unwrap()
+        } else {
+            &view
+        };
+        let depth_target = if self.post_process_enabled {
+            self.offscreen_depth_view.as_ref().unwrap()
+        } else {
+            &self.depth_texture
+        };
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: render_target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: self.background_color.x as f64,
+                            g: self.background_color.y as f64,
+                            b: self.background_color.z as f64,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: depth_target,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            // Draw connections first (behind everything)
+            if let (Some(ref pipeline), Some(ref bind_group)) = (&self.connection_render_pipeline, &self.connection_render_bind_group) {
+                render_pass.set_pipeline(pipeline);
+                render_pass.set_bind_group(0, bind_group, &[]);
+                // Draw up to max_connections line quads (6 vertices each)
+                render_pass.draw(0..6, 0..self.max_connections);
+            }
+
+            // Draw trails (behind particles)
+            if let (Some(ref pipeline), Some(ref bind_group)) = (&self.trail_render_pipeline, &self.trail_render_bind_group) {
+                render_pass.set_pipeline(pipeline);
+                render_pass.set_bind_group(0, bind_group, &[]);
+                // Draw all trail points: num_particles * trail_length instances, 6 vertices each
+                let total_trail_instances = self.num_particles * self.trail_length;
+                render_pass.draw(0..6, 0..total_trail_instances);
+            }
+
+            // Draw particles on top
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
+            render_pass.draw(0..6, 0..self.num_particles);
+        }
+
+        // Post-processing pass (if enabled)
+        if let (Some(ref pipeline), Some(ref bind_group)) = (&self.post_process_pipeline, &self.post_process_bind_group) {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Post-Process Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(pipeline);
+            render_pass.set_bind_group(0, bind_group, &[]);
+            render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

@@ -280,6 +280,10 @@ pub struct VisualConfig {
     pub palette: Palette,
     /// How to map particle properties to palette colors.
     pub color_mapping: ColorMapping,
+    /// Background clear color (RGB, 0.0-1.0).
+    pub background_color: Vec3,
+    /// Custom post-processing shader code (fragment shader body).
+    pub post_process_shader: Option<String>,
 }
 
 impl Default for VisualConfig {
@@ -294,6 +298,8 @@ impl Default for VisualConfig {
             velocity_stretch_factor: 2.0,
             palette: Palette::None,
             color_mapping: ColorMapping::None,
+            background_color: Vec3::new(0.02, 0.02, 0.05), // Dark blue-black
+            post_process_shader: None,
         }
     }
 }
@@ -416,6 +422,64 @@ impl VisualConfig {
     pub fn palette(&mut self, palette: Palette, mapping: ColorMapping) -> &mut Self {
         self.palette = palette;
         self.color_mapping = mapping;
+        self
+    }
+
+    /// Set the background clear color.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - RGB color values (0.0-1.0 range)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.background(Vec3::new(0.0, 0.0, 0.0)); // Pure black
+    ///     v.background(Vec3::new(0.1, 0.0, 0.15)); // Dark purple
+    /// })
+    /// ```
+    pub fn background(&mut self, color: Vec3) -> &mut Self {
+        self.background_color = color;
+        self
+    }
+
+    /// Set a custom post-processing shader.
+    ///
+    /// The shader code runs as a fullscreen pass after particles are rendered.
+    /// Your code has access to:
+    ///
+    /// - `in.uv` - Screen UV coordinates (0.0 to 1.0)
+    /// - `scene` - Texture sampler for the rendered particle scene
+    /// - `uniforms.time` - Current simulation time
+    /// - `uniforms.resolution` - Screen resolution (vec2)
+    ///
+    /// Use `textureSample(scene, scene_sampler, uv)` to sample the scene.
+    /// Must return `vec4<f32>` (RGBA color output).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     // Vignette effect
+    ///     v.post_process(r#"
+    ///         let color = textureSample(scene, scene_sampler, in.uv);
+    ///         let dist = length(in.uv - vec2(0.5));
+    ///         let vignette = 1.0 - smoothstep(0.3, 0.7, dist);
+    ///         return vec4(color.rgb * vignette, 1.0);
+    ///     "#);
+    /// })
+    /// ```
+    ///
+    /// # Effects you can create
+    ///
+    /// - **Vignette**: Darken edges based on distance from center
+    /// - **Color grading**: Adjust colors, contrast, saturation
+    /// - **Chromatic aberration**: Offset RGB channels
+    /// - **CRT/scanlines**: Add retro display effects
+    /// - **Blur**: Sample nearby pixels (limited without multiple passes)
+    pub fn post_process(&mut self, wgsl_code: &str) -> &mut Self {
+        self.post_process_shader = Some(wgsl_code.to_string());
         self
     }
 }
