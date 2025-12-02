@@ -142,6 +142,12 @@ pub struct GpuState {
     post_process_bind_group: Option<wgpu::BindGroup>,
     post_process_bind_group_layout: Option<wgpu::BindGroupLayout>,
     scene_sampler: Option<wgpu::Sampler>,
+    // Custom textures for shaders
+    custom_textures: Vec<wgpu::Texture>,
+    custom_texture_views: Vec<wgpu::TextureView>,
+    custom_samplers: Vec<wgpu::Sampler>,
+    texture_bind_group: Option<wgpu::BindGroup>,
+    texture_bind_group_layout: Option<wgpu::BindGroupLayout>,
     // Egui integration (when feature enabled)
     #[cfg(feature = "egui")]
     egui: Option<EguiIntegration>,
@@ -176,6 +182,9 @@ impl GpuState {
         inbox_enabled: bool,
         background_color: Vec3,
         post_process_shader: Option<&str>,
+        custom_uniform_fields: &str,
+        texture_registry: &crate::textures::TextureRegistry,
+        _texture_declarations: &str,
         #[cfg(feature = "egui")] egui_enabled: bool,
     ) -> Self {
         let size = window.inner_size();
@@ -457,16 +466,51 @@ impl GpuState {
             (layout, bind_group)
         };
 
+        // Create texture bind group layout early (needed for render pipeline layout)
+        let texture_bind_group_layout = if !texture_registry.textures.is_empty() {
+            let mut layout_entries = Vec::new();
+            for i in 0..texture_registry.textures.len() {
+                layout_entries.push(wgpu::BindGroupLayoutEntry {
+                    binding: (i * 2) as u32,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                });
+                layout_entries.push(wgpu::BindGroupLayoutEntry {
+                    binding: (i * 2 + 1) as u32,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                });
+            }
+            Some(device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &layout_entries,
+            }))
+        } else {
+            None
+        };
+
         // Render pipeline
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
             source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
         });
 
+        // Build bind group layouts vec, including texture layout if present
+        let mut bind_group_layouts_vec: Vec<&wgpu::BindGroupLayout> = vec![&uniform_bind_group_layout];
+        if let Some(ref tex_layout) = texture_bind_group_layout {
+            bind_group_layouts_vec.push(tex_layout);
+        }
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&uniform_bind_group_layout],
+                bind_group_layouts: &bind_group_layouts_vec,
                 push_constant_ranges: &[],
             });
 
@@ -1521,13 +1565,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                     ..Default::default()
                 });
 
-                // Post-process shader
+                // Post-process shader - uses same Uniforms layout as main render shader
                 let post_shader_src = format!(
                     r#"
-struct PostUniforms {{
+struct Uniforms {{
+    view_proj: mat4x4<f32>,
     time: f32,
-    resolution: vec2<f32>,
-    _pad: f32,
+    delta_time: f32,
+{custom_uniform_fields}
 }};
 
 struct VertexOutput {{
@@ -1540,7 +1585,7 @@ var scene: texture_2d<f32>;
 @group(0) @binding(1)
 var scene_sampler: sampler;
 @group(0) @binding(2)
-var<uniform> uniforms: PostUniforms;
+var<uniform> uniforms: Uniforms;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {{
@@ -1567,7 +1612,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 {shader_code}
 }}
 "#,
-                    shader_code = shader_code
+                    shader_code = shader_code,
+                    custom_uniform_fields = custom_uniform_fields
                 );
 
                 let post_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -1671,6 +1717,100 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
                 (None, None, None, None, None, None, None, None)
             };
 
+        // Create custom textures
+        let mut custom_textures = Vec::new();
+        let mut custom_texture_views = Vec::new();
+        let mut custom_samplers = Vec::new();
+
+        for (_name, config) in &texture_registry.textures {
+            // Create texture
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Custom Texture"),
+                size: wgpu::Extent3d {
+                    width: config.width,
+                    height: config.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+
+            // Upload texture data
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                &config.data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * config.width),
+                    rows_per_image: Some(config.height),
+                },
+                wgpu::Extent3d {
+                    width: config.width,
+                    height: config.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+
+            // Create view
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+            // Create sampler
+            let filter = match config.filter {
+                crate::textures::FilterMode::Linear => wgpu::FilterMode::Linear,
+                crate::textures::FilterMode::Nearest => wgpu::FilterMode::Nearest,
+            };
+            let address_mode = match config.address_mode {
+                crate::textures::AddressMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+                crate::textures::AddressMode::Repeat => wgpu::AddressMode::Repeat,
+                crate::textures::AddressMode::MirrorRepeat => wgpu::AddressMode::MirrorRepeat,
+            };
+            let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                address_mode_u: address_mode,
+                address_mode_v: address_mode,
+                address_mode_w: address_mode,
+                mag_filter: filter,
+                min_filter: filter,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                ..Default::default()
+            });
+
+            custom_textures.push(texture);
+            custom_texture_views.push(view);
+            custom_samplers.push(sampler);
+        }
+
+        // Create texture bind group using the layout we created earlier
+        let texture_bind_group = if let Some(ref layout) = texture_bind_group_layout {
+            let mut bind_group_entries = Vec::new();
+            for i in 0..custom_texture_views.len() {
+                bind_group_entries.push(wgpu::BindGroupEntry {
+                    binding: (i * 2) as u32,
+                    resource: wgpu::BindingResource::TextureView(&custom_texture_views[i]),
+                });
+                bind_group_entries.push(wgpu::BindGroupEntry {
+                    binding: (i * 2 + 1) as u32,
+                    resource: wgpu::BindingResource::Sampler(&custom_samplers[i]),
+                });
+            }
+
+            Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Texture Bind Group"),
+                layout,
+                entries: &bind_group_entries,
+            }))
+        } else {
+            None
+        };
+
         // Initialize egui if feature enabled
         #[cfg(feature = "egui")]
         let egui = if egui_enabled {
@@ -1725,6 +1865,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             post_process_bind_group,
             post_process_bind_group_layout,
             scene_sampler,
+            custom_textures,
+            custom_texture_views,
+            custom_samplers,
+            texture_bind_group,
+            texture_bind_group_layout,
             #[cfg(feature = "egui")]
             egui,
             #[cfg(feature = "egui")]
@@ -2047,6 +2192,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             // Draw particles on top
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            // Bind textures if available
+            if let Some(ref tex_bind_group) = self.texture_bind_group {
+                render_pass.set_bind_group(1, tex_bind_group, &[]);
+            }
             render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
             render_pass.draw(0..6, 0..self.num_particles);
         }
@@ -2249,6 +2398,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             // Draw particles on top
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            // Bind textures if available
+            if let Some(ref tex_bind_group) = self.texture_bind_group {
+                render_pass.set_bind_group(1, tex_bind_group, &[]);
+            }
             render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
             render_pass.draw(0..6, 0..self.num_particles);
         }

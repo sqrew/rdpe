@@ -18,12 +18,18 @@ struct GridEntity {
     intensity: f32,
 }
 
-/// Shared state for UI controls (movement parameters only)
+/// Shared state for UI controls (movement + visual parameters)
 struct NeonState {
+    // Movement parameters
     chaos_intensity: f32,
     orbital_speed: f32,
     hunt_aggression: f32,
     flee_speed: f32,
+    // Visual parameters (now available in fragment/post-process shaders!)
+    aberration: f32,
+    scanline_intensity: f32,
+    bloom_amount: f32,
+    saturation: f32,
 }
 
 impl Default for NeonState {
@@ -33,6 +39,10 @@ impl Default for NeonState {
             orbital_speed: 0.4,
             hunt_aggression: 0.2,
             flee_speed: 0.3,
+            aberration: 0.006,
+            scanline_intensity: 0.15,
+            bloom_amount: 0.4,
+            saturation: 1.4,
         }
     }
 }
@@ -105,12 +115,16 @@ fn main() {
             let (pos, vel, color, entity_type, intensity) = particles[i as usize];
             GridEntity { position: pos, velocity: vel, color, entity_type, intensity }
         })
-        // Define movement uniforms (these work in compute/rules)
+        // Define all uniforms (now available in compute, fragment, AND post-process shaders!)
         .with_uniform("chaos_intensity", defaults.chaos_intensity)
         .with_uniform("orbital_speed", defaults.orbital_speed)
         .with_uniform("hunt_aggression", defaults.hunt_aggression)
         .with_uniform("flee_speed", defaults.flee_speed)
-        // Fragment shader (uses constants - custom uniforms not available here)
+        .with_uniform("aberration", defaults.aberration)
+        .with_uniform("scanline_intensity", defaults.scanline_intensity)
+        .with_uniform("bloom_amount", defaults.bloom_amount)
+        .with_uniform("saturation", defaults.saturation)
+        // Fragment shader (custom uniforms now available here too!)
         .with_fragment_shader(r#"
             let dist = length(in.uv);
             let core = 1.0 - smoothstep(0.0, 0.3, dist);
@@ -129,7 +143,7 @@ fn main() {
             v.background(Vec3::new(0.0, 0.0, 0.02));
             v.trails(5);
             v.connections(0.08);
-            // CRT post-processing (hardcoded values - custom uniforms not available here)
+            // CRT post-processing (NOW USING CUSTOM UNIFORMS!)
             v.post_process(r#"
                 let center = vec2<f32>(0.5, 0.5);
                 var uv = in.uv;
@@ -137,15 +151,17 @@ fn main() {
                 let dist_sq = dot(uv_centered, uv_centered);
                 uv = center + uv_centered * (1.0 + 0.1 * dist_sq);
 
-                let aberr = 0.006;
+                // Use uniforms.aberration instead of hardcoded value!
+                let aberr = uniforms.aberration;
                 let r = textureSample(scene, scene_sampler, uv + vec2<f32>(aberr, 0.0)).r;
                 let g = textureSample(scene, scene_sampler, uv).g;
                 let b = textureSample(scene, scene_sampler, uv - vec2<f32>(aberr, 0.0)).b;
                 var color = vec3<f32>(r, g, b);
 
+                // Use uniforms.scanline_intensity instead of hardcoded value!
                 let scanline_freq = 400.0;
                 let scanline = sin(in.uv.y * scanline_freq) * 0.5 + 0.5;
-                color *= 1.0 - 0.15 * (1.0 - scanline);
+                color *= 1.0 - uniforms.scanline_intensity * (1.0 - scanline);
 
                 let noise_y = floor(in.uv.y * 100.0 + uniforms.time * 50.0);
                 let interference = fract(sin(noise_y * 12.9898) * 43758.5453);
@@ -163,16 +179,18 @@ fn main() {
                     color.r *= 0.8; color.g *= 0.9;
                 }
 
+                // Use uniforms.bloom_amount instead of hardcoded value!
                 let luminance = dot(color, vec3<f32>(0.299, 0.587, 0.114));
-                let bloom = smoothstep(0.4, 1.0, luminance) * 0.4;
+                let bloom = smoothstep(0.4, 1.0, luminance) * uniforms.bloom_amount;
                 color += color * bloom;
 
                 let vignette_dist = length(in.uv - center);
                 let vignette = 1.0 - smoothstep(0.4, 1.0, vignette_dist);
                 color *= vignette;
 
+                // Use uniforms.saturation instead of hardcoded value!
                 let gray = dot(color, vec3<f32>(0.3, 0.3, 0.3));
-                color = mix(vec3<f32>(gray), color, 1.4);
+                color = mix(vec3<f32>(gray), color, uniforms.saturation);
 
                 let flicker = sin(uniforms.time * 60.0) * 0.02 + 1.0;
                 color *= flicker;
@@ -244,6 +262,13 @@ fn main() {
                     ui.add(egui::Slider::new(&mut s.flee_speed, 0.0..=1.0).text("Flee Speed"));
 
                     ui.separator();
+                    ui.heading("Visual Effects (via Custom Uniforms!)");
+                    ui.add(egui::Slider::new(&mut s.aberration, 0.0..=0.02).text("Chromatic Aberration"));
+                    ui.add(egui::Slider::new(&mut s.scanline_intensity, 0.0..=0.5).text("Scanlines"));
+                    ui.add(egui::Slider::new(&mut s.bloom_amount, 0.0..=1.0).text("Bloom"));
+                    ui.add(egui::Slider::new(&mut s.saturation, 0.5..=2.0).text("Saturation"));
+
+                    ui.separator();
                     if ui.button("Reset to Defaults").clicked() {
                         *s = NeonState::default();
                     }
@@ -278,15 +303,35 @@ fn main() {
                             s.flee_speed = 0.3;
                         }
                     });
+                    ui.horizontal(|ui| {
+                        if ui.button("Retro CRT").clicked() {
+                            s.aberration = 0.012;
+                            s.scanline_intensity = 0.3;
+                            s.bloom_amount = 0.6;
+                            s.saturation = 1.2;
+                        }
+                        if ui.button("Clean").clicked() {
+                            s.aberration = 0.0;
+                            s.scanline_intensity = 0.0;
+                            s.bloom_amount = 0.2;
+                            s.saturation = 1.0;
+                        }
+                    });
                 });
         })
-        // Update callback - sync movement state to uniforms
+        // Update callback - sync all state to uniforms
         .with_update(move |ctx| {
             let s = update_state.lock().unwrap();
+            // Movement uniforms (used in compute shader)
             ctx.set("chaos_intensity", s.chaos_intensity);
             ctx.set("orbital_speed", s.orbital_speed);
             ctx.set("hunt_aggression", s.hunt_aggression);
             ctx.set("flee_speed", s.flee_speed);
+            // Visual uniforms (now available in post-process shader too!)
+            ctx.set("aberration", s.aberration);
+            ctx.set("scanline_intensity", s.scanline_intensity);
+            ctx.set("bloom_amount", s.bloom_amount);
+            ctx.set("saturation", s.saturation);
         })
         .run();
 }

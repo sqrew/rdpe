@@ -177,8 +177,14 @@
                     <main>
                         <h1 id="custom-uniforms"><a class="header" href="#custom-uniforms">Custom Uniforms</a></h1>
 <p>Custom uniforms let you pass dynamic values from Rust to your shader code every frame. This enables interactive simulations that respond to time, mouse input, or any other runtime data.</p>
+<p>Custom uniforms are available in <strong>all shader types</strong>:</p>
+<ul>
+<li><strong>Compute shaders</strong> (<code>Rule::Custom</code>) - for particle physics and behavior</li>
+<li><strong>Fragment shaders</strong> (<code>.with_fragment_shader()</code>) - for per-particle visuals</li>
+<li><strong>Post-process shaders</strong> (<code>.post_process()</code>) - for screen-space effects</li>
+</ul>
 <h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
-<p>Define uniforms with <code>.with_uniform()</code> and access them in <code>Rule::Custom</code>:</p>
+<p>Define uniforms with <code>.with_uniform()</code> and access them in any shader:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Simulation::&lt;Particle&gt;::new()
@@ -302,7 +308,7 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../advanced/custom-rules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../advanced/post-processing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -316,7 +322,7 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../advanced/custom-rules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../advanced/post-processing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Emitters - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Fragment Shaders - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -12,34 +12,34 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "";
+            const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex.js";
+            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="../toc.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -106,7 +106,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
             </noscript>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -141,7 +141,7 @@
                     <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -175,157 +175,178 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="emitters"><a class="header" href="#emitters">Emitters</a></h1>
-<p>Emitters continuously spawn new particles into the simulation, replacing dead particles. They enable effects like fountains, explosions, rain, and any other continuous particle generation.</p>
-<h2 id="how-emitters-work"><a class="header" href="#how-emitters-work">How Emitters Work</a></h2>
-<p>When you add an emitter, RDPE:</p>
-<ol>
-<li>Finds dead particles (those with <code>alive == 0</code>)</li>
-<li>Respawns them based on the emitter's rate and position</li>
-<li>Sets initial velocity according to the emitter type</li>
-</ol>
-<p>Emitters work best with lifecycle rules:</p>
-<ul>
-<li><code>Rule::Age</code> - increments particle age each frame</li>
-<li><code>Rule::Lifetime(seconds)</code> - kills particles after a duration</li>
-</ul>
-<h2 id="emitter-types"><a class="header" href="#emitter-types">Emitter Types</a></h2>
-<h3 id="point"><a class="header" href="#point">Point</a></h3>
-<p>Emits particles from a single point in all directions.</p>
+                        <h1 id="fragment-shaders"><a class="header" href="#fragment-shaders">Fragment Shaders</a></h1>
+<p>Fragment shaders control how each particle looks - its shape, glow, color effects, and more.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Point {
-    position: Vec3::ZERO,
-    rate: 500.0,    // particles per second
-    speed: 1.0,     // initial speed (0 = random)
-})
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_fragment_shader(r#"
+        let dist = length(in.uv);
+        let glow = 1.0 / (dist * dist * 8.0 + 0.3);
+        return vec4&lt;f32&gt;(in.color * glow, glow * 0.5);
+    "#)
+    .run();
 <span class="boring">}</span></code></pre></pre>
-<h3 id="burst"><a class="header" href="#burst">Burst</a></h3>
-<p>One-time explosion of particles. Fires once at simulation start.</p>
+<h2 id="available-variables"><a class="header" href="#available-variables">Available Variables</a></h2>
+<p>In your fragment shader snippet, you have access to:</p>
+<div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>in.uv</code></td><td><code>vec2&lt;f32&gt;</code></td><td>Position within particle quad (-1 to 1, center is 0)</td></tr>
+<tr><td><code>in.color</code></td><td><code>vec3&lt;f32&gt;</code></td><td>Particle's color (from <code>#[color]</code> field)</td></tr>
+<tr><td><code>uniforms.time</code></td><td><code>f32</code></td><td>Seconds since simulation start</td></tr>
+<tr><td><code>uniforms.delta_time</code></td><td><code>f32</code></td><td>Seconds since last frame</td></tr>
+<tr><td><code>uniforms.*</code></td><td>varies</td><td>Any custom uniforms defined via <code>.with_uniform()</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<p>Your snippet is injected into a fragment shader that runs for every pixel of every particle. The <code>in.uv</code> coordinates tell you where you are within the particle's billboard quad:</p>
+<pre><code>(-1,-1) -------- (1,-1)
+   |               |
+   |    (0,0)      |
+   |               |
+(-1,1) --------- (1,1)
+</code></pre>
+<p>The center is <code>(0,0)</code>, so <code>length(in.uv)</code> gives distance from center.</p>
+<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
+<h3 id="soft-circle-default-look"><a class="header" href="#soft-circle-default-look">Soft Circle (Default Look)</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Burst {
-    position: Vec3::new(0.0, 0.5, 0.0),
-    count: 1000,    // total particles to spawn
-    speed: 3.0,     // outward speed
-})
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    if dist &gt; 1.0 { discard; }
+    let alpha = 1.0 - smoothstep(0.0, 1.0, dist);
+    return vec4&lt;f32&gt;(in.color, alpha);
+"#)
 <span class="boring">}</span></code></pre></pre>
-<h3 id="cone"><a class="header" href="#cone">Cone</a></h3>
-<p>Directional emission in a cone shape. Great for fountains, jets, and thrusters.</p>
+<h3 id="glowing-particle"><a class="header" href="#glowing-particle">Glowing Particle</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Cone {
-    position: Vec3::new(0.0, -0.5, 0.0),
-    direction: Vec3::Y,     // points up
-    speed: 2.5,
-    spread: 0.3,            // cone half-angle in radians
-    rate: 800.0,
-})
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let glow = 1.0 / (dist * dist * 8.0 + 0.3);
+    let alpha = clamp(glow * 0.5, 0.0, 1.0);
+    return vec4&lt;f32&gt;(in.color * glow, alpha);
+"#)
 <span class="boring">}</span></code></pre></pre>
-<p>The <code>spread</code> parameter controls the cone width:</p>
-<ul>
-<li><code>0.0</code> = laser beam (no spread)</li>
-<li><code>0.3</code> = tight cone (~17 degrees)</li>
-<li><code>PI/4</code> = 45-degree cone</li>
-<li><code>PI/2</code> = hemisphere</li>
-</ul>
-<h3 id="sphere"><a class="header" href="#sphere">Sphere</a></h3>
-<p>Spawns particles on a sphere surface, moving outward (or inward).</p>
+<h3 id="ring"><a class="header" href="#ring">Ring</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Sphere {
-    center: Vec3::ZERO,
-    radius: 0.5,
-    speed: 1.0,     // positive = outward, negative = inward
-    rate: 1000.0,
-})
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let ring = smoothstep(0.6, 0.7, dist) - smoothstep(0.8, 0.9, dist);
+    return vec4&lt;f32&gt;(in.color, ring);
+"#)
 <span class="boring">}</span></code></pre></pre>
-<h3 id="box"><a class="header" href="#box">Box</a></h3>
-<p>Spawns particles at random positions within a box volume.</p>
+<h3 id="pulsing"><a class="header" href="#pulsing">Pulsing</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Box {
-    min: Vec3::new(-1.0, 1.0, -1.0),
-    max: Vec3::new(1.0, 1.2, 1.0),
-    velocity: Vec3::new(0.0, -2.0, 0.0),  // falling rain
-    rate: 2000.0,
-})
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let pulse = sin(uniforms.time * 4.0) * 0.3 + 0.7;
+    let glow = 1.0 / (dist * dist * 8.0 + 0.2);
+    return vec4&lt;f32&gt;(in.color * glow * pulse, glow * 0.5);
+"#)
 <span class="boring">}</span></code></pre></pre>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<p>Here's a fountain that continuously emits particles:</p>
-<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+<h3 id="animated-interference"><a class="header" href="#animated-interference">Animated Interference</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
 
-#[derive(Particle, Clone)]
-struct Drop {
-    position: Vec3,
-    velocity: Vec3,
-    #[color]
-    color: Vec3,
-}
+    // Core
+    let core = 1.0 - smoothstep(0.0, 0.3, dist);
 
-fn main() {
-    Simulation::&lt;Drop&gt;::new()
-        .with_particle_count(10_000)
-        .with_bounds(2.0)
-        // Start all particles dead - emitter will spawn them
-        .with_spawner(|_, _| Drop {
-            position: Vec3::ZERO,
-            velocity: Vec3::ZERO,
-            color: Vec3::new(0.3, 0.6, 1.0),
-        })
-        // Cone emitter shooting upward
-        .with_emitter(Emitter::Cone {
-            position: Vec3::new(0.0, -0.8, 0.0),
-            direction: Vec3::Y,
-            speed: 3.0,
-            spread: 0.2,
-            rate: 1000.0,
-        })
-        // Lifecycle management
-        .with_rule(Rule::Age)
-        .with_rule(Rule::Lifetime(2.0))
-        // Physics
-        .with_rule(Rule::Gravity(4.0))
-        .with_rule(Rule::Drag(0.3))
-        .with_rule(Rule::BounceWalls)
-        .run();
-}</code></pre></pre>
-<h2 id="multiple-emitters"><a class="header" href="#multiple-emitters">Multiple Emitters</a></h2>
-<p>You can add multiple emitters to create complex effects:</p>
+    // Animated rings
+    let rings = sin(dist * 20.0 - uniforms.time * 5.0) * 0.5 + 0.5;
+    let ring_fade = exp(-dist * 3.0);
+
+    let intensity = core + rings * ring_fade * 0.5;
+    return vec4&lt;f32&gt;(in.color * intensity, intensity * 0.6);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="color-shift-based-on-position"><a class="header" href="#color-shift-based-on-position">Color Shift Based on Position</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Twin fountains
-.with_emitter(Emitter::Cone {
-    position: Vec3::new(-0.5, -0.8, 0.0),
-    direction: Vec3::Y,
-    speed: 3.0,
-    spread: 0.15,
-    rate: 500.0,
-})
-.with_emitter(Emitter::Cone {
-    position: Vec3::new(0.5, -0.8, 0.0),
-    direction: Vec3::Y,
-    speed: 3.0,
-    spread: 0.15,
-    rate: 500.0,
-})
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let glow = 1.0 / (dist * dist * 6.0 + 0.3);
+
+    // Shift hue based on angle
+    let angle = atan2(in.uv.y, in.uv.x);
+    let hue_shift = angle / 6.28318;
+
+    // Simple hue rotation (approximate)
+    let shifted = vec3&lt;f32&gt;(
+        in.color.r * cos(hue_shift * 6.28) - in.color.g * sin(hue_shift * 6.28),
+        in.color.r * sin(hue_shift * 6.28) + in.color.g * cos(hue_shift * 6.28),
+        in.color.b
+    );
+
+    return vec4&lt;f32&gt;(shifted * glow, glow * 0.5);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="sharp-core--soft-halo"><a class="header" href="#sharp-core--soft-halo">Sharp Core + Soft Halo</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+
+    // Sharp inner core
+    let core = 1.0 - smoothstep(0.0, 0.2, dist);
+
+    // Soft outer glow
+    let halo = 1.0 / (dist * dist * 4.0 + 0.5);
+
+    let intensity = core * 2.0 + halo * 0.5;
+    let alpha = clamp(intensity * 0.4, 0.0, 1.0);
+
+    return vec4&lt;f32&gt;(in.color * intensity, alpha);
+"#)
 <span class="boring">}</span></code></pre></pre>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
+<h3 id="coordinate-system"><a class="header" href="#coordinate-system">Coordinate System</a></h3>
 <ul>
-<li><strong>Rate tuning</strong>: Match your rate to particle count and lifetime. If <code>rate * lifetime &gt; particle_count</code>, you'll run out of dead particles to respawn.</li>
-<li><strong>Dead start</strong>: When using emitters, initialize particles as dead in your spawner (they'll be spawned by the emitter).</li>
-<li><strong>Burst timing</strong>: Burst emitters fire at <code>time &lt; 0.1</code>, so they work immediately on startup.</li>
+<li><code>in.uv</code> ranges from -1 to 1</li>
+<li><code>length(in.uv)</code> = distance from center (0 at center, 1 at edge, &gt;1 at corners)</li>
+<li>Use <code>in.uv * 0.5 + 0.5</code> to get 0-1 range for texture coordinates</li>
+</ul>
+<h3 id="performance"><a class="header" href="#performance">Performance</a></h3>
+<ul>
+<li>Fragment shaders run per-pixel per-particle</li>
+<li>Keep math simple for thousands of particles</li>
+<li>Avoid loops if possible</li>
+</ul>
+<h3 id="blending"><a class="header" href="#blending">Blending</a></h3>
+<p>Fragment shader output interacts with blend mode:</p>
+<ul>
+<li><strong>Additive</strong>: RGB values add together (bright + bright = brighter)</li>
+<li><strong>Alpha</strong>: Standard alpha compositing</li>
+</ul>
+<p>For additive blending, the alpha channel still matters for intensity.</p>
+<h3 id="debugging"><a class="header" href="#debugging">Debugging</a></h3>
+<p>Set solid colors to debug:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Debug: show UV coordinates as colors
+.with_fragment_shader(r#"
+    return vec4&lt;f32&gt;(in.uv * 0.5 + 0.5, 0.0, 1.0);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="../visuals.html">Visual Configuration</a> - Blend modes, trails, connections</li>
+<li><a href="./post-processing.html">Post-Processing</a> - Screen-space effects</li>
 </ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="visuals.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../advanced/custom-rules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="typed-interactions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../advanced/textures.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -335,11 +356,11 @@ fn main() {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="visuals.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../advanced/custom-rules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="typed-interactions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../advanced/textures.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -354,13 +375,13 @@ fn main() {
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

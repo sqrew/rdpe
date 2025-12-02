@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Custom Rules - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Post-Processing - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -175,179 +175,225 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="custom-rules"><a class="header" href="#custom-rules">Custom Rules</a></h1>
-<p>When built-in rules aren't enough, <code>Rule::Custom</code> lets you write raw WGSL shader code.</p>
+                        <h1 id="post-processing"><a class="header" href="#post-processing">Post-Processing</a></h1>
+<p>Post-processing applies screen-space effects to the rendered scene - things like bloom, vignette, chromatic aberration, and CRT scanlines.</p>
 <h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_rule(Rule::Custom(r#"
-    // Your WGSL code here
-    p.velocity.y += sin(uniforms.time) * 0.1;
-"#.to_string()))
+</span>.with_visuals(|v| {
+    v.post_process(r#"
+        let color = textureSample(scene, scene_sampler, in.uv);
+        // Modify color here
+        return color;
+    "#);
+})
 <span class="boring">}</span></code></pre></pre>
 <h2 id="available-variables"><a class="header" href="#available-variables">Available Variables</a></h2>
-<h3 id="particle-data"><a class="header" href="#particle-data">Particle Data</a></h3>
-<pre><code class="language-wgsl">p.position      // vec3&lt;f32&gt; - current position (read/write)
-p.velocity      // vec3&lt;f32&gt; - current velocity (read/write)
-p.color         // vec3&lt;f32&gt; - particle color (if defined)
-p.particle_type // u32 - particle type
-// Plus any custom fields you defined
-</code></pre>
-<h3 id="context"><a class="header" href="#context">Context</a></h3>
-<pre><code class="language-wgsl">index              // u32 - this particle's index
-uniforms.time      // f32 - total elapsed time in seconds
-uniforms.delta_time // f32 - time since last frame
-</code></pre>
-<h3 id="in-neighbor-loop-for-neighbor-rules-only"><a class="header" href="#in-neighbor-loop-for-neighbor-rules-only">In Neighbor Loop (for neighbor rules only)</a></h3>
-<pre><code class="language-wgsl">other_idx      // u32 - neighbor's index
-other          // Particle - neighbor's data
-neighbor_pos   // vec3&lt;f32&gt; - neighbor's position
-neighbor_vel   // vec3&lt;f32&gt; - neighbor's velocity
-neighbor_dist  // f32 - distance to neighbor
-neighbor_dir   // vec3&lt;f32&gt; - normalized direction to neighbor
-</code></pre>
-<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
-<h3 id="oscillating-force"><a class="header" href="#oscillating-force">Oscillating Force</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>in.uv</code></td><td><code>vec2&lt;f32&gt;</code></td><td>Screen coordinates (0 to 1, top-left is origin)</td></tr>
+<tr><td><code>scene</code></td><td><code>texture_2d&lt;f32&gt;</code></td><td>The rendered particle scene</td></tr>
+<tr><td><code>scene_sampler</code></td><td><code>sampler</code></td><td>Sampler for the scene texture</td></tr>
+<tr><td><code>uniforms.time</code></td><td><code>f32</code></td><td>Seconds since simulation start</td></tr>
+<tr><td><code>uniforms.delta_time</code></td><td><code>f32</code></td><td>Seconds since last frame</td></tr>
+<tr><td><code>uniforms.*</code></td><td>varies</td><td>Any custom uniforms defined via <code>.with_uniform()</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<p>After all particles are rendered to an offscreen texture, your post-process shader runs once per screen pixel. You sample the scene texture and output a modified color.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Rule::Custom(r#"
-    let freq = 2.0;
-    let amp = 0.5;
-    p.velocity.y += sin(uniforms.time * freq) * amp * uniforms.delta_time;
-"#.to_string())
+</span>// The identity post-process (does nothing)
+v.post_process(r#"
+    return textureSample(scene, scene_sampler, in.uv);
+"#);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="color-based-on-speed"><a class="header" href="#color-based-on-speed">Color Based on Speed</a></h3>
+<h2 id="common-effects"><a class="header" href="#common-effects">Common Effects</a></h2>
+<h3 id="vignette"><a class="header" href="#vignette">Vignette</a></h3>
+<p>Darken the edges of the screen:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Rule::Custom(r#"
-    let speed = length(p.velocity);
-    let normalized_speed = clamp(speed / 2.0, 0.0, 1.0);
-    p.color = mix(
-        vec3&lt;f32&gt;(0.0, 0.0, 1.0),  // Blue (slow)
-        vec3&lt;f32&gt;(1.0, 0.0, 0.0),  // Red (fast)
-        normalized_speed
-    );
-"#.to_string())
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    let dist = length(in.uv - center);
+    let vignette = 1.0 - smoothstep(0.3, 0.9, dist);
+    return vec4&lt;f32&gt;(color.rgb * vignette, 1.0);
+"#);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="age-based-behavior"><a class="header" href="#age-based-behavior">Age-Based Behavior</a></h3>
+<h3 id="chromatic-aberration"><a class="header" href="#chromatic-aberration">Chromatic Aberration</a></h3>
+<p>Separate RGB channels for a lens distortion effect:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[derive(Particle, Clone)]
-struct AgingParticle {
-    position: Vec3,
-    velocity: Vec3,
-    age: f32,  // Custom field
-}
-
-// In simulation:
-.with_rule(Rule::Custom(r#"
-    p.age += uniforms.delta_time;
-
-    // Slow down with age
-    let age_factor = 1.0 / (1.0 + p.age * 0.1);
-    p.velocity *= age_factor;
-
-    // Change color with age
-    p.color = mix(
-        vec3&lt;f32&gt;(0.2, 1.0, 0.2),  // Young: green
-        vec3&lt;f32&gt;(0.6, 0.3, 0.1),  // Old: brown
-        clamp(p.age / 10.0, 0.0, 1.0)
-    );
-"#.to_string()))
+</span>v.post_process(r#"
+    let aberration = 0.005;
+    let r = textureSample(scene, scene_sampler, in.uv + vec2&lt;f32&gt;(aberration, 0.0)).r;
+    let g = textureSample(scene, scene_sampler, in.uv).g;
+    let b = textureSample(scene, scene_sampler, in.uv - vec2&lt;f32&gt;(aberration, 0.0)).b;
+    return vec4&lt;f32&gt;(r, g, b, 1.0);
+"#);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="vortex-force"><a class="header" href="#vortex-force">Vortex Force</a></h3>
+<h3 id="radial-chromatic-aberration"><a class="header" href="#radial-chromatic-aberration">Radial Chromatic Aberration</a></h3>
+<p>Aberration that increases toward edges:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Rule::Custom(r#"
-    // Circular force around Y axis
-    let to_center = -p.position;
-    let tangent = vec3&lt;f32&gt;(-to_center.z, 0.0, to_center.x);
-    let dist = length(to_center.xz);
+</span>v.post_process(r#"
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    let uv_centered = in.uv - center;
+    let dist = length(uv_centered);
+    let dir = normalize(uv_centered);
 
-    if dist &gt; 0.01 {
-        let vortex_strength = 1.0 / (dist + 0.1);
-        p.velocity += normalize(tangent) * vortex_strength * uniforms.delta_time;
-    }
-"#.to_string())
+    let aberration = 0.003 + dist * 0.01;
+
+    let r = textureSample(scene, scene_sampler, in.uv + dir * aberration).r;
+    let g = textureSample(scene, scene_sampler, in.uv).g;
+    let b = textureSample(scene, scene_sampler, in.uv - dir * aberration).b;
+
+    return vec4&lt;f32&gt;(r, g, b, 1.0);
+"#);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="pulsing-size-via-custom-field"><a class="header" href="#pulsing-size-via-custom-field">Pulsing Size (via Custom Field)</a></h3>
+<h3 id="film-grain"><a class="header" href="#film-grain">Film Grain</a></h3>
+<p>Add noise for a film-like quality:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[derive(Particle, Clone)]
-struct PulsingParticle {
-    position: Vec3,
-    velocity: Vec3,
-    phase: f32,  // Each particle has different phase
-}
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
 
-.with_rule(Rule::Custom(r#"
-    // Update a "size" factor based on time and phase
-    let pulse = sin(uniforms.time * 3.0 + p.phase) * 0.5 + 0.5;
-    // Could use this in a custom renderer...
-"#.to_string()))
+    // Hash-based noise
+    let grain = fract(sin(dot(in.uv * 1000.0, vec2&lt;f32&gt;(12.9898, 78.233)) + uniforms.time) * 43758.5453);
+    let noise = (grain - 0.5) * 0.03;
+
+    return vec4&lt;f32&gt;(color.rgb + noise, 1.0);
+"#);
 <span class="boring">}</span></code></pre></pre>
-<h3 id="random-noise-movement"><a class="header" href="#random-noise-movement">Random Noise Movement</a></h3>
+<h3 id="crt-scanlines"><a class="header" href="#crt-scanlines">CRT Scanlines</a></h3>
+<p>Classic CRT monitor effect:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Rule::Custom(r#"
-    // Hash-based pseudo-random
-    let seed = index ^ u32(uniforms.time * 60.0);
-    let hash = (seed * 1103515245u + 12345u);
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
 
-    let rx = f32((hash &gt;&gt; 0u) &amp; 0xFFu) / 128.0 - 1.0;
-    let ry = f32((hash &gt;&gt; 8u) &amp; 0xFFu) / 128.0 - 1.0;
-    let rz = f32((hash &gt;&gt; 16u) &amp; 0xFFu) / 128.0 - 1.0;
+    let scanline_freq = 400.0;
+    let scanline = sin(in.uv.y * scanline_freq) * 0.5 + 0.5;
+    let scanline_intensity = 0.15;
 
-    p.velocity += vec3&lt;f32&gt;(rx, ry, rz) * 0.1 * uniforms.delta_time;
-"#.to_string())
+    let result = color.rgb * (1.0 - scanline_intensity * (1.0 - scanline));
+    return vec4&lt;f32&gt;(result, 1.0);
+"#);
 <span class="boring">}</span></code></pre></pre>
-<h2 id="wgsl-tips"><a class="header" href="#wgsl-tips">WGSL Tips</a></h2>
-<h3 id="type-suffixes"><a class="header" href="#type-suffixes">Type Suffixes</a></h3>
-<pre><code class="language-wgsl">let x = 1.0;      // f32
-let y = 1u;       // u32
-let z = 1i;       // i32
-</code></pre>
-<h3 id="vector-construction"><a class="header" href="#vector-construction">Vector Construction</a></h3>
-<pre><code class="language-wgsl">let v = vec3&lt;f32&gt;(1.0, 2.0, 3.0);
-let v2 = vec3&lt;f32&gt;(0.0);  // All zeros
-</code></pre>
-<h3 id="useful-functions"><a class="header" href="#useful-functions">Useful Functions</a></h3>
-<pre><code class="language-wgsl">length(v)         // Vector magnitude
-normalize(v)      // Unit vector
-dot(a, b)         // Dot product
-cross(a, b)       // Cross product
-clamp(x, lo, hi)  // Clamp to range
-mix(a, b, t)      // Linear interpolation
-sin(x), cos(x)    // Trig functions
-abs(x)            // Absolute value
-min(a, b), max(a, b)
-</code></pre>
-<h2 id="debugging"><a class="header" href="#debugging">Debugging</a></h2>
-<p>Custom rules can silently fail. Tips:</p>
-<ol>
-<li><strong>Start simple</strong> - Add one line at a time</li>
-<li><strong>Check types</strong> - WGSL is strictly typed</li>
-<li><strong>Use color</strong> - Set <code>p.color</code> to visualize values</li>
-<li><strong>Check compilation</strong> - Shader errors print on startup</li>
-</ol>
+<h3 id="barrel-distortion"><a class="header" href="#barrel-distortion">Barrel Distortion</a></h3>
+<p>CRT-style curved screen:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Debug: visualize a value as color
-Rule::Custom(r#"
-    let debug_value = length(p.velocity);
-    p.color = vec3&lt;f32&gt;(debug_value, 0.0, 0.0);
-"#.to_string())
+</span>v.post_process(r#"
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    let uv_centered = in.uv - center;
+    let dist_sq = dot(uv_centered, uv_centered);
+    let barrel = 0.1;
+    let distorted_uv = center + uv_centered * (1.0 + barrel * dist_sq);
+
+    let color = textureSample(scene, scene_sampler, distorted_uv);
+    return color;
+"#);
 <span class="boring">}</span></code></pre></pre>
+<h3 id="bloom-simple"><a class="header" href="#bloom-simple">Bloom (Simple)</a></h3>
+<p>Boost bright areas:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+    let luminance = dot(color.rgb, vec3&lt;f32&gt;(0.299, 0.587, 0.114));
+    let bloom = smoothstep(0.4, 1.0, luminance) * 0.4;
+    return vec4&lt;f32&gt;(color.rgb + color.rgb * bloom, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="color-grading"><a class="header" href="#color-grading">Color Grading</a></h3>
+<p>Adjust color balance:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+
+    // Warm tint (boost red, reduce blue)
+    var graded = pow(color.rgb, vec3&lt;f32&gt;(0.95, 1.0, 1.05));
+
+    // Contrast boost
+    graded = (graded - 0.5) * 1.1 + 0.5;
+
+    // Saturation boost
+    let gray = dot(graded, vec3&lt;f32&gt;(0.3, 0.3, 0.3));
+    graded = mix(vec3&lt;f32&gt;(gray), graded, 1.3);
+
+    return vec4&lt;f32&gt;(clamp(graded, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0)), 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="screen-flicker"><a class="header" href="#screen-flicker">Screen Flicker</a></h3>
+<p>Subtle brightness variation:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+    let flicker = sin(uniforms.time * 60.0) * 0.02 + 1.0;
+    return vec4&lt;f32&gt;(color.rgb * flicker, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="combining-effects"><a class="header" href="#combining-effects">Combining Effects</a></h2>
+<p>Chain multiple effects together:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    var uv = in.uv;
+
+    // 1. Barrel distortion
+    let uv_centered = uv - center;
+    let dist_sq = dot(uv_centered, uv_centered);
+    uv = center + uv_centered * (1.0 + 0.1 * dist_sq);
+
+    // 2. Chromatic aberration
+    let aberr = 0.004;
+    let r = textureSample(scene, scene_sampler, uv + vec2&lt;f32&gt;(aberr, 0.0)).r;
+    let g = textureSample(scene, scene_sampler, uv).g;
+    let b = textureSample(scene, scene_sampler, uv - vec2&lt;f32&gt;(aberr, 0.0)).b;
+    var color = vec3&lt;f32&gt;(r, g, b);
+
+    // 3. Scanlines
+    let scanline = sin(in.uv.y * 400.0) * 0.5 + 0.5;
+    color *= 1.0 - 0.1 * (1.0 - scanline);
+
+    // 4. Vignette
+    let vignette_dist = length(in.uv - center);
+    let vignette = 1.0 - smoothstep(0.4, 1.0, vignette_dist);
+    color *= vignette;
+
+    // 5. Flicker
+    let flicker = sin(uniforms.time * 60.0) * 0.01 + 1.0;
+    color *= flicker;
+
+    return vec4&lt;f32&gt;(color, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-tips"><a class="header" href="#performance-tips">Performance Tips</a></h2>
+<ul>
+<li>Post-processing runs once per screen pixel</li>
+<li>Texture samples are relatively expensive</li>
+<li>Multiple samples (for blur) can add up quickly</li>
+<li>Keep blur kernel sizes small (4-8 samples)</li>
+</ul>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="../visuals.html">Visual Configuration</a> - Blend modes, trails, connections</li>
+<li><a href="./fragment-shaders.html">Fragment Shaders</a> - Per-particle appearance</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../spatial-hashing.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../advanced/textures.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../advanced/fragment-shaders.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../advanced/custom-uniforms.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -357,11 +403,11 @@ Rule::Custom(r#"
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../spatial-hashing.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../advanced/textures.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../advanced/fragment-shaders.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../advanced/custom-uniforms.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

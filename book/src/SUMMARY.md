@@ -7,6 +7,7 @@
 - [Architecture Overview](./architecture.md)
 - [Particles](./particles.md)
 - [Rules](./rules.md)
+- [Visual Configuration](./visuals.md)
 - [Emitters](./emitters.md)
 - [Typed Interactions](./typed-interactions.md)
 - [Spatial Hashing](./spatial-hashing.md)
@@ -14,6 +15,9 @@
 # Advanced
 
 - [Custom Rules](./advanced/custom-rules.md)
+- [Fragment Shaders](./advanced/fragment-shaders.md)
+- [Textures](./advanced/textures.md)
+- [Post-Processing](./advanced/post-processing.md)
 - [Custom Uniforms](./advanced/custom-uniforms.md)
 - [Custom Functions](./advanced/custom-functions.md)
 - [Shader Utilities](./advanced/shader-utilities.md)

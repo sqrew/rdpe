@@ -2,9 +2,14 @@
 
 Custom uniforms let you pass dynamic values from Rust to your shader code every frame. This enables interactive simulations that respond to time, mouse input, or any other runtime data.
 
+Custom uniforms are available in **all shader types**:
+- **Compute shaders** (`Rule::Custom`) - for particle physics and behavior
+- **Fragment shaders** (`.with_fragment_shader()`) - for per-particle visuals
+- **Post-process shaders** (`.post_process()`) - for screen-space effects
+
 ## Basic Usage
 
-Define uniforms with `.with_uniform()` and access them in `Rule::Custom`:
+Define uniforms with `.with_uniform()` and access them in any shader:
 
 ```rust
 Simulation::<Particle>::new()

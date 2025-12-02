@@ -646,6 +646,120 @@ struct GameParticle {
 </span>.with_bounds(1.0)
 .with_spatial_config(0.1, 32)  // 32³ cells covering -1.6 to +1.6
 <span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="visual-configuration"><a class="header" href="#visual-configuration">Visual Configuration</a></h1>
+<p>RDPE provides extensive control over how particles are rendered. The <code>with_visuals</code> method configures the rendering pipeline.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_visuals(|v| {
+        v.background(Vec3::new(0.0, 0.0, 0.02));  // Dark blue
+        v.blend_mode(BlendMode::Additive);
+        v.trails(8);
+        v.connections(0.1);
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="options"><a class="header" href="#options">Options</a></h2>
+<h3 id="background-color"><a class="header" href="#background-color">Background Color</a></h3>
+<p>Set the scene backdrop:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.background(Vec3::new(0.0, 0.0, 0.0));  // Black
+v.background(Vec3::new(0.02, 0.02, 0.04));  // Dark blue
+v.background(Vec3::new(1.0, 1.0, 1.0));  // White
+<span class="boring">}</span></code></pre></pre>
+<h3 id="blend-modes"><a class="header" href="#blend-modes">Blend Modes</a></h3>
+<p>Control how overlapping particles combine:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.blend_mode(BlendMode::Additive);  // Bright areas add up (glows, fire)
+v.blend_mode(BlendMode::Alpha);     // Standard transparency (default)
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Additive</strong> is ideal for:</p>
+<ul>
+<li>Glowing particles</li>
+<li>Fire, sparks, energy effects</li>
+<li>Light trails</li>
+<li>Anything where overlap should brighten</li>
+</ul>
+<p><strong>Alpha</strong> is ideal for:</p>
+<ul>
+<li>Solid particles</li>
+<li>Smoke, dust</li>
+<li>Anything where overlap should occlude</li>
+</ul>
+<h3 id="particle-trails"><a class="header" href="#particle-trails">Particle Trails</a></h3>
+<p>Leave a fading trail behind each particle:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.trails(8);  // 8 frames of history
+<span class="boring">}</span></code></pre></pre>
+<p>The number is how many previous positions to render. More = longer trails, but more GPU memory.</p>
+<p>Trails work best with:</p>
+<ul>
+<li>Additive blending (trails glow)</li>
+<li>Fast-moving particles</li>
+<li>Dark backgrounds</li>
+</ul>
+<h3 id="connections"><a class="header" href="#connections">Connections</a></h3>
+<p>Draw lines between nearby particles:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.connections(0.1);  // Max distance for connection
+<span class="boring">}</span></code></pre></pre>
+<p>Creates a web/network effect. Particles within the specified distance get connected by lines.</p>
+<p>Great for:</p>
+<ul>
+<li>Neural network visualizations</li>
+<li>Constellation effects</li>
+<li>Organic webs</li>
+<li>Network graphs</li>
+</ul>
+<h3 id="post-processing"><a class="header" href="#post-processing">Post-Processing</a></h3>
+<p>Apply screen-space effects to the final image:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    // Your WGSL code here
+    let color = textureSample(scene, scene_sampler, in.uv);
+    return color;
+"#);
+<span class="boring">}</span></code></pre></pre>
+<p>See <a href="./advanced/post-processing.html">Post-Processing</a> for details.</p>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_particle_count(5000)
+    .with_visuals(|v| {
+        // Dark background for contrast
+        v.background(Vec3::new(0.01, 0.01, 0.02));
+
+        // Additive blending for glow effect
+        v.blend_mode(BlendMode::Additive);
+
+        // Motion trails
+        v.trails(6);
+
+        // Connect nearby particles
+        v.connections(0.08);
+
+        // Add vignette post-processing
+        v.post_process(r#"
+            let color = textureSample(scene, scene_sampler, in.uv);
+            let dist = length(in.uv - vec2(0.5));
+            let vignette = 1.0 - smoothstep(0.3, 0.9, dist);
+            return vec4(color.rgb * vignette, 1.0);
+        "#);
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="./advanced/fragment-shaders.html">Fragment Shaders</a> - Customize particle appearance</li>
+<li><a href="./advanced/post-processing.html">Post-Processing</a> - Screen-space effects</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="emitters"><a class="header" href="#emitters">Emitters</a></h1>
 <p>Emitters continuously spawn new particles into the simulation, replacing dead particles. They enable effects like fountains, explosions, rain, and any other continuous particle generation.</p>
 <h2 id="how-emitters-work"><a class="header" href="#how-emitters-work">How Emitters Work</a></h2>
@@ -722,7 +836,7 @@ struct GameParticle {
     rate: 2000.0,
 })
 <span class="boring">}</span></code></pre></pre>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<h2 id="complete-example-1"><a class="header" href="#complete-example-1">Complete Example</a></h2>
 <p>Here's a fountain that continuously emits particles:</p>
 <pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
 
@@ -1052,7 +1166,7 @@ cell_end[morton_code] = one past last particle index
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="custom-rules-1"><a class="header" href="#custom-rules-1">Custom Rules</a></h1>
 <p>When built-in rules aren't enough, <code>Rule::Custom</code> lets you write raw WGSL shader code.</p>
-<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
+<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_rule(Rule::Custom(r#"
@@ -1213,10 +1327,611 @@ Rule::Custom(r#"
     p.color = vec3&lt;f32&gt;(debug_value, 0.0, 0.0);
 "#.to_string())
 <span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="fragment-shaders"><a class="header" href="#fragment-shaders">Fragment Shaders</a></h1>
+<p>Fragment shaders control how each particle looks - its shape, glow, color effects, and more.</p>
+<h2 id="basic-usage-2"><a class="header" href="#basic-usage-2">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_fragment_shader(r#"
+        let dist = length(in.uv);
+        let glow = 1.0 / (dist * dist * 8.0 + 0.3);
+        return vec4&lt;f32&gt;(in.color * glow, glow * 0.5);
+    "#)
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="available-variables-1"><a class="header" href="#available-variables-1">Available Variables</a></h2>
+<p>In your fragment shader snippet, you have access to:</p>
+<div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>in.uv</code></td><td><code>vec2&lt;f32&gt;</code></td><td>Position within particle quad (-1 to 1, center is 0)</td></tr>
+<tr><td><code>in.color</code></td><td><code>vec3&lt;f32&gt;</code></td><td>Particle's color (from <code>#[color]</code> field)</td></tr>
+<tr><td><code>uniforms.time</code></td><td><code>f32</code></td><td>Seconds since simulation start</td></tr>
+<tr><td><code>uniforms.delta_time</code></td><td><code>f32</code></td><td>Seconds since last frame</td></tr>
+<tr><td><code>uniforms.*</code></td><td>varies</td><td>Any custom uniforms defined via <code>.with_uniform()</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="how-it-works-2"><a class="header" href="#how-it-works-2">How It Works</a></h2>
+<p>Your snippet is injected into a fragment shader that runs for every pixel of every particle. The <code>in.uv</code> coordinates tell you where you are within the particle's billboard quad:</p>
+<pre><code>(-1,-1) -------- (1,-1)
+   |               |
+   |    (0,0)      |
+   |               |
+(-1,1) --------- (1,1)
+</code></pre>
+<p>The center is <code>(0,0)</code>, so <code>length(in.uv)</code> gives distance from center.</p>
+<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
+<h3 id="soft-circle-default-look"><a class="header" href="#soft-circle-default-look">Soft Circle (Default Look)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    if dist &gt; 1.0 { discard; }
+    let alpha = 1.0 - smoothstep(0.0, 1.0, dist);
+    return vec4&lt;f32&gt;(in.color, alpha);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="glowing-particle"><a class="header" href="#glowing-particle">Glowing Particle</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let glow = 1.0 / (dist * dist * 8.0 + 0.3);
+    let alpha = clamp(glow * 0.5, 0.0, 1.0);
+    return vec4&lt;f32&gt;(in.color * glow, alpha);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="ring"><a class="header" href="#ring">Ring</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let ring = smoothstep(0.6, 0.7, dist) - smoothstep(0.8, 0.9, dist);
+    return vec4&lt;f32&gt;(in.color, ring);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="pulsing"><a class="header" href="#pulsing">Pulsing</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let pulse = sin(uniforms.time * 4.0) * 0.3 + 0.7;
+    let glow = 1.0 / (dist * dist * 8.0 + 0.2);
+    return vec4&lt;f32&gt;(in.color * glow * pulse, glow * 0.5);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="animated-interference"><a class="header" href="#animated-interference">Animated Interference</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+
+    // Core
+    let core = 1.0 - smoothstep(0.0, 0.3, dist);
+
+    // Animated rings
+    let rings = sin(dist * 20.0 - uniforms.time * 5.0) * 0.5 + 0.5;
+    let ring_fade = exp(-dist * 3.0);
+
+    let intensity = core + rings * ring_fade * 0.5;
+    return vec4&lt;f32&gt;(in.color * intensity, intensity * 0.6);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="color-shift-based-on-position"><a class="header" href="#color-shift-based-on-position">Color Shift Based on Position</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+    let glow = 1.0 / (dist * dist * 6.0 + 0.3);
+
+    // Shift hue based on angle
+    let angle = atan2(in.uv.y, in.uv.x);
+    let hue_shift = angle / 6.28318;
+
+    // Simple hue rotation (approximate)
+    let shifted = vec3&lt;f32&gt;(
+        in.color.r * cos(hue_shift * 6.28) - in.color.g * sin(hue_shift * 6.28),
+        in.color.r * sin(hue_shift * 6.28) + in.color.g * cos(hue_shift * 6.28),
+        in.color.b
+    );
+
+    return vec4&lt;f32&gt;(shifted * glow, glow * 0.5);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="sharp-core--soft-halo"><a class="header" href="#sharp-core--soft-halo">Sharp Core + Soft Halo</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    let dist = length(in.uv);
+
+    // Sharp inner core
+    let core = 1.0 - smoothstep(0.0, 0.2, dist);
+
+    // Soft outer glow
+    let halo = 1.0 / (dist * dist * 4.0 + 0.5);
+
+    let intensity = core * 2.0 + halo * 0.5;
+    let alpha = clamp(intensity * 0.4, 0.0, 1.0);
+
+    return vec4&lt;f32&gt;(in.color * intensity, alpha);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
+<h3 id="coordinate-system"><a class="header" href="#coordinate-system">Coordinate System</a></h3>
+<ul>
+<li><code>in.uv</code> ranges from -1 to 1</li>
+<li><code>length(in.uv)</code> = distance from center (0 at center, 1 at edge, &gt;1 at corners)</li>
+<li>Use <code>in.uv * 0.5 + 0.5</code> to get 0-1 range for texture coordinates</li>
+</ul>
+<h3 id="performance"><a class="header" href="#performance">Performance</a></h3>
+<ul>
+<li>Fragment shaders run per-pixel per-particle</li>
+<li>Keep math simple for thousands of particles</li>
+<li>Avoid loops if possible</li>
+</ul>
+<h3 id="blending"><a class="header" href="#blending">Blending</a></h3>
+<p>Fragment shader output interacts with blend mode:</p>
+<ul>
+<li><strong>Additive</strong>: RGB values add together (bright + bright = brighter)</li>
+<li><strong>Alpha</strong>: Standard alpha compositing</li>
+</ul>
+<p>For additive blending, the alpha channel still matters for intensity.</p>
+<h3 id="debugging-1"><a class="header" href="#debugging-1">Debugging</a></h3>
+<p>Set solid colors to debug:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Debug: show UV coordinates as colors
+.with_fragment_shader(r#"
+    return vec4&lt;f32&gt;(in.uv * 0.5 + 0.5, 0.0, 1.0);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="related-1"><a class="header" href="#related-1">Related</a></h2>
+<ul>
+<li><a href="advanced/../visuals.html">Visual Configuration</a> - Blend modes, trails, connections</li>
+<li><a href="advanced/./post-processing.html">Post-Processing</a> - Screen-space effects</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="textures"><a class="header" href="#textures">Textures</a></h1>
+<p>RDPE supports custom textures that can be sampled in fragment shaders and post-processing effects. This enables color lookup tables, noise-based effects, sprites, and more.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use rdpe::prelude::*;
+
+Simulation::&lt;MyParticle&gt;::new()
+    .with_texture("noise", TextureConfig::noise(256, 42))
+    .with_fragment_shader(r#"
+        let n = textureSample(tex_noise, tex_noise_sampler, in.uv * 0.5 + 0.5);
+        return vec4&lt;f32&gt;(in.color * n.r, 1.0);
+    "#)
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="adding-textures"><a class="header" href="#adding-textures">Adding Textures</a></h2>
+<p>Use <code>.with_texture(name, config)</code> to add textures to your simulation:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_texture("gradient", TextureConfig::gradient(256, start, end))
+.with_texture("pattern", TextureConfig::from_file("assets/pattern.png"))
+<span class="boring">}</span></code></pre></pre>
+<p>Each texture you add becomes available in shaders as:</p>
+<ul>
+<li><code>tex_name</code> - the texture itself</li>
+<li><code>tex_name_sampler</code> - the sampler for that texture</li>
+</ul>
+<h2 id="creating-textures"><a class="header" href="#creating-textures">Creating Textures</a></h2>
+<h3 id="from-image-files"><a class="header" href="#from-image-files">From Image Files</a></h3>
+<p>Load PNG or JPEG images:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::from_file("assets/noise.png")
+TextureConfig::from_file("assets/sprite.jpg")
+<span class="boring">}</span></code></pre></pre>
+<h3 id="procedural-noise"><a class="header" href="#procedural-noise">Procedural Noise</a></h3>
+<p>Generate hash-based noise textures:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::noise(256, 42)  // 256x256, seed 42
+TextureConfig::noise(512, 0)   // 512x512, seed 0
+<span class="boring">}</span></code></pre></pre>
+<h3 id="color-gradients"><a class="header" href="#color-gradients">Color Gradients</a></h3>
+<p>Create horizontal gradient textures (great for color lookup tables):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::gradient(
+    256,                        // width
+    [0, 0, 0, 255],            // start color (RGBA)
+    [255, 200, 50, 255],       // end color (RGBA)
+)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="solid-colors"><a class="header" href="#solid-colors">Solid Colors</a></h3>
+<p>Single-pixel solid color textures:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::solid(255, 0, 0, 255)  // Red
+TextureConfig::solid(0, 255, 0, 128)  // Semi-transparent green
+<span class="boring">}</span></code></pre></pre>
+<h3 id="checkerboard-patterns"><a class="header" href="#checkerboard-patterns">Checkerboard Patterns</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::checkerboard(
+    64,                         // size (64x64)
+    8,                          // cell size
+    [255, 255, 255, 255],      // color 1
+    [0, 0, 0, 255],            // color 2
+)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="raw-rgba-data"><a class="header" href="#raw-rgba-data">Raw RGBA Data</a></h3>
+<p>Create textures from raw pixel data:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let data = vec![
+    255, 0, 0, 255,    // Red pixel
+    0, 255, 0, 255,    // Green pixel
+    0, 0, 255, 255,    // Blue pixel
+    255, 255, 0, 255,  // Yellow pixel
+];
+TextureConfig::from_rgba(data, 2, 2)  // 2x2 texture
+<span class="boring">}</span></code></pre></pre>
+<h2 id="texture-configuration"><a class="header" href="#texture-configuration">Texture Configuration</a></h2>
+<h3 id="filter-mode"><a class="header" href="#filter-mode">Filter Mode</a></h3>
+<p>Control how textures are sampled between pixels:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::from_file("sprite.png")
+    .with_filter(FilterMode::Nearest)  // Sharp pixels (pixel art)
+
+TextureConfig::noise(256, 0)
+    .with_filter(FilterMode::Linear)   // Smooth interpolation (default)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="address-mode"><a class="header" href="#address-mode">Address Mode</a></h3>
+<p>Control what happens when UV coordinates go outside 0-1:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::from_file("tile.png")
+    .with_address_mode(AddressMode::Repeat)       // Tile the texture
+    .with_address_mode(AddressMode::ClampToEdge)  // Use edge pixels (default)
+    .with_address_mode(AddressMode::MirrorRepeat) // Mirror at boundaries
+<span class="boring">}</span></code></pre></pre>
+<h2 id="sampling-in-shaders"><a class="header" href="#sampling-in-shaders">Sampling in Shaders</a></h2>
+<h3 id="in-fragment-shaders"><a class="header" href="#in-fragment-shaders">In Fragment Shaders</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    // Sample at particle UV (normalized quad coordinates)
+    let color = textureSample(tex_sprite, tex_sprite_sampler, in.uv * 0.5 + 0.5);
+
+    // Sample using custom coordinates
+    let noise = textureSample(tex_noise, tex_noise_sampler, in.world_pos.xy);
+
+    return vec4&lt;f32&gt;(color.rgb * noise.r, color.a);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="in-post-processing"><a class="header" href="#in-post-processing">In Post-Processing</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_visuals(|v| {
+    v.post_process(r#"
+        let scene_color = textureSample(scene, scene_sampler, in.uv);
+        let noise = textureSample(tex_noise, tex_noise_sampler, in.uv * 10.0);
+
+        // Film grain effect
+        let grain = (noise.r - 0.5) * 0.1;
+        return vec4&lt;f32&gt;(scene_color.rgb + grain, 1.0);
+    "#);
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="common-use-cases"><a class="header" href="#common-use-cases">Common Use Cases</a></h2>
+<h3 id="color-lookup-tables-luts"><a class="header" href="#color-lookup-tables-luts">Color Lookup Tables (LUTs)</a></h3>
+<p>Use gradients to map values to colors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Fire gradient: black -&gt; red -&gt; orange -&gt; yellow -&gt; white
+let fire_lut = TextureConfig::gradient(256, [0, 0, 0, 255], [255, 255, 200, 255]);
+
+.with_texture("fire_lut", fire_lut)
+.with_fragment_shader(r#"
+    // Use particle temperature/intensity to look up color
+    let intensity = length(in.velocity) / max_speed;
+    let color = textureSample(tex_fire_lut, tex_fire_lut_sampler, vec2&lt;f32&gt;(intensity, 0.5));
+    return color;
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="noise-based-effects"><a class="header" href="#noise-based-effects">Noise-Based Effects</a></h3>
+<p>Add visual variation:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_texture("noise", TextureConfig::noise(256, 42))
+.with_fragment_shader(r#"
+    let n = textureSample(tex_noise, tex_noise_sampler, in.uv * 0.5 + 0.5).r;
+
+    // Vary particle brightness
+    let brightness = 0.5 + n * 0.5;
+
+    // Vary particle edges
+    let dist = length(in.uv);
+    let edge = smoothstep(0.5 * n, 0.0, dist);
+
+    return vec4&lt;f32&gt;(in.color * brightness, edge);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="sprite-textures"><a class="header" href="#sprite-textures">Sprite Textures</a></h3>
+<p>Use image textures for particle appearance:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_texture("sprite",
+    TextureConfig::from_file("assets/particle.png")
+        .with_filter(FilterMode::Linear))
+.with_fragment_shader(r#"
+    let sprite = textureSample(tex_sprite, tex_sprite_sampler, in.uv * 0.5 + 0.5);
+    return vec4&lt;f32&gt;(sprite.rgb * in.color, sprite.a);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="complete-example-2"><a class="header" href="#complete-example-2">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+
+#[derive(Particle, Clone)]
+struct GlowParticle {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+}
+
+fn main() {
+    // Create textures
+    let noise = TextureConfig::noise(256, 42);
+    let gradient = TextureConfig::gradient(
+        256,
+        [50, 50, 200, 255],   // Blue
+        [255, 100, 50, 255],  // Orange
+    );
+
+    Simulation::&lt;GlowParticle&gt;::new()
+        .with_particle_count(10_000)
+        .with_texture("noise", noise)
+        .with_texture("gradient", gradient)
+        .with_fragment_shader(r#"
+            // Sample noise for variation
+            let n = textureSample(tex_noise, tex_noise_sampler, in.uv * 0.5 + 0.5).r;
+
+            // Use noise to look up gradient color
+            let color = textureSample(tex_gradient, tex_gradient_sampler, vec2&lt;f32&gt;(n, 0.5));
+
+            // Radial glow
+            let dist = length(in.uv);
+            let glow = 1.0 - smoothstep(0.0, 0.5, dist);
+
+            return vec4&lt;f32&gt;(color.rgb * glow, glow);
+        "#)
+        .with_visuals(|v| {
+            v.blend_mode(BlendMode::Additive);
+            v.background(Vec3::ZERO);
+        })
+        .run();
+}</code></pre></pre>
+<h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
+<ul>
+<li><a href="advanced/./fragment-shaders.html">Fragment Shaders</a> - Customize particle appearance</li>
+<li><a href="advanced/./post-processing.html">Post-Processing</a> - Screen-space effects</li>
+<li><a href="advanced/./custom-uniforms.html">Custom Uniforms</a> - Pass dynamic values to shaders</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="post-processing-1"><a class="header" href="#post-processing-1">Post-Processing</a></h1>
+<p>Post-processing applies screen-space effects to the rendered scene - things like bloom, vignette, chromatic aberration, and CRT scanlines.</p>
+<h2 id="basic-usage-3"><a class="header" href="#basic-usage-3">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_visuals(|v| {
+    v.post_process(r#"
+        let color = textureSample(scene, scene_sampler, in.uv);
+        // Modify color here
+        return color;
+    "#);
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="available-variables-2"><a class="header" href="#available-variables-2">Available Variables</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>in.uv</code></td><td><code>vec2&lt;f32&gt;</code></td><td>Screen coordinates (0 to 1, top-left is origin)</td></tr>
+<tr><td><code>scene</code></td><td><code>texture_2d&lt;f32&gt;</code></td><td>The rendered particle scene</td></tr>
+<tr><td><code>scene_sampler</code></td><td><code>sampler</code></td><td>Sampler for the scene texture</td></tr>
+<tr><td><code>uniforms.time</code></td><td><code>f32</code></td><td>Seconds since simulation start</td></tr>
+<tr><td><code>uniforms.delta_time</code></td><td><code>f32</code></td><td>Seconds since last frame</td></tr>
+<tr><td><code>uniforms.*</code></td><td>varies</td><td>Any custom uniforms defined via <code>.with_uniform()</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="how-it-works-3"><a class="header" href="#how-it-works-3">How It Works</a></h2>
+<p>After all particles are rendered to an offscreen texture, your post-process shader runs once per screen pixel. You sample the scene texture and output a modified color.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// The identity post-process (does nothing)
+v.post_process(r#"
+    return textureSample(scene, scene_sampler, in.uv);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="common-effects"><a class="header" href="#common-effects">Common Effects</a></h2>
+<h3 id="vignette"><a class="header" href="#vignette">Vignette</a></h3>
+<p>Darken the edges of the screen:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    let dist = length(in.uv - center);
+    let vignette = 1.0 - smoothstep(0.3, 0.9, dist);
+    return vec4&lt;f32&gt;(color.rgb * vignette, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="chromatic-aberration"><a class="header" href="#chromatic-aberration">Chromatic Aberration</a></h3>
+<p>Separate RGB channels for a lens distortion effect:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let aberration = 0.005;
+    let r = textureSample(scene, scene_sampler, in.uv + vec2&lt;f32&gt;(aberration, 0.0)).r;
+    let g = textureSample(scene, scene_sampler, in.uv).g;
+    let b = textureSample(scene, scene_sampler, in.uv - vec2&lt;f32&gt;(aberration, 0.0)).b;
+    return vec4&lt;f32&gt;(r, g, b, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="radial-chromatic-aberration"><a class="header" href="#radial-chromatic-aberration">Radial Chromatic Aberration</a></h3>
+<p>Aberration that increases toward edges:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    let uv_centered = in.uv - center;
+    let dist = length(uv_centered);
+    let dir = normalize(uv_centered);
+
+    let aberration = 0.003 + dist * 0.01;
+
+    let r = textureSample(scene, scene_sampler, in.uv + dir * aberration).r;
+    let g = textureSample(scene, scene_sampler, in.uv).g;
+    let b = textureSample(scene, scene_sampler, in.uv - dir * aberration).b;
+
+    return vec4&lt;f32&gt;(r, g, b, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="film-grain"><a class="header" href="#film-grain">Film Grain</a></h3>
+<p>Add noise for a film-like quality:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+
+    // Hash-based noise
+    let grain = fract(sin(dot(in.uv * 1000.0, vec2&lt;f32&gt;(12.9898, 78.233)) + uniforms.time) * 43758.5453);
+    let noise = (grain - 0.5) * 0.03;
+
+    return vec4&lt;f32&gt;(color.rgb + noise, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="crt-scanlines"><a class="header" href="#crt-scanlines">CRT Scanlines</a></h3>
+<p>Classic CRT monitor effect:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+
+    let scanline_freq = 400.0;
+    let scanline = sin(in.uv.y * scanline_freq) * 0.5 + 0.5;
+    let scanline_intensity = 0.15;
+
+    let result = color.rgb * (1.0 - scanline_intensity * (1.0 - scanline));
+    return vec4&lt;f32&gt;(result, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="barrel-distortion"><a class="header" href="#barrel-distortion">Barrel Distortion</a></h3>
+<p>CRT-style curved screen:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    let uv_centered = in.uv - center;
+    let dist_sq = dot(uv_centered, uv_centered);
+    let barrel = 0.1;
+    let distorted_uv = center + uv_centered * (1.0 + barrel * dist_sq);
+
+    let color = textureSample(scene, scene_sampler, distorted_uv);
+    return color;
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="bloom-simple"><a class="header" href="#bloom-simple">Bloom (Simple)</a></h3>
+<p>Boost bright areas:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+    let luminance = dot(color.rgb, vec3&lt;f32&gt;(0.299, 0.587, 0.114));
+    let bloom = smoothstep(0.4, 1.0, luminance) * 0.4;
+    return vec4&lt;f32&gt;(color.rgb + color.rgb * bloom, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="color-grading"><a class="header" href="#color-grading">Color Grading</a></h3>
+<p>Adjust color balance:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+
+    // Warm tint (boost red, reduce blue)
+    var graded = pow(color.rgb, vec3&lt;f32&gt;(0.95, 1.0, 1.05));
+
+    // Contrast boost
+    graded = (graded - 0.5) * 1.1 + 0.5;
+
+    // Saturation boost
+    let gray = dot(graded, vec3&lt;f32&gt;(0.3, 0.3, 0.3));
+    graded = mix(vec3&lt;f32&gt;(gray), graded, 1.3);
+
+    return vec4&lt;f32&gt;(clamp(graded, vec3&lt;f32&gt;(0.0), vec3&lt;f32&gt;(1.0)), 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="screen-flicker"><a class="header" href="#screen-flicker">Screen Flicker</a></h3>
+<p>Subtle brightness variation:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let color = textureSample(scene, scene_sampler, in.uv);
+    let flicker = sin(uniforms.time * 60.0) * 0.02 + 1.0;
+    return vec4&lt;f32&gt;(color.rgb * flicker, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="combining-effects"><a class="header" href="#combining-effects">Combining Effects</a></h2>
+<p>Chain multiple effects together:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    let center = vec2&lt;f32&gt;(0.5, 0.5);
+    var uv = in.uv;
+
+    // 1. Barrel distortion
+    let uv_centered = uv - center;
+    let dist_sq = dot(uv_centered, uv_centered);
+    uv = center + uv_centered * (1.0 + 0.1 * dist_sq);
+
+    // 2. Chromatic aberration
+    let aberr = 0.004;
+    let r = textureSample(scene, scene_sampler, uv + vec2&lt;f32&gt;(aberr, 0.0)).r;
+    let g = textureSample(scene, scene_sampler, uv).g;
+    let b = textureSample(scene, scene_sampler, uv - vec2&lt;f32&gt;(aberr, 0.0)).b;
+    var color = vec3&lt;f32&gt;(r, g, b);
+
+    // 3. Scanlines
+    let scanline = sin(in.uv.y * 400.0) * 0.5 + 0.5;
+    color *= 1.0 - 0.1 * (1.0 - scanline);
+
+    // 4. Vignette
+    let vignette_dist = length(in.uv - center);
+    let vignette = 1.0 - smoothstep(0.4, 1.0, vignette_dist);
+    color *= vignette;
+
+    // 5. Flicker
+    let flicker = sin(uniforms.time * 60.0) * 0.01 + 1.0;
+    color *= flicker;
+
+    return vec4&lt;f32&gt;(color, 1.0);
+"#);
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-tips-1"><a class="header" href="#performance-tips-1">Performance Tips</a></h2>
+<ul>
+<li>Post-processing runs once per screen pixel</li>
+<li>Texture samples are relatively expensive</li>
+<li>Multiple samples (for blur) can add up quickly</li>
+<li>Keep blur kernel sizes small (4-8 samples)</li>
+</ul>
+<h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
+<ul>
+<li><a href="advanced/../visuals.html">Visual Configuration</a> - Blend modes, trails, connections</li>
+<li><a href="advanced/./fragment-shaders.html">Fragment Shaders</a> - Per-particle appearance</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="custom-uniforms"><a class="header" href="#custom-uniforms">Custom Uniforms</a></h1>
 <p>Custom uniforms let you pass dynamic values from Rust to your shader code every frame. This enables interactive simulations that respond to time, mouse input, or any other runtime data.</p>
-<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h2>
-<p>Define uniforms with <code>.with_uniform()</code> and access them in <code>Rule::Custom</code>:</p>
+<p>Custom uniforms are available in <strong>all shader types</strong>:</p>
+<ul>
+<li><strong>Compute shaders</strong> (<code>Rule::Custom</code>) - for particle physics and behavior</li>
+<li><strong>Fragment shaders</strong> (<code>.with_fragment_shader()</code>) - for per-particle visuals</li>
+<li><strong>Post-process shaders</strong> (<code>.post_process()</code>) - for screen-space effects</li>
+</ul>
+<h2 id="basic-usage-4"><a class="header" href="#basic-usage-4">Basic Usage</a></h2>
+<p>Define uniforms with <code>.with_uniform()</code> and access them in any shader:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Simulation::&lt;Particle&gt;::new()
@@ -1329,7 +2044,7 @@ Rule::Custom(r#"
     ctx.set("strength", strength);
 })
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
+<h2 id="tips-2"><a class="header" href="#tips-2">Tips</a></h2>
 <ul>
 <li><strong>Initialize all uniforms</strong>: Always set initial values with <code>.with_uniform()</code> before using <code>.with_update()</code>.</li>
 <li><strong>Type suffixes</strong>: Use <code>1.0f32</code> not <code>1.0</code> to ensure correct type inference.</li>
@@ -1429,7 +2144,7 @@ Rule::Custom(r#"
     p.velocity += turbulence(p.position, uniforms.time, 1.5) * uniforms.delta_time;
 "#.into()))
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-2"><a class="header" href="#tips-2">Tips</a></h2>
+<h2 id="tips-3"><a class="header" href="#tips-3">Tips</a></h2>
 <ul>
 <li><strong>Parameter passing</strong>: Pass uniforms as function parameters rather than accessing them directly.</li>
 <li><strong>Return types</strong>: Always specify return types for WGSL functions.</li>
@@ -1501,7 +2216,7 @@ p.color = hsv_to_rgb(hue, 0.8, 1.0);
 let new_hue = hsv.x + 0.1;  // Shift hue
 p.color = hsv_to_rgb(new_hue, hsv.y, hsv.z);
 </code></pre>
-<h2 id="complete-example-1"><a class="header" href="#complete-example-1">Complete Example</a></h2>
+<h2 id="complete-example-3"><a class="header" href="#complete-example-3">Complete Example</a></h2>
 <pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
 
 #[derive(Particle, Clone)]
@@ -1563,7 +2278,7 @@ rdpe = { version = "0.1", features = ["egui"] }
 <p>Or run examples with:</p>
 <pre><code class="language-bash">cargo run --example egui_interactive --features egui
 </code></pre>
-<h2 id="basic-usage-2"><a class="header" href="#basic-usage-2">Basic Usage</a></h2>
+<h2 id="basic-usage-5"><a class="header" href="#basic-usage-5">Basic Usage</a></h2>
 <p>Use <code>.with_ui()</code> to add an egui callback:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1645,7 +2360,7 @@ fn main() {
        │    .with_ui()       │    .with_update()    │    Rule::Custom
        └─────────────────────┴──────────────────────┴─────────────────▶ Shader
 </code></pre>
-<h2 id="complete-example-2"><a class="header" href="#complete-example-2">Complete Example</a></h2>
+<h2 id="complete-example-4"><a class="header" href="#complete-example-4">Complete Example</a></h2>
 <p>Here's a full interactive simulation:</p>
 <pre><pre class="playground"><code class="language-rust">use rand::Rng;
 use rdpe::prelude::*;
@@ -1749,7 +2464,7 @@ fn main() {
         .with_rule(Rule::BounceWalls)
         .run();
 }</code></pre></pre>
-<h2 id="tips-3"><a class="header" href="#tips-3">Tips</a></h2>
+<h2 id="tips-4"><a class="header" href="#tips-4">Tips</a></h2>
 <h3 id="mutex-performance"><a class="header" href="#mutex-performance">Mutex Performance</a></h3>
 <p>Don't worry about <code>Mutex</code> overhead - both callbacks run on the main thread, so there's no contention. Lock/unlock is ~20ns, negligible at 60fps.</p>
 <h3 id="initial-values-must-match"><a class="header" href="#initial-values-must-match">Initial Values Must Match</a></h3>
@@ -1818,7 +2533,7 @@ cargo run --example plasma_storm --features egui
 cargo run --example fluid_galaxy --features egui
 cargo run --example murmuration --features egui
 </code></pre>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="performance-tips-1"><a class="header" href="#performance-tips-1">Performance Tips</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="performance-tips-2"><a class="header" href="#performance-tips-2">Performance Tips</a></h1>
 <p>RDPE runs on the GPU, but performance still varies based on configuration.</p>
 <h2 id="particle-count"><a class="header" href="#particle-count">Particle Count</a></h2>
 <p>The GPU handles particles in parallel, but there are limits:</p>
@@ -1831,7 +2546,7 @@ cargo run --example murmuration --features egui
 <tr><td>1,000,000+</td><td>Depends on GPU</td></tr>
 </tbody></table>
 </div>
-<h3 id="tips-4"><a class="header" href="#tips-4">Tips</a></h3>
+<h3 id="tips-5"><a class="header" href="#tips-5">Tips</a></h3>
 <ul>
 <li>Start with fewer particles, increase until performance drops</li>
 <li>Integrated GPUs handle fewer particles than discrete GPUs</li>
@@ -1972,47 +2687,126 @@ else if p.particle_type == 2u { ... }
 <li>Not thermal throttling</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="examples-2"><a class="header" href="#examples-2">Examples</a></h1>
-<p>RDPE includes many self-documented examples. Each example contains detailed comments explaining the concepts it demonstrates.</p>
+<p>RDPE includes many examples demonstrating different features. Each example contains detailed comments explaining the concepts it demonstrates.</p>
 <h2 id="running-examples"><a class="header" href="#running-examples">Running Examples</a></h2>
 <pre><code class="language-bash">cargo run --example &lt;name&gt;
+
+# With egui feature (for interactive examples)
+cargo run --example &lt;name&gt; --features egui
 </code></pre>
-<h2 id="multi-feature-examples"><a class="header" href="#multi-feature-examples">Multi-Feature Examples</a></h2>
-<p>These showcase combinations of rules and features:</p>
+<h2 id="core-examples"><a class="header" href="#core-examples">Core Examples</a></h2>
+<p>These showcase fundamental RDPE capabilities:</p>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>getting_started</code></td><td>Minimal RDPE simulation - start here!</td></tr>
-<tr><td><code>fountain</code></td><td>Cone emitter with gravity and lifecycle</td></tr>
 <tr><td><code>boids</code></td><td>Classic flocking algorithm (Separate + Cohere + Align)</td></tr>
-<tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between types</td></tr>
-<tr><td><code>infection</code></td><td>SIR model with Convert rule</td></tr>
-<tr><td><code>particle_life</code></td><td>Emergent behavior from interaction matrix</td></tr>
-<tr><td><code>attractor</code></td><td>Mouse-controlled attraction with custom uniforms</td></tr>
-<tr><td><code>orbiting_attractor</code></td><td>Time-animated orbiting attractor</td></tr>
-<tr><td><code>noisy</code></td><td>Flow field using built-in noise functions</td></tr>
-<tr><td><code>swirl</code></td><td>Custom WGSL functions for vortex effect</td></tr>
-<tr><td><code>explosion</code></td><td>Burst emitter + FadeOut + ShrinkOut + ColorOverLife</td></tr>
-<tr><td><code>rain</code></td><td>Box emitter for environmental particles</td></tr>
-<tr><td><code>rocket</code></td><td>Downward cone emitter for thrust</td></tr>
-<tr><td><code>sphere_shell</code></td><td>Sphere emitter for 3D distributions</td></tr>
+<tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between particle types</td></tr>
+<tr><td><code>infection</code></td><td>SIR epidemic model with type conversion</td></tr>
+<tr><td><code>inbox</code></td><td>Particle-to-particle communication system</td></tr>
+<tr><td><code>slime_mold</code></td><td>Physarum-inspired emergent patterns (requires <code>--features egui</code>)</td></tr>
 </tbody></table>
 </div>
 <h2 id="single-rule-examples"><a class="header" href="#single-rule-examples">Single-Rule Examples</a></h2>
 <p>Located in <code>examples/rules/</code>, each demonstrates one specific rule:</p>
-<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Rule</th></tr></thead><tbody>
-<tr><td><code>bounce_walls</code></td><td><code>Rule::BounceWalls</code></td></tr>
-<tr><td><code>vortex</code></td><td><code>Rule::Vortex</code></td></tr>
-<tr><td><code>turbulence</code></td><td><code>Rule::Turbulence</code></td></tr>
-<tr><td><code>orbit</code></td><td><code>Rule::Orbit</code></td></tr>
-<tr><td><code>curl</code></td><td><code>Rule::Curl</code></td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Rule</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>bounce_walls</code></td><td><code>BounceWalls</code></td><td>Particles reflecting off boundaries</td></tr>
+<tr><td><code>vortex</code></td><td><code>Vortex</code></td><td>Circular swirling motion</td></tr>
+<tr><td><code>turbulence</code></td><td><code>Turbulence</code></td><td>Chaotic flow field</td></tr>
+<tr><td><code>orbit</code></td><td><code>Orbit</code></td><td>Particles orbiting Y axis</td></tr>
+<tr><td><code>curl</code></td><td><code>Curl</code></td><td>Turbulent curl noise motion</td></tr>
+<tr><td><code>neighbors</code></td><td>Neighbor iteration</td><td>Demonstrates spatial queries</td></tr>
+<tr><td><code>nbody</code></td><td>N-body gravity</td><td>Gravitational attraction</td></tr>
+<tr><td><code>fluid</code></td><td>SPH-style</td><td>Fluid dynamics simulation</td></tr>
+<tr><td><code>magnetism</code></td><td>Magnetic poles</td><td>Attraction/repulsion fields</td></tr>
+<tr><td><code>point_gravity</code></td><td>Point attraction</td><td>Gravity toward a point</td></tr>
+<tr><td><code>spring</code></td><td>Spring force</td><td>Elastic forces toward origin</td></tr>
+<tr><td><code>oscillate</code></td><td>Oscillation</td><td>Harmonic motion</td></tr>
+</tbody></table>
+</div>
+<h2 id="visual-examples"><a class="header" href="#visual-examples">Visual Examples</a></h2>
+<p>Demonstrating rendering customization:</p>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>custom_shader</code></td><td>Custom fragment shader for particle appearance</td></tr>
+<tr><td><code>post_process</code></td><td>Screen-space post-processing (vignette, aberration, grain)</td></tr>
+</tbody></table>
+</div>
+<h2 id="interactive-examples"><a class="header" href="#interactive-examples">Interactive Examples</a></h2>
+<p>These require <code>--features egui</code>:</p>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>egui_controls</code></td><td>Basic egui integration</td></tr>
+<tr><td><code>egui_interactive</code></td><td>Full interactive parameter control</td></tr>
+<tr><td><code>slime_mold</code></td><td>Physarum simulation with controls</td></tr>
+<tr><td><code>plasma_storm</code></td><td>Interactive plasma effects</td></tr>
+<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation with controls</td></tr>
+<tr><td><code>murmuration</code></td><td>Starling flock patterns</td></tr>
+<tr><td><code>neon_assault_interactive</code></td><td>80s arcade with runtime controls</td></tr>
+</tbody></table>
+</div>
+<h2 id="experimental--creative"><a class="header" href="#experimental--creative">Experimental / Creative</a></h2>
+<p>Located in <code>examples/experimental/</code>, these push creative boundaries:</p>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>ethereal_web</code></td><td>Dreamlike visualization combining all features</td></tr>
+<tr><td><code>neon_assault</code></td><td>80s arcade aesthetic with CRT post-processing</td></tr>
+<tr><td><code>neon_assault_interactive</code></td><td>Neon assault with egui controls</td></tr>
+<tr><td><code>cosmic_jellyfish</code></td><td>Organic pulsing creature</td></tr>
+<tr><td><code>firefly_grove</code></td><td>Synchronized blinking lights</td></tr>
+<tr><td><code>black_hole</code></td><td>Gravitational lensing effect</td></tr>
+<tr><td><code>thought_storm</code></td><td>Neural activity visualization</td></tr>
+<tr><td><code>plasma_storm</code></td><td>Interactive plasma (egui)</td></tr>
+<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation (egui)</td></tr>
+<tr><td><code>murmuration</code></td><td>Starling flock patterns (egui)</td></tr>
 </tbody></table>
 </div>
 <h2 id="learning-path"><a class="header" href="#learning-path">Learning Path</a></h2>
-<ol>
-<li><strong>Start with basics</strong>: <code>getting_started</code>, <code>bounce_walls</code>, <code>fountain</code></li>
-<li><strong>Explore interactions</strong>: <code>boids</code>, <code>predator_prey</code>, <code>infection</code>, <code>particle_life</code></li>
-<li><strong>Custom shaders</strong>: <code>attractor</code>, <code>orbiting_attractor</code>, <code>noisy</code>, <code>swirl</code></li>
-<li><strong>Emitter types</strong>: <code>explosion</code>, <code>rain</code>, <code>rocket</code>, <code>sphere_shell</code></li>
-<li><strong>Force rules</strong>: <code>vortex</code>, <code>turbulence</code>, <code>orbit</code>, <code>curl</code></li>
-</ol>
+<h3 id="1-start-with-basics"><a class="header" href="#1-start-with-basics">1. Start with Basics</a></h3>
+<ul>
+<li><code>boids</code> - Core particle simulation</li>
+<li><code>bounce_walls</code> - Simple rule</li>
+<li><code>orbit</code> - Basic motion</li>
+</ul>
+<h3 id="2-explore-interactions"><a class="header" href="#2-explore-interactions">2. Explore Interactions</a></h3>
+<ul>
+<li><code>predator_prey</code> - Typed particles</li>
+<li><code>infection</code> - Type conversion</li>
+<li><code>neighbors</code> - Spatial queries</li>
+</ul>
+<h3 id="3-customize-visuals"><a class="header" href="#3-customize-visuals">3. Customize Visuals</a></h3>
+<ul>
+<li><code>custom_shader</code> - Fragment shaders</li>
+<li><code>post_process</code> - Screen effects</li>
+</ul>
+<h3 id="4-add-interactivity"><a class="header" href="#4-add-interactivity">4. Add Interactivity</a></h3>
+<ul>
+<li><code>egui_controls</code> - Basic UI</li>
+<li><code>slime_mold</code> - Full interactive example</li>
+</ul>
+<h3 id="5-go-creative"><a class="header" href="#5-go-creative">5. Go Creative</a></h3>
+<ul>
+<li><code>ethereal_web</code> - All features combined</li>
+<li><code>neon_assault</code> - Aesthetic deep dive</li>
+</ul>
+<h2 id="running-all-examples"><a class="header" href="#running-all-examples">Running All Examples</a></h2>
+<p>To quickly try everything:</p>
+<pre><code class="language-bash"># Core
+cargo run --example boids
+cargo run --example predator_prey
+cargo run --example infection
+
+# Rules
+cargo run --example orbit
+cargo run --example curl
+cargo run --example nbody
+
+# Visual
+cargo run --example custom_shader
+cargo run --example post_process
+
+# Creative
+cargo run --example ethereal_web
+cargo run --example neon_assault
+
+# Interactive (requires egui feature)
+cargo run --example slime_mold --features egui
+cargo run --example neon_assault_interactive --features egui
+</code></pre>
 <p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>
 
                     </main>

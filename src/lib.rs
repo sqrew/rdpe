@@ -107,6 +107,7 @@ pub mod rules;
 pub mod shader_utils;
 mod simulation;
 mod spatial;
+pub mod textures;
 mod uniforms;
 pub mod visuals;
 
@@ -117,6 +118,7 @@ pub use interactions::InteractionMatrix;
 pub use rdpe_derive::{Particle, ParticleType};
 pub use rules::{Falloff, Rule};
 pub use simulation::Simulation;
+pub use textures::{AddressMode, FilterMode, TextureConfig, TextureRegistry};
 pub use uniforms::{CustomUniforms, UniformValue, UpdateContext};
 pub use visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VisualConfig};
 
@@ -208,6 +210,7 @@ pub mod prelude {
     pub use crate::interactions::InteractionMatrix;
     pub use crate::rules::{Falloff, Rule};
     pub use crate::simulation::Simulation;
+    pub use crate::textures::{AddressMode, FilterMode, TextureConfig, TextureRegistry};
     pub use crate::uniforms::{CustomUniforms, UpdateContext};
     pub use crate::visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VisualConfig};
     pub use crate::ParticleTrait;

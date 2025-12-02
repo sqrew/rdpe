@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Rules - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Textures - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -12,34 +12,34 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "";
+            const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex.js";
+            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="../toc.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -106,7 +106,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
             </noscript>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -141,7 +141,7 @@
                     <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -175,222 +175,240 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="rules"><a class="header" href="#rules">Rules</a></h1>
-<p>Rules define how particles behave. They're applied every frame in the order you add them.</p>
-<h2 id="physics-rules"><a class="header" href="#physics-rules">Physics Rules</a></h2>
-<h3 id="gravity"><a class="header" href="#gravity">Gravity</a></h3>
-<p>Applies constant downward acceleration:</p>
+                        <h1 id="textures"><a class="header" href="#textures">Textures</a></h1>
+<p>RDPE supports custom textures that can be sampled in fragment shaders and post-processing effects. This enables color lookup tables, noise-based effects, sprites, and more.</p>
+<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Rule::Gravity(9.8)  // Strength in units/second²
-<span class="boring">}</span></code></pre></pre>
-<h3 id="drag"><a class="header" href="#drag">Drag</a></h3>
-<p>Slows particles over time (air resistance):</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Drag(2.0)  // 0.0 = no drag, higher = more friction
-<span class="boring">}</span></code></pre></pre>
-<h3 id="acceleration"><a class="header" href="#acceleration">Acceleration</a></h3>
-<p>Constant acceleration in any direction:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Acceleration(Vec3::new(0.0, -9.8, 0.0))
-<span class="boring">}</span></code></pre></pre>
-<h3 id="bouncewalls"><a class="header" href="#bouncewalls">BounceWalls</a></h3>
-<p>Particles bounce off the bounding box:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::BounceWalls
-<span class="boring">}</span></code></pre></pre>
-<p>The bounds are set with <code>.with_bounds(size)</code> - creates a cube from <code>-size</code> to <code>+size</code>.</p>
-<h3 id="wrapwalls"><a class="header" href="#wrapwalls">WrapWalls</a></h3>
-<p>Particles wrap around to the opposite side (toroidal topology):</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::WrapWalls
-<span class="boring">}</span></code></pre></pre>
-<p>Creates an infinite-feeling space where particles exiting one edge reappear on the other. Great for simulations where you don't want edge effects or want the arena to feel larger than it is.</p>
-<h2 id="force-rules"><a class="header" href="#force-rules">Force Rules</a></h2>
-<h3 id="attractto"><a class="header" href="#attractto">AttractTo</a></h3>
-<p>Pull particles toward a point:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::AttractTo {
-    point: Vec3::ZERO,
-    strength: 5.0,
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="repelfrom"><a class="header" href="#repelfrom">RepelFrom</a></h3>
-<p>Push particles away from a point:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::RepelFrom {
-    point: Vec3::new(0.0, 0.0, 0.0),
-    strength: 10.0,
-    radius: 0.5,  // Only affects particles within this distance
-}
-<span class="boring">}</span></code></pre></pre>
-<h2 id="movement-rules"><a class="header" href="#movement-rules">Movement Rules</a></h2>
-<h3 id="wander"><a class="header" href="#wander">Wander</a></h3>
-<p>Random wandering force for organic, natural movement:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Wander {
-    strength: 0.5,    // How strong the random force is
-    frequency: 100.0, // How fast direction changes (higher = jittery)
-}
-<span class="boring">}</span></code></pre></pre>
-<p>Each particle gets its own random direction based on a hash of its index and time.</p>
-<h3 id="speedlimit"><a class="header" href="#speedlimit">SpeedLimit</a></h3>
-<p>Clamp velocity to min/max bounds:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::SpeedLimit {
-    min: 0.1,  // Minimum speed (use 0.0 for no minimum)
-    max: 2.0,  // Maximum speed
-}
-<span class="boring">}</span></code></pre></pre>
-<p>Useful for keeping simulations stable and preventing runaway velocities.</p>
-<h2 id="neighbor-rules"><a class="header" href="#neighbor-rules">Neighbor Rules</a></h2>
-<p>These rules require spatial hashing (automatically enabled when used).</p>
-<h3 id="separate"><a class="header" href="#separate">Separate</a></h3>
-<p>Particles avoid crowding neighbors:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Separate {
-    radius: 0.1,      // Detection distance
-    strength: 2.0,    // Push force
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="cohere"><a class="header" href="#cohere">Cohere</a></h3>
-<p>Particles steer toward the center of nearby neighbors:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Cohere {
-    radius: 0.3,      // Detection distance
-    strength: 1.0,    // Pull force
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="align"><a class="header" href="#align">Align</a></h3>
-<p>Particles match velocity with neighbors:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Align {
-    radius: 0.2,      // Detection distance
-    strength: 1.5,    // Alignment force
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="collide"><a class="header" href="#collide">Collide</a></h3>
-<p>Particle-particle collision response:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Collide {
-    radius: 0.05,     // Collision distance
-    response: 0.5,    // Bounce strength
-}
-<span class="boring">}</span></code></pre></pre>
-<h2 id="type-rules"><a class="header" href="#type-rules">Type Rules</a></h2>
-<h3 id="typed"><a class="header" href="#typed">Typed</a></h3>
-<p>Wraps any neighbor rule with type filters:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Typed {
-    self_type: 0,           // This rule applies to type 0 particles
-    other_type: Some(1),    // Only interact with type 1 neighbors
-    rule: Box::new(Rule::Separate { radius: 0.1, strength: 5.0 }),
-}
-<span class="boring">}</span></code></pre></pre>
-<p>Use <code>other_type: None</code> to interact with all types.</p>
-<h3 id="convert"><a class="header" href="#convert">Convert</a></h3>
-<p>Changes particle type on contact:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Convert {
-    from_type: 0,       // Healthy
-    trigger_type: 1,    // Infected
-    to_type: 1,         // Becomes infected
-    radius: 0.08,       // Contact distance
-    probability: 0.1,   // 10% chance per neighbor per frame
-}
-<span class="boring">}</span></code></pre></pre>
-<h3 id="chase"><a class="header" href="#chase">Chase</a></h3>
-<p>Steer toward the nearest particle of a target type:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Chase {
-    self_type: 1,       // Predators (type 1)
-    target_type: 0,     // Chase prey (type 0)
-    radius: 0.3,        // How far can see targets
-    strength: 2.0,      // Steering force
-}
-<span class="boring">}</span></code></pre></pre>
-<p>Finds the closest visible target and steers toward it. Great for predator-prey dynamics.</p>
-<h3 id="evade"><a class="header" href="#evade">Evade</a></h3>
-<p>Steer away from the nearest particle of a threat type:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Evade {
-    self_type: 0,       // Prey (type 0)
-    threat_type: 1,     // Flee from predators (type 1)
-    radius: 0.2,        // How far can see threats
-    strength: 3.0,      // Steering force (often higher than chase)
-}
-<span class="boring">}</span></code></pre></pre>
-<p>Finds the closest visible threat and steers away. Combine with Chase for predator-prey simulations.</p>
-<h2 id="custom-rules"><a class="header" href="#custom-rules">Custom Rules</a></h2>
-<p>For anything not built-in, write raw WGSL:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Rule::Custom(r#"
-    // Access particle as 'p'
-    p.velocity.y += sin(uniforms.time) * 0.1;
+</span>use rdpe::prelude::*;
 
-    // Available variables:
-    // - p: current particle (read/write)
-    // - index: particle index (u32)
-    // - uniforms.time: elapsed time (f32)
-    // - uniforms.delta_time: frame time (f32)
-"#.to_string())
+Simulation::&lt;MyParticle&gt;::new()
+    .with_texture("noise", TextureConfig::noise(256, 42))
+    .with_fragment_shader(r#"
+        let n = textureSample(tex_noise, tex_noise_sampler, in.uv * 0.5 + 0.5);
+        return vec4&lt;f32&gt;(in.color * n.r, 1.0);
+    "#)
+    .run();
 <span class="boring">}</span></code></pre></pre>
-<h2 id="rule-order"><a class="header" href="#rule-order">Rule Order</a></h2>
-<p>Rules execute in the order added. A typical order:</p>
+<h2 id="adding-textures"><a class="header" href="#adding-textures">Adding Textures</a></h2>
+<p>Use <code>.with_texture(name, config)</code> to add textures to your simulation:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_rule(Rule::Gravity(9.8))           // 1. Apply forces
-.with_rule(Rule::Wander { ... })         // 2. Random movement
-.with_rule(Rule::Separate { ... })       // 3. Neighbor interactions
-.with_rule(Rule::Cohere { ... })
-.with_rule(Rule::SpeedLimit { ... })     // 4. Clamp velocity
-.with_rule(Rule::Drag(1.0))              // 5. Apply drag
-.with_rule(Rule::BounceWalls)            // 6. Boundary conditions
+</span>.with_texture("gradient", TextureConfig::gradient(256, start, end))
+.with_texture("pattern", TextureConfig::from_file("assets/pattern.png"))
 <span class="boring">}</span></code></pre></pre>
-<p>Velocity integration (<code>position += velocity * dt</code>) happens automatically after all rules.</p>
-<h2 id="spatial-configuration"><a class="header" href="#spatial-configuration">Spatial Configuration</a></h2>
-<p>For neighbor rules, configure the spatial hash:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>.with_spatial_config(cell_size, grid_resolution)
-<span class="boring">}</span></code></pre></pre>
+<p>Each texture you add becomes available in shaders as:</p>
 <ul>
-<li><code>cell_size</code> - Should be &gt;= your largest interaction radius</li>
-<li><code>grid_resolution</code> - Must be power of 2 (16, 32, 64, etc.)</li>
+<li><code>tex_name</code> - the texture itself</li>
+<li><code>tex_name_sampler</code> - the sampler for that texture</li>
 </ul>
-<p>Example: For a simulation with bounds of 1.0 and max interaction radius of 0.1:</p>
+<h2 id="creating-textures"><a class="header" href="#creating-textures">Creating Textures</a></h2>
+<h3 id="from-image-files"><a class="header" href="#from-image-files">From Image Files</a></h3>
+<p>Load PNG or JPEG images:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_bounds(1.0)
-.with_spatial_config(0.1, 32)  // 32³ cells covering -1.6 to +1.6
+</span>TextureConfig::from_file("assets/noise.png")
+TextureConfig::from_file("assets/sprite.jpg")
 <span class="boring">}</span></code></pre></pre>
+<h3 id="procedural-noise"><a class="header" href="#procedural-noise">Procedural Noise</a></h3>
+<p>Generate hash-based noise textures:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::noise(256, 42)  // 256x256, seed 42
+TextureConfig::noise(512, 0)   // 512x512, seed 0
+<span class="boring">}</span></code></pre></pre>
+<h3 id="color-gradients"><a class="header" href="#color-gradients">Color Gradients</a></h3>
+<p>Create horizontal gradient textures (great for color lookup tables):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::gradient(
+    256,                        // width
+    [0, 0, 0, 255],            // start color (RGBA)
+    [255, 200, 50, 255],       // end color (RGBA)
+)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="solid-colors"><a class="header" href="#solid-colors">Solid Colors</a></h3>
+<p>Single-pixel solid color textures:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::solid(255, 0, 0, 255)  // Red
+TextureConfig::solid(0, 255, 0, 128)  // Semi-transparent green
+<span class="boring">}</span></code></pre></pre>
+<h3 id="checkerboard-patterns"><a class="header" href="#checkerboard-patterns">Checkerboard Patterns</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::checkerboard(
+    64,                         // size (64x64)
+    8,                          // cell size
+    [255, 255, 255, 255],      // color 1
+    [0, 0, 0, 255],            // color 2
+)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="raw-rgba-data"><a class="header" href="#raw-rgba-data">Raw RGBA Data</a></h3>
+<p>Create textures from raw pixel data:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let data = vec![
+    255, 0, 0, 255,    // Red pixel
+    0, 255, 0, 255,    // Green pixel
+    0, 0, 255, 255,    // Blue pixel
+    255, 255, 0, 255,  // Yellow pixel
+];
+TextureConfig::from_rgba(data, 2, 2)  // 2x2 texture
+<span class="boring">}</span></code></pre></pre>
+<h2 id="texture-configuration"><a class="header" href="#texture-configuration">Texture Configuration</a></h2>
+<h3 id="filter-mode"><a class="header" href="#filter-mode">Filter Mode</a></h3>
+<p>Control how textures are sampled between pixels:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::from_file("sprite.png")
+    .with_filter(FilterMode::Nearest)  // Sharp pixels (pixel art)
+
+TextureConfig::noise(256, 0)
+    .with_filter(FilterMode::Linear)   // Smooth interpolation (default)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="address-mode"><a class="header" href="#address-mode">Address Mode</a></h3>
+<p>Control what happens when UV coordinates go outside 0-1:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>TextureConfig::from_file("tile.png")
+    .with_address_mode(AddressMode::Repeat)       // Tile the texture
+    .with_address_mode(AddressMode::ClampToEdge)  // Use edge pixels (default)
+    .with_address_mode(AddressMode::MirrorRepeat) // Mirror at boundaries
+<span class="boring">}</span></code></pre></pre>
+<h2 id="sampling-in-shaders"><a class="header" href="#sampling-in-shaders">Sampling in Shaders</a></h2>
+<h3 id="in-fragment-shaders"><a class="header" href="#in-fragment-shaders">In Fragment Shaders</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_fragment_shader(r#"
+    // Sample at particle UV (normalized quad coordinates)
+    let color = textureSample(tex_sprite, tex_sprite_sampler, in.uv * 0.5 + 0.5);
+
+    // Sample using custom coordinates
+    let noise = textureSample(tex_noise, tex_noise_sampler, in.world_pos.xy);
+
+    return vec4&lt;f32&gt;(color.rgb * noise.r, color.a);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="in-post-processing"><a class="header" href="#in-post-processing">In Post-Processing</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_visuals(|v| {
+    v.post_process(r#"
+        let scene_color = textureSample(scene, scene_sampler, in.uv);
+        let noise = textureSample(tex_noise, tex_noise_sampler, in.uv * 10.0);
+
+        // Film grain effect
+        let grain = (noise.r - 0.5) * 0.1;
+        return vec4&lt;f32&gt;(scene_color.rgb + grain, 1.0);
+    "#);
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="common-use-cases"><a class="header" href="#common-use-cases">Common Use Cases</a></h2>
+<h3 id="color-lookup-tables-luts"><a class="header" href="#color-lookup-tables-luts">Color Lookup Tables (LUTs)</a></h3>
+<p>Use gradients to map values to colors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Fire gradient: black -&gt; red -&gt; orange -&gt; yellow -&gt; white
+let fire_lut = TextureConfig::gradient(256, [0, 0, 0, 255], [255, 255, 200, 255]);
+
+.with_texture("fire_lut", fire_lut)
+.with_fragment_shader(r#"
+    // Use particle temperature/intensity to look up color
+    let intensity = length(in.velocity) / max_speed;
+    let color = textureSample(tex_fire_lut, tex_fire_lut_sampler, vec2&lt;f32&gt;(intensity, 0.5));
+    return color;
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="noise-based-effects"><a class="header" href="#noise-based-effects">Noise-Based Effects</a></h3>
+<p>Add visual variation:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_texture("noise", TextureConfig::noise(256, 42))
+.with_fragment_shader(r#"
+    let n = textureSample(tex_noise, tex_noise_sampler, in.uv * 0.5 + 0.5).r;
+
+    // Vary particle brightness
+    let brightness = 0.5 + n * 0.5;
+
+    // Vary particle edges
+    let dist = length(in.uv);
+    let edge = smoothstep(0.5 * n, 0.0, dist);
+
+    return vec4&lt;f32&gt;(in.color * brightness, edge);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="sprite-textures"><a class="header" href="#sprite-textures">Sprite Textures</a></h3>
+<p>Use image textures for particle appearance:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_texture("sprite",
+    TextureConfig::from_file("assets/particle.png")
+        .with_filter(FilterMode::Linear))
+.with_fragment_shader(r#"
+    let sprite = textureSample(tex_sprite, tex_sprite_sampler, in.uv * 0.5 + 0.5);
+    return vec4&lt;f32&gt;(sprite.rgb * in.color, sprite.a);
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+
+#[derive(Particle, Clone)]
+struct GlowParticle {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+}
+
+fn main() {
+    // Create textures
+    let noise = TextureConfig::noise(256, 42);
+    let gradient = TextureConfig::gradient(
+        256,
+        [50, 50, 200, 255],   // Blue
+        [255, 100, 50, 255],  // Orange
+    );
+
+    Simulation::&lt;GlowParticle&gt;::new()
+        .with_particle_count(10_000)
+        .with_texture("noise", noise)
+        .with_texture("gradient", gradient)
+        .with_fragment_shader(r#"
+            // Sample noise for variation
+            let n = textureSample(tex_noise, tex_noise_sampler, in.uv * 0.5 + 0.5).r;
+
+            // Use noise to look up gradient color
+            let color = textureSample(tex_gradient, tex_gradient_sampler, vec2&lt;f32&gt;(n, 0.5));
+
+            // Radial glow
+            let dist = length(in.uv);
+            let glow = 1.0 - smoothstep(0.0, 0.5, dist);
+
+            return vec4&lt;f32&gt;(color.rgb * glow, glow);
+        "#)
+        .with_visuals(|v| {
+            v.blend_mode(BlendMode::Additive);
+            v.background(Vec3::ZERO);
+        })
+        .run();
+}</code></pre></pre>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="./fragment-shaders.html">Fragment Shaders</a> - Customize particle appearance</li>
+<li><a href="./post-processing.html">Post-Processing</a> - Screen-space effects</li>
+<li><a href="./custom-uniforms.html">Custom Uniforms</a> - Pass dynamic values to shaders</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="particles.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../advanced/fragment-shaders.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="visuals.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../advanced/post-processing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -400,11 +418,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="particles.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../advanced/fragment-shaders.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="visuals.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../advanced/post-processing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -419,13 +437,13 @@
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

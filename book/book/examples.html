@@ -176,47 +176,126 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
-<p>RDPE includes many self-documented examples. Each example contains detailed comments explaining the concepts it demonstrates.</p>
+<p>RDPE includes many examples demonstrating different features. Each example contains detailed comments explaining the concepts it demonstrates.</p>
 <h2 id="running-examples"><a class="header" href="#running-examples">Running Examples</a></h2>
 <pre><code class="language-bash">cargo run --example &lt;name&gt;
+
+# With egui feature (for interactive examples)
+cargo run --example &lt;name&gt; --features egui
 </code></pre>
-<h2 id="multi-feature-examples"><a class="header" href="#multi-feature-examples">Multi-Feature Examples</a></h2>
-<p>These showcase combinations of rules and features:</p>
+<h2 id="core-examples"><a class="header" href="#core-examples">Core Examples</a></h2>
+<p>These showcase fundamental RDPE capabilities:</p>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>getting_started</code></td><td>Minimal RDPE simulation - start here!</td></tr>
-<tr><td><code>fountain</code></td><td>Cone emitter with gravity and lifecycle</td></tr>
 <tr><td><code>boids</code></td><td>Classic flocking algorithm (Separate + Cohere + Align)</td></tr>
-<tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between types</td></tr>
-<tr><td><code>infection</code></td><td>SIR model with Convert rule</td></tr>
-<tr><td><code>particle_life</code></td><td>Emergent behavior from interaction matrix</td></tr>
-<tr><td><code>attractor</code></td><td>Mouse-controlled attraction with custom uniforms</td></tr>
-<tr><td><code>orbiting_attractor</code></td><td>Time-animated orbiting attractor</td></tr>
-<tr><td><code>noisy</code></td><td>Flow field using built-in noise functions</td></tr>
-<tr><td><code>swirl</code></td><td>Custom WGSL functions for vortex effect</td></tr>
-<tr><td><code>explosion</code></td><td>Burst emitter + FadeOut + ShrinkOut + ColorOverLife</td></tr>
-<tr><td><code>rain</code></td><td>Box emitter for environmental particles</td></tr>
-<tr><td><code>rocket</code></td><td>Downward cone emitter for thrust</td></tr>
-<tr><td><code>sphere_shell</code></td><td>Sphere emitter for 3D distributions</td></tr>
+<tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between particle types</td></tr>
+<tr><td><code>infection</code></td><td>SIR epidemic model with type conversion</td></tr>
+<tr><td><code>inbox</code></td><td>Particle-to-particle communication system</td></tr>
+<tr><td><code>slime_mold</code></td><td>Physarum-inspired emergent patterns (requires <code>--features egui</code>)</td></tr>
 </tbody></table>
 </div>
 <h2 id="single-rule-examples"><a class="header" href="#single-rule-examples">Single-Rule Examples</a></h2>
 <p>Located in <code>examples/rules/</code>, each demonstrates one specific rule:</p>
-<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Rule</th></tr></thead><tbody>
-<tr><td><code>bounce_walls</code></td><td><code>Rule::BounceWalls</code></td></tr>
-<tr><td><code>vortex</code></td><td><code>Rule::Vortex</code></td></tr>
-<tr><td><code>turbulence</code></td><td><code>Rule::Turbulence</code></td></tr>
-<tr><td><code>orbit</code></td><td><code>Rule::Orbit</code></td></tr>
-<tr><td><code>curl</code></td><td><code>Rule::Curl</code></td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Rule</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>bounce_walls</code></td><td><code>BounceWalls</code></td><td>Particles reflecting off boundaries</td></tr>
+<tr><td><code>vortex</code></td><td><code>Vortex</code></td><td>Circular swirling motion</td></tr>
+<tr><td><code>turbulence</code></td><td><code>Turbulence</code></td><td>Chaotic flow field</td></tr>
+<tr><td><code>orbit</code></td><td><code>Orbit</code></td><td>Particles orbiting Y axis</td></tr>
+<tr><td><code>curl</code></td><td><code>Curl</code></td><td>Turbulent curl noise motion</td></tr>
+<tr><td><code>neighbors</code></td><td>Neighbor iteration</td><td>Demonstrates spatial queries</td></tr>
+<tr><td><code>nbody</code></td><td>N-body gravity</td><td>Gravitational attraction</td></tr>
+<tr><td><code>fluid</code></td><td>SPH-style</td><td>Fluid dynamics simulation</td></tr>
+<tr><td><code>magnetism</code></td><td>Magnetic poles</td><td>Attraction/repulsion fields</td></tr>
+<tr><td><code>point_gravity</code></td><td>Point attraction</td><td>Gravity toward a point</td></tr>
+<tr><td><code>spring</code></td><td>Spring force</td><td>Elastic forces toward origin</td></tr>
+<tr><td><code>oscillate</code></td><td>Oscillation</td><td>Harmonic motion</td></tr>
+</tbody></table>
+</div>
+<h2 id="visual-examples"><a class="header" href="#visual-examples">Visual Examples</a></h2>
+<p>Demonstrating rendering customization:</p>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>custom_shader</code></td><td>Custom fragment shader for particle appearance</td></tr>
+<tr><td><code>post_process</code></td><td>Screen-space post-processing (vignette, aberration, grain)</td></tr>
+</tbody></table>
+</div>
+<h2 id="interactive-examples"><a class="header" href="#interactive-examples">Interactive Examples</a></h2>
+<p>These require <code>--features egui</code>:</p>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>egui_controls</code></td><td>Basic egui integration</td></tr>
+<tr><td><code>egui_interactive</code></td><td>Full interactive parameter control</td></tr>
+<tr><td><code>slime_mold</code></td><td>Physarum simulation with controls</td></tr>
+<tr><td><code>plasma_storm</code></td><td>Interactive plasma effects</td></tr>
+<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation with controls</td></tr>
+<tr><td><code>murmuration</code></td><td>Starling flock patterns</td></tr>
+<tr><td><code>neon_assault_interactive</code></td><td>80s arcade with runtime controls</td></tr>
+</tbody></table>
+</div>
+<h2 id="experimental--creative"><a class="header" href="#experimental--creative">Experimental / Creative</a></h2>
+<p>Located in <code>examples/experimental/</code>, these push creative boundaries:</p>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>ethereal_web</code></td><td>Dreamlike visualization combining all features</td></tr>
+<tr><td><code>neon_assault</code></td><td>80s arcade aesthetic with CRT post-processing</td></tr>
+<tr><td><code>neon_assault_interactive</code></td><td>Neon assault with egui controls</td></tr>
+<tr><td><code>cosmic_jellyfish</code></td><td>Organic pulsing creature</td></tr>
+<tr><td><code>firefly_grove</code></td><td>Synchronized blinking lights</td></tr>
+<tr><td><code>black_hole</code></td><td>Gravitational lensing effect</td></tr>
+<tr><td><code>thought_storm</code></td><td>Neural activity visualization</td></tr>
+<tr><td><code>plasma_storm</code></td><td>Interactive plasma (egui)</td></tr>
+<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation (egui)</td></tr>
+<tr><td><code>murmuration</code></td><td>Starling flock patterns (egui)</td></tr>
 </tbody></table>
 </div>
 <h2 id="learning-path"><a class="header" href="#learning-path">Learning Path</a></h2>
-<ol>
-<li><strong>Start with basics</strong>: <code>getting_started</code>, <code>bounce_walls</code>, <code>fountain</code></li>
-<li><strong>Explore interactions</strong>: <code>boids</code>, <code>predator_prey</code>, <code>infection</code>, <code>particle_life</code></li>
-<li><strong>Custom shaders</strong>: <code>attractor</code>, <code>orbiting_attractor</code>, <code>noisy</code>, <code>swirl</code></li>
-<li><strong>Emitter types</strong>: <code>explosion</code>, <code>rain</code>, <code>rocket</code>, <code>sphere_shell</code></li>
-<li><strong>Force rules</strong>: <code>vortex</code>, <code>turbulence</code>, <code>orbit</code>, <code>curl</code></li>
-</ol>
+<h3 id="1-start-with-basics"><a class="header" href="#1-start-with-basics">1. Start with Basics</a></h3>
+<ul>
+<li><code>boids</code> - Core particle simulation</li>
+<li><code>bounce_walls</code> - Simple rule</li>
+<li><code>orbit</code> - Basic motion</li>
+</ul>
+<h3 id="2-explore-interactions"><a class="header" href="#2-explore-interactions">2. Explore Interactions</a></h3>
+<ul>
+<li><code>predator_prey</code> - Typed particles</li>
+<li><code>infection</code> - Type conversion</li>
+<li><code>neighbors</code> - Spatial queries</li>
+</ul>
+<h3 id="3-customize-visuals"><a class="header" href="#3-customize-visuals">3. Customize Visuals</a></h3>
+<ul>
+<li><code>custom_shader</code> - Fragment shaders</li>
+<li><code>post_process</code> - Screen effects</li>
+</ul>
+<h3 id="4-add-interactivity"><a class="header" href="#4-add-interactivity">4. Add Interactivity</a></h3>
+<ul>
+<li><code>egui_controls</code> - Basic UI</li>
+<li><code>slime_mold</code> - Full interactive example</li>
+</ul>
+<h3 id="5-go-creative"><a class="header" href="#5-go-creative">5. Go Creative</a></h3>
+<ul>
+<li><code>ethereal_web</code> - All features combined</li>
+<li><code>neon_assault</code> - Aesthetic deep dive</li>
+</ul>
+<h2 id="running-all-examples"><a class="header" href="#running-all-examples">Running All Examples</a></h2>
+<p>To quickly try everything:</p>
+<pre><code class="language-bash"># Core
+cargo run --example boids
+cargo run --example predator_prey
+cargo run --example infection
+
+# Rules
+cargo run --example orbit
+cargo run --example curl
+cargo run --example nbody
+
+# Visual
+cargo run --example custom_shader
+cargo run --example post_process
+
+# Creative
+cargo run --example ethereal_web
+cargo run --example neon_assault
+
+# Interactive (requires egui feature)
+cargo run --example slime_mold --features egui
+cargo run --example neon_assault_interactive --features egui
+</code></pre>
 <p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>
 
                     </main>

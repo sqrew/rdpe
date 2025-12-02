@@ -54,6 +54,7 @@ use crate::interactions::InteractionMatrix;
 use crate::rules::Rule;
 use crate::shader_utils;
 use crate::spatial::{SpatialConfig, MORTON_WGSL, NEIGHBOR_UTILS_WGSL};
+use crate::textures::{TextureConfig, TextureRegistry};
 use crate::uniforms::{CustomUniforms, UniformValue, UpdateContext};
 use crate::visuals::VisualConfig;
 use crate::ParticleTrait;
@@ -137,6 +138,8 @@ pub struct Simulation<P: ParticleTrait> {
     interaction_matrix: Option<InteractionMatrix>,
     /// Custom uniforms for user-defined shader data.
     custom_uniforms: CustomUniforms,
+    /// Custom textures for user-defined shader sampling.
+    texture_registry: TextureRegistry,
     /// Callback for updating custom uniforms each frame.
     update_callback: Option<UpdateCallback>,
     /// Custom WGSL functions that can be called from rules.
@@ -184,6 +187,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             emitters: Vec::new(),
             interaction_matrix: None,
             custom_uniforms: CustomUniforms::new(),
+            texture_registry: TextureRegistry::new(),
             update_callback: None,
             custom_functions: Vec::new(),
             spatial_config: SpatialConfig::default(),
@@ -611,6 +615,48 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// ```
     pub fn with_uniform<V: Into<UniformValue>>(mut self, name: &str, value: V) -> Self {
         self.custom_uniforms.set(name, value);
+        self
+    }
+
+    /// Add a custom texture for use in shaders.
+    ///
+    /// Custom textures are available in fragment, post-process, and compute shaders
+    /// as `tex_name` (the texture) and `tex_name_sampler` (the sampler).
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name used to access the texture in shaders (becomes `tex_name`)
+    /// * `config` - Texture configuration (can be a file path or `TextureConfig`)
+    ///
+    /// # Supported Input Types
+    ///
+    /// - `&str` or `String` - Path to an image file (PNG, JPEG, GIF, etc.)
+    /// - `TextureConfig` - Full control over texture data and sampling options
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rdpe::prelude::*;
+    ///
+    /// // Load from file
+    /// Simulation::<Particle>::new()
+    ///     .with_texture("noise", "assets/noise.png")
+    ///     .with_fragment_shader(r#"
+    ///         let n = textureSample(tex_noise, tex_noise_sampler, in.uv * 0.5 + 0.5);
+    ///         return vec4<f32>(in.color * n.r, 1.0);
+    ///     "#)
+    ///     .run();
+    ///
+    /// // Programmatic texture with options
+    /// Simulation::<Particle>::new()
+    ///     .with_texture("checker",
+    ///         TextureConfig::checkerboard(64, 8, [255,255,255,255], [0,0,0,255])
+    ///             .with_filter(FilterMode::Nearest)
+    ///             .with_address_mode(AddressMode::Repeat))
+    ///     .run();
+    /// ```
+    pub fn with_texture<C: Into<TextureConfig>>(mut self, name: &str, config: C) -> Self {
+        self.texture_registry.add(name, config);
         self
     }
 
@@ -1198,15 +1244,25 @@ fn sample_palette(t: f32) -> vec3<f32> {{
             ""
         };
 
+        // Generate custom uniform fields for render shader
+        let custom_uniform_fields = self.custom_uniforms.to_wgsl_fields();
+
+        // Generate texture declarations
+        let texture_declarations = self.texture_registry.to_wgsl_declarations(0);
+
         format!(
             r#"struct Uniforms {{
     view_proj: mat4x4<f32>,
     time: f32,
     delta_time: f32,
+{custom_uniform_fields}
 }};
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
+
+// Custom textures
+{texture_declarations}
 {palette_code}
 struct VertexOutput {{
     @builtin(position) clip_position: vec4<f32>,
@@ -1326,8 +1382,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         let compute_shader = self.generate_compute_shader();
         let render_shader = self.generate_render_shader();
 
-        // Calculate custom uniform buffer size
+        // Calculate custom uniform buffer size and generate WGSL fields
         let custom_uniform_size = self.custom_uniforms.byte_size();
+        let custom_uniform_fields = self.custom_uniforms.to_wgsl_fields();
 
         // Generate particles
         let particles: Vec<P> = (0..self.particle_count)
@@ -1345,10 +1402,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             alive_offset: P::ALIVE_OFFSET,
             scale_offset: P::SCALE_OFFSET,
             custom_uniform_size,
+            custom_uniform_fields,
             particle_size: self.particle_size,
             inbox_enabled: self.inbox_enabled,
             #[cfg(feature = "egui")]
             egui_enabled: self.egui_enabled,
+            texture_declarations: self.texture_registry.to_wgsl_declarations(0),
+            texture_registry: self.texture_registry,
         };
 
         let event_loop = EventLoop::new().unwrap();
@@ -1406,6 +1466,8 @@ pub(crate) struct SimConfig {
     pub scale_offset: u32,
     /// Size of custom uniforms in bytes.
     pub custom_uniform_size: usize,
+    /// WGSL struct fields for custom uniforms.
+    pub custom_uniform_fields: String,
     /// Base particle render size.
     pub particle_size: f32,
     /// Whether particle inbox communication is enabled.
@@ -1413,6 +1475,10 @@ pub(crate) struct SimConfig {
     /// Whether egui is enabled.
     #[cfg(feature = "egui")]
     pub egui_enabled: bool,
+    /// Custom textures for shaders.
+    pub texture_registry: TextureRegistry,
+    /// WGSL declarations for texture bindings.
+    pub texture_declarations: String,
 }
 
 struct App<P: ParticleTrait> {
@@ -1495,6 +1561,9 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 self.config.inbox_enabled,
                 self.config.visual_config.background_color,
                 self.config.visual_config.post_process_shader.as_deref(),
+                &self.config.custom_uniform_fields,
+                &self.config.texture_registry,
+                &self.config.texture_declarations,
                 #[cfg(feature = "egui")]
                 self.config.egui_enabled,
             )));

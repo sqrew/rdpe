@@ -1,52 +1,137 @@
 # Examples
 
-RDPE includes many self-documented examples. Each example contains detailed comments explaining the concepts it demonstrates.
+RDPE includes many examples demonstrating different features. Each example contains detailed comments explaining the concepts it demonstrates.
 
 ## Running Examples
 
 ```bash
 cargo run --example <name>
+
+# With egui feature (for interactive examples)
+cargo run --example <name> --features egui
 ```
 
-## Multi-Feature Examples
+## Core Examples
 
-These showcase combinations of rules and features:
+These showcase fundamental RDPE capabilities:
 
 | Example | Description |
 |---------|-------------|
-| `getting_started` | Minimal RDPE simulation - start here! |
-| `fountain` | Cone emitter with gravity and lifecycle |
 | `boids` | Classic flocking algorithm (Separate + Cohere + Align) |
-| `predator_prey` | Chase and evade behaviors between types |
-| `infection` | SIR model with Convert rule |
-| `particle_life` | Emergent behavior from interaction matrix |
-| `attractor` | Mouse-controlled attraction with custom uniforms |
-| `orbiting_attractor` | Time-animated orbiting attractor |
-| `noisy` | Flow field using built-in noise functions |
-| `swirl` | Custom WGSL functions for vortex effect |
-| `explosion` | Burst emitter + FadeOut + ShrinkOut + ColorOverLife |
-| `rain` | Box emitter for environmental particles |
-| `rocket` | Downward cone emitter for thrust |
-| `sphere_shell` | Sphere emitter for 3D distributions |
+| `predator_prey` | Chase and evade behaviors between particle types |
+| `infection` | SIR epidemic model with type conversion |
+| `inbox` | Particle-to-particle communication system |
+| `slime_mold` | Physarum-inspired emergent patterns (requires `--features egui`) |
 
 ## Single-Rule Examples
 
 Located in `examples/rules/`, each demonstrates one specific rule:
 
-| Example | Rule |
-|---------|------|
-| `bounce_walls` | `Rule::BounceWalls` |
-| `vortex` | `Rule::Vortex` |
-| `turbulence` | `Rule::Turbulence` |
-| `orbit` | `Rule::Orbit` |
-| `curl` | `Rule::Curl` |
+| Example | Rule | Description |
+|---------|------|-------------|
+| `bounce_walls` | `BounceWalls` | Particles reflecting off boundaries |
+| `vortex` | `Vortex` | Circular swirling motion |
+| `turbulence` | `Turbulence` | Chaotic flow field |
+| `orbit` | `Orbit` | Particles orbiting Y axis |
+| `curl` | `Curl` | Turbulent curl noise motion |
+| `neighbors` | Neighbor iteration | Demonstrates spatial queries |
+| `nbody` | N-body gravity | Gravitational attraction |
+| `fluid` | SPH-style | Fluid dynamics simulation |
+| `magnetism` | Magnetic poles | Attraction/repulsion fields |
+| `point_gravity` | Point attraction | Gravity toward a point |
+| `spring` | Spring force | Elastic forces toward origin |
+| `oscillate` | Oscillation | Harmonic motion |
+
+## Visual Examples
+
+Demonstrating rendering customization:
+
+| Example | Description |
+|---------|-------------|
+| `custom_shader` | Custom fragment shader for particle appearance |
+| `post_process` | Screen-space post-processing (vignette, aberration, grain) |
+
+## Interactive Examples
+
+These require `--features egui`:
+
+| Example | Description |
+|---------|-------------|
+| `egui_controls` | Basic egui integration |
+| `egui_interactive` | Full interactive parameter control |
+| `slime_mold` | Physarum simulation with controls |
+| `plasma_storm` | Interactive plasma effects |
+| `fluid_galaxy` | Galaxy formation with controls |
+| `murmuration` | Starling flock patterns |
+| `neon_assault_interactive` | 80s arcade with runtime controls |
+
+## Experimental / Creative
+
+Located in `examples/experimental/`, these push creative boundaries:
+
+| Example | Description |
+|---------|-------------|
+| `ethereal_web` | Dreamlike visualization combining all features |
+| `neon_assault` | 80s arcade aesthetic with CRT post-processing |
+| `neon_assault_interactive` | Neon assault with egui controls |
+| `cosmic_jellyfish` | Organic pulsing creature |
+| `firefly_grove` | Synchronized blinking lights |
+| `black_hole` | Gravitational lensing effect |
+| `thought_storm` | Neural activity visualization |
+| `plasma_storm` | Interactive plasma (egui) |
+| `fluid_galaxy` | Galaxy formation (egui) |
+| `murmuration` | Starling flock patterns (egui) |
 
 ## Learning Path
 
-1. **Start with basics**: `getting_started`, `bounce_walls`, `fountain`
-2. **Explore interactions**: `boids`, `predator_prey`, `infection`, `particle_life`
-3. **Custom shaders**: `attractor`, `orbiting_attractor`, `noisy`, `swirl`
-4. **Emitter types**: `explosion`, `rain`, `rocket`, `sphere_shell`
-5. **Force rules**: `vortex`, `turbulence`, `orbit`, `curl`
+### 1. Start with Basics
+- `boids` - Core particle simulation
+- `bounce_walls` - Simple rule
+- `orbit` - Basic motion
+
+### 2. Explore Interactions
+- `predator_prey` - Typed particles
+- `infection` - Type conversion
+- `neighbors` - Spatial queries
+
+### 3. Customize Visuals
+- `custom_shader` - Fragment shaders
+- `post_process` - Screen effects
+
+### 4. Add Interactivity
+- `egui_controls` - Basic UI
+- `slime_mold` - Full interactive example
+
+### 5. Go Creative
+- `ethereal_web` - All features combined
+- `neon_assault` - Aesthetic deep dive
+
+## Running All Examples
+
+To quickly try everything:
+
+```bash
+# Core
+cargo run --example boids
+cargo run --example predator_prey
+cargo run --example infection
+
+# Rules
+cargo run --example orbit
+cargo run --example curl
+cargo run --example nbody
+
+# Visual
+cargo run --example custom_shader
+cargo run --example post_process
+
+# Creative
+cargo run --example ethereal_web
+cargo run --example neon_assault
+
+# Interactive (requires egui feature)
+cargo run --example slime_mold --features egui
+cargo run --example neon_assault_interactive --features egui
+```
 
 Each example file contains `//!` doc comments explaining what it demonstrates and suggestions for experimentation.
