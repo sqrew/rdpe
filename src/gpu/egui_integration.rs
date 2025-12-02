@@ -18,7 +18,6 @@ pub struct EguiIntegration {
 pub struct EguiFrameOutput {
     pub paint_jobs: Vec<egui::ClippedPrimitive>,
     pub textures_delta: egui::TexturesDelta,
-    pub pixels_per_point: f32,
 }
 
 impl EguiIntegration {
@@ -31,11 +30,13 @@ impl EguiIntegration {
         let ctx = egui::Context::default();
 
         // Configure default style - dark theme that fits particle sims
-        let mut style = egui::Style::default();
-        style.visuals = egui::Visuals::dark();
-        style.visuals.window_shadow = egui::Shadow::NONE;
-        style.visuals.popup_shadow = egui::Shadow::NONE;
-        ctx.set_style(style);
+        let mut visuals = egui::Visuals::dark();
+        visuals.window_shadow = egui::Shadow::NONE;
+        visuals.popup_shadow = egui::Shadow::NONE;
+        ctx.set_style(egui::Style {
+            visuals,
+            ..Default::default()
+        });
 
         let state = egui_winit::State::new(
             ctx.clone(),
@@ -72,12 +73,12 @@ impl EguiIntegration {
     /// Begin a new frame. Call before your UI code.
     pub fn begin_frame(&mut self, window: &Window) {
         let raw_input = self.state.take_egui_input(window);
-        self.ctx.begin_frame(raw_input);
+        self.ctx.begin_pass(raw_input);
     }
 
     /// End the frame and get the output for rendering.
     pub fn end_frame(&mut self, window: &Window) -> EguiFrameOutput {
-        let full_output = self.ctx.end_frame();
+        let full_output = self.ctx.end_pass();
 
         // Handle platform output (clipboard, cursor, etc.)
         self.state.handle_platform_output(window, full_output.platform_output);
@@ -88,7 +89,6 @@ impl EguiIntegration {
         EguiFrameOutput {
             paint_jobs,
             textures_delta: full_output.textures_delta,
-            pixels_per_point: full_output.pixels_per_point,
         }
     }
 

@@ -55,6 +55,7 @@ use crate::rules::Rule;
 use crate::shader_utils;
 use crate::spatial::{SpatialConfig, MORTON_WGSL, NEIGHBOR_UTILS_WGSL};
 use crate::textures::{TextureConfig, TextureRegistry};
+use crate::time::Time;
 use crate::uniforms::{CustomUniforms, UniformValue, UpdateContext};
 use crate::visuals::VisualConfig;
 use crate::ParticleTrait;
@@ -69,6 +70,10 @@ use winit::{
 
 /// Type alias for the update callback to reduce complexity.
 type UpdateCallback = Box<dyn FnMut(&mut UpdateContext) + Send>;
+
+/// Type alias for the egui UI callback to reduce complexity.
+#[cfg(feature = "egui")]
+type UiCallback = Box<dyn FnMut(&egui::Context) + Send + 'static>;
 
 /// A particle simulation builder.
 ///
@@ -157,7 +162,7 @@ pub struct Simulation<P: ParticleTrait> {
     egui_enabled: bool,
     /// UI callback for egui (called each frame).
     #[cfg(feature = "egui")]
-    ui_callback: Option<Box<dyn FnMut(&egui::Context) + Send + 'static>>,
+    ui_callback: Option<UiCallback>,
     /// Phantom data for the particle type.
     _phantom: PhantomData<P>,
 }
@@ -1321,7 +1326,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 }}
 "#,
             particle_size = self.particle_size,
-            fragment_body = self.custom_fragment_shader.as_ref().map(|s| s.as_str()).unwrap_or(r#"    let dist = length(in.uv);
+            fragment_body = self.custom_fragment_shader.as_deref().unwrap_or(r#"    let dist = length(in.uv);
     if dist > 1.0 {
         discard;
     }
@@ -1492,11 +1497,9 @@ struct App<P: ParticleTrait> {
     custom_uniforms: CustomUniforms,
     update_callback: Option<UpdateCallback>,
     #[cfg(feature = "egui")]
-    ui_callback: Option<Box<dyn FnMut(&egui::Context) + Send + 'static>>,
-    // FPS tracking
-    frame_count: u32,
-    fps_update_time: std::time::Instant,
-    current_fps: f32,
+    ui_callback: Option<UiCallback>,
+    // Time tracking (single source of truth)
+    time: Time,
 }
 
 impl<P: ParticleTrait + 'static> App<P> {
@@ -1505,7 +1508,7 @@ impl<P: ParticleTrait + 'static> App<P> {
         config: SimConfig,
         custom_uniforms: CustomUniforms,
         update_callback: Option<UpdateCallback>,
-        #[cfg(feature = "egui")] ui_callback: Option<Box<dyn FnMut(&egui::Context) + Send + 'static>>,
+        #[cfg(feature = "egui")] ui_callback: Option<UiCallback>,
     ) -> Self {
         // Convert user particles to GPU format
         let gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
@@ -1522,9 +1525,7 @@ impl<P: ParticleTrait + 'static> App<P> {
             update_callback,
             #[cfg(feature = "egui")]
             ui_callback,
-            frame_count: 0,
-            fps_update_time: std::time::Instant::now(),
-            current_fps: 0.0,
+            time: Time::new(),
         }
     }
 }
@@ -1640,32 +1641,22 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::RedrawRequested => {
-                // FPS tracking
-                self.frame_count += 1;
-                let elapsed = self.fps_update_time.elapsed().as_secs_f32();
-                if elapsed >= 0.5 {
-                    self.current_fps = self.frame_count as f32 / elapsed;
-                    self.frame_count = 0;
-                    self.fps_update_time = std::time::Instant::now();
+                // Update time (single source of truth)
+                let (time, delta_time) = self.time.update();
 
-                    // Update window title with FPS
+                // Update window title with FPS (Time handles the update interval internally)
+                let fps = self.time.fps();
+                if fps > 0.0 {
                     if let Some(window) = &self.window {
                         let title = format!(
                             "RDPE | {} particles | {:.1} FPS | {:.2}ms",
                             self.config.particle_count,
-                            self.current_fps,
-                            1000.0 / self.current_fps.max(0.001)
+                            fps,
+                            1000.0 / fps.max(0.001)
                         );
                         window.set_title(&title);
                     }
                 }
-
-                // Get time info once
-                let (time, delta_time) = if let Some(gpu_state) = &mut self.gpu_state {
-                    gpu_state.get_time_info()
-                } else {
-                    (0.0, 0.0)
-                };
 
                 // Call update callback if present
                 if let Some(ref mut callback) = self.update_callback {

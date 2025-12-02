@@ -233,7 +233,7 @@ impl TextureConfig {
             for x in 0..size {
                 let cx = x / cell_size;
                 let cy = y / cell_size;
-                let color = if (cx + cy) % 2 == 0 { color1 } else { color2 };
+                let color = if (cx + cy).is_multiple_of(2) { color1 } else { color2 };
                 data.extend_from_slice(&color);
             }
         }

@@ -108,6 +108,7 @@ pub mod shader_utils;
 mod simulation;
 mod spatial;
 pub mod textures;
+pub mod time;
 mod uniforms;
 pub mod visuals;
 
@@ -211,6 +212,7 @@ pub mod prelude {
     pub use crate::rules::{Falloff, Rule};
     pub use crate::simulation::Simulation;
     pub use crate::textures::{AddressMode, FilterMode, TextureConfig, TextureRegistry};
+    pub use crate::time::Time;
     pub use crate::uniforms::{CustomUniforms, UpdateContext};
     pub use crate::visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VisualConfig};
     pub use crate::ParticleTrait;

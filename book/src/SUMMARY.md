@@ -4,16 +4,17 @@
 
 # Core Concepts
 
-- [Architecture Overview](./architecture.md)
-- [Particles](./particles.md)
-- [Rules](./rules.md)
-- [Visual Configuration](./visuals.md)
-- [Emitters](./emitters.md)
-- [Typed Interactions](./typed-interactions.md)
-- [Spatial Hashing](./spatial-hashing.md)
+- [Architecture Overview](./basics/architecture.md)
+- [Particles](./basics/particles.md)
+- [Rules](./basics/rules.md)
+- [Visual Configuration](./basics/visuals.md)
+- [Emitters](./basics/emitters.md)
+- [Typed Interactions](./basics/typed-interactions.md)
+- [Time](./basics/time.md)
 
 # Advanced
 
+- [Spatial Hashing](./advanced/spatial-hashing.md)
 - [Custom Rules](./advanced/custom-rules.md)
 - [Fragment Shaders](./advanced/fragment-shaders.md)
 - [Textures](./advanced/textures.md)
