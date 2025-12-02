@@ -1,0 +1,382 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Typed Interactions - RDPE - Reaction Diffusion Particle Engine</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="typed-interactions"><a class="header" href="#typed-interactions">Typed Interactions</a></h1>
+<p>Typed interactions let different particle types behave differently toward each other. This enables predator-prey dynamics, team-based systems, and state machines.</p>
+<h2 id="defining-particle-types"><a class="header" href="#defining-particle-types">Defining Particle Types</a></h2>
+<p>Use <code>#[derive(ParticleType)]</code> to create a type-safe enum:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
+enum Species {
+    Prey,      // = 0
+    Predator,  // = 1
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The derive macro automatically:</p>
+<ul>
+<li>Implements <code>Into&lt;u32&gt;</code> (variants get sequential IDs: 0, 1, 2...)</li>
+<li>Implements <code>From&lt;u32&gt;</code> (convert back from runtime values)</li>
+<li>Adds a <code>count()</code> method</li>
+</ul>
+<p>Every particle has a <code>particle_type: u32</code> field. If you don't add it, it's auto-added with value 0.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct Creature {
+    position: Vec3,
+    velocity: Vec3,
+    particle_type: u32,
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Set types in the spawner:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spawner(|i, count| {
+    let species = if i &lt; 50 { Species::Predator } else { Species::Prey };
+    Creature {
+        position: random_pos(),
+        velocity: Vec3::ZERO,
+        particle_type: species.into(),
+    }
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="chase--evade"><a class="header" href="#chase--evade">Chase &amp; Evade</a></h2>
+<p>For predator-prey dynamics, use the dedicated rules:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Predators chase nearest prey
+.with_rule(Rule::Chase {
+    self_type: Species::Predator.into(),
+    target_type: Species::Prey.into(),
+    radius: 0.4,
+    strength: 4.0,
+})
+
+// Prey evades nearest predator
+.with_rule(Rule::Evade {
+    self_type: Species::Prey.into(),
+    threat_type: Species::Predator.into(),
+    radius: 0.25,
+    strength: 6.0,
+})
+<span class="boring">}</span></code></pre></pre>
+<p>These find the <strong>nearest</strong> target/threat and steer directly toward/away from it.</p>
+<h2 id="the-typed-wrapper"><a class="header" href="#the-typed-wrapper">The Typed Wrapper</a></h2>
+<p><code>Rule::Typed</code> wraps any neighbor rule with type filters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Typed {
+    self_type: u32,           // Which particles this rule affects
+    other_type: Option&lt;u32&gt;,  // Which neighbors to consider
+    rule: Box&lt;Rule&gt;,          // The wrapped rule
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="example-prey-flocking"><a class="header" href="#example-prey-flocking">Example: Prey Flocking</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Prey flocks with other prey
+.with_rule(Rule::Typed {
+    self_type: Species::Prey.into(),
+    other_type: Some(Species::Prey.into()),
+    rule: Box::new(Rule::Cohere { radius: 0.15, strength: 1.0 }),
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="interacting-with-all-types"><a class="header" href="#interacting-with-all-types">Interacting with All Types</a></h3>
+<p>Use <code>other_type: None</code> to interact with everyone:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Everyone avoids collisions with everyone
+.with_rule(Rule::Typed {
+    self_type: Species::Prey.into(),
+    other_type: None,  // All types
+    rule: Box::new(Rule::Collide { radius: 0.05, response: 0.5 }),
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="type-conversion"><a class="header" href="#type-conversion">Type Conversion</a></h2>
+<p><code>Rule::Convert</code> changes particle types at runtime:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
+enum Health {
+    Healthy,
+    Infected,
+    Recovered,
+}
+
+// Healthy can become infected
+.with_rule(Rule::Convert {
+    from_type: Health::Healthy.into(),
+    trigger_type: Health::Infected.into(),
+    to_type: Health::Infected.into(),
+    radius: 0.08,
+    probability: 0.15,
+})
+
+// Infected eventually recover
+.with_rule(Rule::Convert {
+    from_type: Health::Infected.into(),
+    trigger_type: Health::Infected.into(),  // Self-trigger
+    to_type: Health::Recovered.into(),
+    radius: 0.01,
+    probability: 0.002,
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="updating-visuals"><a class="header" href="#updating-visuals">Updating Visuals</a></h2>
+<p>When types change, you'll want colors to update. Use <code>Rule::Custom</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    if p.particle_type == 0u {
+        p.color = vec3&lt;f32&gt;(0.1, 0.9, 0.2); // Green
+    } else if p.particle_type == 1u {
+        p.color = vec3&lt;f32&gt;(1.0, 0.1, 0.1); // Red
+    } else {
+        p.color = vec3&lt;f32&gt;(0.2, 0.4, 1.0); // Blue
+    }
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Types</th><th>Interactions</th></tr></thead><tbody>
+<tr><td>Predator-Prey</td><td>Predator, Prey</td><td>Chase/Evade rules</td></tr>
+<tr><td>Infection</td><td>Healthy, Infected, Recovered</td><td>Convert rules for spread</td></tr>
+<tr><td>Charged Particles</td><td>Positive, Negative</td><td>Opposites attract, same repels</td></tr>
+<tr><td>Food Chain</td><td>Plant, Herbivore, Carnivore</td><td>Each level hunts the one below</td></tr>
+<tr><td>Teams</td><td>Team A, Team B</td><td>Same team coheres, enemies separate</td></tr>
+<tr><td>Life Stages</td><td>Young, Adult, Elder</td><td>Convert based on age</td></tr>
+</tbody></table>
+</div>
+<h2 id="performance-note"><a class="header" href="#performance-note">Performance Note</a></h2>
+<p>Typed rules add conditional checks inside the neighbor loop. For best performance:</p>
+<ul>
+<li>Use fewer distinct types when possible</li>
+<li>Group related type interactions</li>
+<li>Consider if untyped rules with Custom code might be simpler</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="emitters.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="spatial-hashing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="emitters.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="spatial-hashing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

@@ -1,8 +1,39 @@
-//! Boids flocking simulation
+//! # Boids Flocking
 //!
-//! Tests neighbor-based rules: separation, cohesion, and alignment.
-//! Run with: cargo run --example boids
+//! Classic boids algorithm: separation, cohesion, and alignment create
+//! emergent flocking behavior from simple local rules.
+//!
+//! ## What This Demonstrates
+//!
+//! - `with_spatial_config()` - enables efficient neighbor queries
+//! - `Rule::Separate` - avoid crowding nearby boids
+//! - `Rule::Cohere` - steer toward average position of neighbors
+//! - `Rule::Align` - match velocity with nearby boids
+//!
+//! ## The Algorithm
+//!
+//! Each boid looks at neighbors within a radius and:
+//! 1. **Separate**: Steer away from very close neighbors (avoid collision)
+//! 2. **Cohere**: Steer toward the center of nearby neighbors (stay together)
+//! 3. **Align**: Match the average heading of neighbors (move as a group)
+//!
+//! ## Spatial Hashing
+//!
+//! `with_spatial_config(cell_size, resolution)` divides space into a grid
+//! for O(1) neighbor lookups instead of O(n²) brute force.
+//!
+//! - `cell_size` should be >= your largest interaction radius
+//! - `resolution` must be power of 2 (8, 16, 32, 64)
+//!
+//! ## Try This
+//!
+//! - Adjust strengths to change flocking tightness
+//! - Add `Rule::SpeedLimit { min: 0.1, max: 1.0 }` for more natural motion
+//! - Try `Rule::WrapWalls` instead of `BounceWalls` for toroidal space
+//!
+//! Run with: `cargo run --example boids`
 
+use rand::Rng;
 use rdpe::prelude::*;
 
 #[derive(Particle, Clone)]
@@ -11,36 +42,53 @@ struct Boid {
     velocity: Vec3,
 }
 
-fn random(seed: u32) -> f32 {
-    let x = seed.wrapping_mul(1103515245).wrapping_add(12345);
-    let x = x ^ (x >> 16);
-    (x & 0x7FFFFFFF) as f32 / 0x7FFFFFFF as f32
-}
-
 fn main() {
+    let mut rng = rand::thread_rng();
+
+    // Pre-generate random positions and velocities
+    let particles: Vec<(Vec3, Vec3)> = (0..5_000)
+        .map(|_| {
+            let pos = Vec3::new(
+                rng.gen_range(-0.75..0.75),
+                rng.gen_range(-0.75..0.75),
+                rng.gen_range(-0.75..0.75),
+            );
+            let vel = Vec3::new(
+                rng.gen_range(-0.25..0.25),
+                rng.gen_range(-0.25..0.25),
+                rng.gen_range(-0.25..0.25),
+            );
+            (pos, vel)
+        })
+        .collect();
+
     Simulation::<Boid>::new()
         .with_particle_count(5_000)
         .with_bounds(1.0)
-        .with_spatial_config(0.1, 32) // Cell size 0.1, 32^3 grid
-        .with_spawner(|i, _count| {
-            let x = (random(i * 3) - 0.5) * 1.5;
-            let y = (random(i * 3 + 1) - 0.5) * 1.5;
-            let z = (random(i * 3 + 2) - 0.5) * 1.5;
-
-            let vx = (random(i * 3 + 100) - 0.5) * 0.5;
-            let vy = (random(i * 3 + 101) - 0.5) * 0.5;
-            let vz = (random(i * 3 + 102) - 0.5) * 0.5;
-
+        // Enable spatial hashing for neighbor queries
+        // Cell size 0.1 (>= largest radius), 32^3 grid
+        .with_spatial_config(0.1, 32)
+        .with_spawner(move |i, _count| {
+            let (pos, vel) = particles[i as usize];
             Boid {
-                position: Vec3::new(x, y, z),
-                velocity: Vec3::new(vx, vy, vz),
+                position: pos,
+                velocity: vel,
             }
         })
-        // Neighbor-based flocking rules
-        .with_rule(Rule::Separate { radius: 0.05, strength: 5.0 })
-        .with_rule(Rule::Cohere { radius: 0.15, strength: 1.0 })
-        .with_rule(Rule::Align { radius: 0.1, strength: 2.0 })
-        // Basic physics
+        // The three classic boids rules
+        .with_rule(Rule::Separate {
+            radius: 0.05,   // Avoid neighbors within this distance
+            strength: 5.0,  // How hard to push away
+        })
+        .with_rule(Rule::Cohere {
+            radius: 0.15,   // Consider neighbors within this distance
+            strength: 1.0,  // How strongly to move toward center
+        })
+        .with_rule(Rule::Align {
+            radius: 0.1,    // Match velocity of neighbors within this distance
+            strength: 2.0,  // How quickly to align
+        })
+        // Keep things stable
         .with_rule(Rule::Drag(2.0))
         .with_rule(Rule::BounceWalls)
         .run();

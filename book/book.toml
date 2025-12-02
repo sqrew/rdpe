@@ -1,0 +1,5 @@
+[book]
+authors = ["sqrew"]
+language = "en"
+src = "src"
+title = "RDPE - Reaction Diffusion Particle Engine"

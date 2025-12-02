@@ -16,6 +16,55 @@ wgpu = "27.0.1"
 winit = "0.30.12"
 rdpe-derive = { path = "rdpe-derive" }
 
+[dev-dependencies]
+rand = "0.8"
+
 [[example]]
-name = "bouncing"
-path = "examples/bouncing.rs"
+name = "boids"
+path = "examples/boids.rs"
+
+[[example]]
+name = "predator_prey"
+path = "examples/predator_prey.rs"
+
+[[example]]
+name = "infection"
+path = "examples/infection.rs"
+
+# Single-rule examples in rules/ subdirectory
+[[example]]
+name = "bounce_walls"
+path = "examples/rules/bounce_walls.rs"
+
+[[example]]
+name = "vortex"
+path = "examples/rules/vortex.rs"
+
+[[example]]
+name = "curl"
+path = "examples/rules/curl.rs"
+
+[[example]]
+name = "turbulence"
+path = "examples/rules/turbulence.rs"
+
+[[example]]
+name = "orbit"
+path = "examples/rules/orbit.rs"
+
+# Experimental/creative examples in experimental/ subdirectory
+[[example]]
+name = "cosmic_jellyfish"
+path = "examples/experimental/cosmic_jellyfish.rs"
+
+[[example]]
+name = "firefly_grove"
+path = "examples/experimental/firefly_grove.rs"
+
+[[example]]
+name = "black_hole"
+path = "examples/experimental/black_hole.rs"
+
+[[example]]
+name = "thought_storm"
+path = "examples/experimental/thought_storm.rs"

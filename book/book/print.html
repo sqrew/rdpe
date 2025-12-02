@@ -1,0 +1,1786 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>RDPE - Reaction Diffusion Particle Engine</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p><strong>RDPE</strong> (Reaction Diffusion Particle Engine) is a GPU-accelerated particle simulation library for Rust. It lets you create complex, interactive particle systems with minimal code by combining simple, composable rules.</p>
+<h2 id="what-can-you-build"><a class="header" href="#what-can-you-build">What Can You Build?</a></h2>
+<p>With RDPE, you can simulate:</p>
+<ul>
+<li><strong>Flocking behaviors</strong> - Birds, fish, or any swarming entities</li>
+<li><strong>Predator-prey ecosystems</strong> - Multiple species with different interactions</li>
+<li><strong>Disease spread</strong> - SIR models and infection dynamics</li>
+<li><strong>Physics simulations</strong> - Bouncing particles, gravity, collisions</li>
+<li><strong>Chemical reactions</strong> - Particles that transform on contact</li>
+<li><strong>Crowd dynamics</strong> - Social forces and emergent behavior</li>
+</ul>
+<h2 id="quick-example"><a class="header" href="#quick-example">Quick Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+
+#[derive(Particle, Clone)]
+struct MyParticle {
+    position: Vec3,
+    velocity: Vec3,
+}
+
+fn main() {
+    Simulation::&lt;MyParticle&gt;::new()
+        .with_particle_count(10_000)
+        .with_bounds(1.0)
+        .with_spawner(|i, count| MyParticle {
+            position: random_position(),
+            velocity: random_velocity(),
+        })
+        .with_rule(Rule::Gravity(9.8))
+        .with_rule(Rule::BounceWalls)
+        .run();
+}</code></pre></pre>
+<h2 id="design-philosophy"><a class="header" href="#design-philosophy">Design Philosophy</a></h2>
+<p>RDPE is built around three core ideas:</p>
+<ol>
+<li>
+<p><strong>Declarative Rules</strong> - Describe <em>what</em> should happen, not <em>how</em>. Rules like <code>Gravity</code>, <code>Separate</code>, and <code>Cohere</code> express intent clearly.</p>
+</li>
+<li>
+<p><strong>Composability</strong> - Rules combine freely. Wrap any rule with <code>Typed</code> for type-specific interactions. Use <code>Custom</code> for anything not built-in.</p>
+</li>
+<li>
+<p><strong>GPU-First</strong> - Everything runs on the GPU. The derive macro handles memory layout. Spatial hashing accelerates neighbor queries. You write Rust; RDPE generates WGSL shaders.</p>
+</li>
+</ol>
+<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
+<ol>
+<li>You define a particle struct with <code>#[derive(Particle)]</code></li>
+<li>You configure a simulation with rules</li>
+<li>RDPE generates GPU shaders from your rules</li>
+<li>The simulation runs entirely on the GPU</li>
+<li>A window displays the particles in real-time</li>
+</ol>
+<p>The next chapters explain each component in detail.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h1>
+<p>RDPE consists of several layers that work together to run particle simulations on the GPU.</p>
+<h2 id="high-level-flow"><a class="header" href="#high-level-flow">High-Level Flow</a></h2>
+<pre><code>┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  User's Rust    │────▶│  RDPE Compile    │────▶│   GPU Runtime   │
+│  Particle +     │     │  Time (Derive    │     │   (wgpu +       │
+│  Rules          │     │  Macro + Shader  │     │   Compute       │
+│                 │     │  Generation)     │     │   Shaders)      │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+</code></pre>
+<h2 id="components"><a class="header" href="#components">Components</a></h2>
+<h3 id="1-particle-derive-macro-rdpe-derive"><a class="header" href="#1-particle-derive-macro-rdpe-derive">1. Particle Derive Macro (<code>rdpe-derive</code>)</a></h3>
+<p>The <code>#[derive(Particle)]</code> macro transforms your Rust struct into GPU-compatible form:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct Boid {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    tint: Vec3,
+    particle_type: u32,
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The macro generates:</p>
+<ul>
+<li>A <code>BoidGpu</code> struct with correct memory alignment (16-byte for GPU arrays)</li>
+<li>WGSL struct definition for shaders</li>
+<li><code>to_gpu()</code> conversion method</li>
+<li>Tracking of color field offset for rendering</li>
+</ul>
+<h3 id="2-simulation-builder-simulationrs"><a class="header" href="#2-simulation-builder-simulationrs">2. Simulation Builder (<code>simulation.rs</code>)</a></h3>
+<p>The builder pattern configures everything before running:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_particle_count(10_000)
+    .with_bounds(1.0)
+    .with_spatial_config(0.1, 32)  // For neighbor rules
+    .with_spawner(|i, count| { ... })
+    .with_rule(Rule::Gravity(9.8))
+    .with_rule(Rule::Separate { radius: 0.1, strength: 1.0 })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>At <code>.run()</code> time, the simulation:</p>
+<ol>
+<li>Detects if any rules need neighbor queries</li>
+<li>Generates appropriate WGSL compute shaders</li>
+<li>Generates render shaders</li>
+<li>Spawns particles using your spawner function</li>
+<li>Initializes GPU state and runs the event loop</li>
+</ol>
+<h3 id="3-shader-generation"><a class="header" href="#3-shader-generation">3. Shader Generation</a></h3>
+<p>Rules are translated to WGSL code:</p>
+<div class="table-wrapper"><table><thead><tr><th>Rule</th><th>Generated Code Location</th></tr></thead><tbody>
+<tr><td><code>Gravity</code>, <code>Drag</code>, <code>BounceWalls</code></td><td>Main compute shader body</td></tr>
+<tr><td><code>Separate</code>, <code>Cohere</code>, <code>Collide</code></td><td>Inside neighbor iteration loop</td></tr>
+<tr><td><code>Typed { ... }</code></td><td>Wraps inner rule with type checks</td></tr>
+<tr><td><code>Convert { ... }</code></td><td>Inside neighbor loop with probability</td></tr>
+<tr><td><code>Custom(code)</code></td><td>Inserted directly</td></tr>
+</tbody></table>
+</div>
+<h3 id="4-gpu-state-gpumodrs"><a class="header" href="#4-gpu-state-gpumodrs">4. GPU State (<code>gpu/mod.rs</code>)</a></h3>
+<p>Manages all GPU resources:</p>
+<ul>
+<li><strong>Particle buffer</strong> - Storage buffer with all particle data</li>
+<li><strong>Uniform buffer</strong> - View/projection matrix, time, delta_time</li>
+<li><strong>Compute pipeline</strong> - Runs the physics simulation</li>
+<li><strong>Render pipeline</strong> - Draws particles as billboarded quads</li>
+<li><strong>Spatial hashing</strong> (optional) - For neighbor queries</li>
+</ul>
+<h3 id="5-spatial-hashing-gpuspatial_gpurs"><a class="header" href="#5-spatial-hashing-gpuspatial_gpurs">5. Spatial Hashing (<code>gpu/spatial_gpu.rs</code>)</a></h3>
+<p>When rules need neighbor queries, RDPE builds a spatial hash:</p>
+<ol>
+<li><strong>Morton encoding</strong> - Convert 3D position to 1D cell index</li>
+<li><strong>Radix sort</strong> - Sort particles by cell (8 passes, 4 bits each)</li>
+<li><strong>Cell table</strong> - Build start/end indices for each cell</li>
+</ol>
+<p>This accelerates neighbor queries from O(n²) to O(n × average_neighbors).</p>
+<h2 id="render-loop"><a class="header" href="#render-loop">Render Loop</a></h2>
+<p>Each frame:</p>
+<pre><code>1. Update uniforms (time, camera)
+2. [If spatial] Run spatial hashing passes
+3. Run compute shader (apply all rules, integrate velocity)
+4. Run render pass (draw particles as quads)
+5. Present frame
+</code></pre>
+<h2 id="memory-layout"><a class="header" href="#memory-layout">Memory Layout</a></h2>
+<p>The derive macro ensures GPU-compatible alignment:</p>
+<pre><code>Particle in Rust          GPU Memory (16-byte aligned)
+┌──────────────┐          ┌──────────────────────────────┐
+│ position: Vec3│    ──▶   │ position: vec3&lt;f32&gt; (12 bytes)│
+│ velocity: Vec3│          │ _pad0: f32 (4 bytes)          │
+└──────────────┘          │ velocity: vec3&lt;f32&gt; (12 bytes)│
+                          │ particle_type: u32 (4 bytes)  │
+                          └──────────────────────────────┘
+</code></pre>
+<p>The <code>particle_type</code> field is auto-added if not present.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="particles"><a class="header" href="#particles">Particles</a></h1>
+<p>Particles are the core data structure in RDPE. Each particle has properties that the GPU updates every frame based on the rules you define.</p>
+<h2 id="defining-a-particle"><a class="header" href="#defining-a-particle">Defining a Particle</a></h2>
+<p>Use the <code>#[derive(Particle)]</code> macro:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use rdpe::prelude::*;
+
+#[derive(Particle, Clone)]
+struct MyParticle {
+    position: Vec3,  // Required: where the particle is
+    velocity: Vec3,  // Required: how it's moving
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The <code>position</code> and <code>velocity</code> fields are required by convention - rules expect them.</p>
+<h2 id="supported-field-types"><a class="header" href="#supported-field-types">Supported Field Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Rust Type</th><th>WGSL Type</th><th>Size</th><th>Alignment</th></tr></thead><tbody>
+<tr><td><code>Vec3</code></td><td><code>vec3&lt;f32&gt;</code></td><td>12 bytes</td><td>16 bytes</td></tr>
+<tr><td><code>Vec2</code></td><td><code>vec2&lt;f32&gt;</code></td><td>8 bytes</td><td>8 bytes</td></tr>
+<tr><td><code>Vec4</code></td><td><code>vec4&lt;f32&gt;</code></td><td>16 bytes</td><td>16 bytes</td></tr>
+<tr><td><code>f32</code></td><td><code>f32</code></td><td>4 bytes</td><td>4 bytes</td></tr>
+<tr><td><code>u32</code></td><td><code>u32</code></td><td>4 bytes</td><td>4 bytes</td></tr>
+<tr><td><code>i32</code></td><td><code>i32</code></td><td>4 bytes</td><td>4 bytes</td></tr>
+</tbody></table>
+</div>
+<p>The macro automatically adds padding for GPU alignment.</p>
+<h2 id="optional-fields"><a class="header" href="#optional-fields">Optional Fields</a></h2>
+<h3 id="color"><a class="header" href="#color">Color</a></h3>
+<p>Mark a <code>Vec3</code> field with <code>#[color]</code> to control particle color:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct ColoredParticle {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,  // RGB, 0.0-1.0
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Without a color field, particles are colored based on their position.</p>
+<h3 id="particle-type"><a class="header" href="#particle-type">Particle Type</a></h3>
+<p>Add <code>particle_type: u32</code> for type-based interactions:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct TypedParticle {
+    position: Vec3,
+    velocity: Vec3,
+    particle_type: u32,  // 0, 1, 2, etc.
+}
+<span class="boring">}</span></code></pre></pre>
+<p>If you don't add this field, it's auto-added with a default value of 0.</p>
+<h2 id="spawning-particles"><a class="header" href="#spawning-particles">Spawning Particles</a></h2>
+<p>The spawner function is called once per particle at initialization:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spawner(|index, total_count| {
+    MyParticle {
+        position: Vec3::new(
+            rand::random::&lt;f32&gt;() - 0.5,
+            rand::random::&lt;f32&gt;() - 0.5,
+            rand::random::&lt;f32&gt;() - 0.5,
+        ),
+        velocity: Vec3::ZERO,
+    }
+})
+<span class="boring">}</span></code></pre></pre>
+<p>Parameters:</p>
+<ul>
+<li><code>index</code> - Particle index (0 to count-1)</li>
+<li><code>total_count</code> - Total number of particles</li>
+</ul>
+<p>Since the spawner must be <code>Send + Sync</code>, pre-generate random values:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut rng = rand::thread_rng();
+let positions: Vec&lt;Vec3&gt; = (0..count)
+    .map(|_| Vec3::new(rng.gen_range(-1.0..1.0), ...))
+    .collect();
+
+.with_spawner(move |i, _| MyParticle {
+    position: positions[i as usize],
+    velocity: Vec3::ZERO,
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="custom-fields"><a class="header" href="#custom-fields">Custom Fields</a></h2>
+<p>You can add any supported fields for custom logic:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct GameParticle {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+    particle_type: u32,
+    health: f32,      // Custom field
+    age: f32,         // Custom field
+    team_id: u32,     // Custom field
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Access these in <code>Rule::Custom</code> WGSL code:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    p.age += uniforms.delta_time;
+    if p.health &lt; 0.0 {
+        p.particle_type = 2u; // Dead
+    }
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="rules"><a class="header" href="#rules">Rules</a></h1>
+<p>Rules define how particles behave. They're applied every frame in the order you add them.</p>
+<h2 id="physics-rules"><a class="header" href="#physics-rules">Physics Rules</a></h2>
+<h3 id="gravity"><a class="header" href="#gravity">Gravity</a></h3>
+<p>Applies constant downward acceleration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Gravity(9.8)  // Strength in units/second²
+<span class="boring">}</span></code></pre></pre>
+<h3 id="drag"><a class="header" href="#drag">Drag</a></h3>
+<p>Slows particles over time (air resistance):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Drag(2.0)  // 0.0 = no drag, higher = more friction
+<span class="boring">}</span></code></pre></pre>
+<h3 id="acceleration"><a class="header" href="#acceleration">Acceleration</a></h3>
+<p>Constant acceleration in any direction:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Acceleration(Vec3::new(0.0, -9.8, 0.0))
+<span class="boring">}</span></code></pre></pre>
+<h3 id="bouncewalls"><a class="header" href="#bouncewalls">BounceWalls</a></h3>
+<p>Particles bounce off the bounding box:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::BounceWalls
+<span class="boring">}</span></code></pre></pre>
+<p>The bounds are set with <code>.with_bounds(size)</code> - creates a cube from <code>-size</code> to <code>+size</code>.</p>
+<h3 id="wrapwalls"><a class="header" href="#wrapwalls">WrapWalls</a></h3>
+<p>Particles wrap around to the opposite side (toroidal topology):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::WrapWalls
+<span class="boring">}</span></code></pre></pre>
+<p>Creates an infinite-feeling space where particles exiting one edge reappear on the other. Great for simulations where you don't want edge effects or want the arena to feel larger than it is.</p>
+<h2 id="force-rules"><a class="header" href="#force-rules">Force Rules</a></h2>
+<h3 id="attractto"><a class="header" href="#attractto">AttractTo</a></h3>
+<p>Pull particles toward a point:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::AttractTo {
+    point: Vec3::ZERO,
+    strength: 5.0,
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="repelfrom"><a class="header" href="#repelfrom">RepelFrom</a></h3>
+<p>Push particles away from a point:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::RepelFrom {
+    point: Vec3::new(0.0, 0.0, 0.0),
+    strength: 10.0,
+    radius: 0.5,  // Only affects particles within this distance
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="movement-rules"><a class="header" href="#movement-rules">Movement Rules</a></h2>
+<h3 id="wander"><a class="header" href="#wander">Wander</a></h3>
+<p>Random wandering force for organic, natural movement:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Wander {
+    strength: 0.5,    // How strong the random force is
+    frequency: 100.0, // How fast direction changes (higher = jittery)
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Each particle gets its own random direction based on a hash of its index and time.</p>
+<h3 id="speedlimit"><a class="header" href="#speedlimit">SpeedLimit</a></h3>
+<p>Clamp velocity to min/max bounds:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::SpeedLimit {
+    min: 0.1,  // Minimum speed (use 0.0 for no minimum)
+    max: 2.0,  // Maximum speed
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Useful for keeping simulations stable and preventing runaway velocities.</p>
+<h2 id="neighbor-rules"><a class="header" href="#neighbor-rules">Neighbor Rules</a></h2>
+<p>These rules require spatial hashing (automatically enabled when used).</p>
+<h3 id="separate"><a class="header" href="#separate">Separate</a></h3>
+<p>Particles avoid crowding neighbors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Separate {
+    radius: 0.1,      // Detection distance
+    strength: 2.0,    // Push force
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="cohere"><a class="header" href="#cohere">Cohere</a></h3>
+<p>Particles steer toward the center of nearby neighbors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Cohere {
+    radius: 0.3,      // Detection distance
+    strength: 1.0,    // Pull force
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="align"><a class="header" href="#align">Align</a></h3>
+<p>Particles match velocity with neighbors:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Align {
+    radius: 0.2,      // Detection distance
+    strength: 1.5,    // Alignment force
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="collide"><a class="header" href="#collide">Collide</a></h3>
+<p>Particle-particle collision response:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Collide {
+    radius: 0.05,     // Collision distance
+    response: 0.5,    // Bounce strength
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="type-rules"><a class="header" href="#type-rules">Type Rules</a></h2>
+<h3 id="typed"><a class="header" href="#typed">Typed</a></h3>
+<p>Wraps any neighbor rule with type filters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Typed {
+    self_type: 0,           // This rule applies to type 0 particles
+    other_type: Some(1),    // Only interact with type 1 neighbors
+    rule: Box::new(Rule::Separate { radius: 0.1, strength: 5.0 }),
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Use <code>other_type: None</code> to interact with all types.</p>
+<h3 id="convert"><a class="header" href="#convert">Convert</a></h3>
+<p>Changes particle type on contact:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Convert {
+    from_type: 0,       // Healthy
+    trigger_type: 1,    // Infected
+    to_type: 1,         // Becomes infected
+    radius: 0.08,       // Contact distance
+    probability: 0.1,   // 10% chance per neighbor per frame
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="chase"><a class="header" href="#chase">Chase</a></h3>
+<p>Steer toward the nearest particle of a target type:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Chase {
+    self_type: 1,       // Predators (type 1)
+    target_type: 0,     // Chase prey (type 0)
+    radius: 0.3,        // How far can see targets
+    strength: 2.0,      // Steering force
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Finds the closest visible target and steers toward it. Great for predator-prey dynamics.</p>
+<h3 id="evade"><a class="header" href="#evade">Evade</a></h3>
+<p>Steer away from the nearest particle of a threat type:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Evade {
+    self_type: 0,       // Prey (type 0)
+    threat_type: 1,     // Flee from predators (type 1)
+    radius: 0.2,        // How far can see threats
+    strength: 3.0,      // Steering force (often higher than chase)
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Finds the closest visible threat and steers away. Combine with Chase for predator-prey simulations.</p>
+<h2 id="custom-rules"><a class="header" href="#custom-rules">Custom Rules</a></h2>
+<p>For anything not built-in, write raw WGSL:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Custom(r#"
+    // Access particle as 'p'
+    p.velocity.y += sin(uniforms.time) * 0.1;
+
+    // Available variables:
+    // - p: current particle (read/write)
+    // - index: particle index (u32)
+    // - uniforms.time: elapsed time (f32)
+    // - uniforms.delta_time: frame time (f32)
+"#.to_string())
+<span class="boring">}</span></code></pre></pre>
+<h2 id="rule-order"><a class="header" href="#rule-order">Rule Order</a></h2>
+<p>Rules execute in the order added. A typical order:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Gravity(9.8))           // 1. Apply forces
+.with_rule(Rule::Wander { ... })         // 2. Random movement
+.with_rule(Rule::Separate { ... })       // 3. Neighbor interactions
+.with_rule(Rule::Cohere { ... })
+.with_rule(Rule::SpeedLimit { ... })     // 4. Clamp velocity
+.with_rule(Rule::Drag(1.0))              // 5. Apply drag
+.with_rule(Rule::BounceWalls)            // 6. Boundary conditions
+<span class="boring">}</span></code></pre></pre>
+<p>Velocity integration (<code>position += velocity * dt</code>) happens automatically after all rules.</p>
+<h2 id="spatial-configuration"><a class="header" href="#spatial-configuration">Spatial Configuration</a></h2>
+<p>For neighbor rules, configure the spatial hash:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spatial_config(cell_size, grid_resolution)
+<span class="boring">}</span></code></pre></pre>
+<ul>
+<li><code>cell_size</code> - Should be &gt;= your largest interaction radius</li>
+<li><code>grid_resolution</code> - Must be power of 2 (16, 32, 64, etc.)</li>
+</ul>
+<p>Example: For a simulation with bounds of 1.0 and max interaction radius of 0.1:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_bounds(1.0)
+.with_spatial_config(0.1, 32)  // 32³ cells covering -1.6 to +1.6
+<span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="emitters"><a class="header" href="#emitters">Emitters</a></h1>
+<p>Emitters continuously spawn new particles into the simulation, replacing dead particles. They enable effects like fountains, explosions, rain, and any other continuous particle generation.</p>
+<h2 id="how-emitters-work"><a class="header" href="#how-emitters-work">How Emitters Work</a></h2>
+<p>When you add an emitter, RDPE:</p>
+<ol>
+<li>Finds dead particles (those with <code>alive == 0</code>)</li>
+<li>Respawns them based on the emitter's rate and position</li>
+<li>Sets initial velocity according to the emitter type</li>
+</ol>
+<p>Emitters work best with lifecycle rules:</p>
+<ul>
+<li><code>Rule::Age</code> - increments particle age each frame</li>
+<li><code>Rule::Lifetime(seconds)</code> - kills particles after a duration</li>
+</ul>
+<h2 id="emitter-types"><a class="header" href="#emitter-types">Emitter Types</a></h2>
+<h3 id="point"><a class="header" href="#point">Point</a></h3>
+<p>Emits particles from a single point in all directions.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_emitter(Emitter::Point {
+    position: Vec3::ZERO,
+    rate: 500.0,    // particles per second
+    speed: 1.0,     // initial speed (0 = random)
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="burst"><a class="header" href="#burst">Burst</a></h3>
+<p>One-time explosion of particles. Fires once at simulation start.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_emitter(Emitter::Burst {
+    position: Vec3::new(0.0, 0.5, 0.0),
+    count: 1000,    // total particles to spawn
+    speed: 3.0,     // outward speed
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="cone"><a class="header" href="#cone">Cone</a></h3>
+<p>Directional emission in a cone shape. Great for fountains, jets, and thrusters.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_emitter(Emitter::Cone {
+    position: Vec3::new(0.0, -0.5, 0.0),
+    direction: Vec3::Y,     // points up
+    speed: 2.5,
+    spread: 0.3,            // cone half-angle in radians
+    rate: 800.0,
+})
+<span class="boring">}</span></code></pre></pre>
+<p>The <code>spread</code> parameter controls the cone width:</p>
+<ul>
+<li><code>0.0</code> = laser beam (no spread)</li>
+<li><code>0.3</code> = tight cone (~17 degrees)</li>
+<li><code>PI/4</code> = 45-degree cone</li>
+<li><code>PI/2</code> = hemisphere</li>
+</ul>
+<h3 id="sphere"><a class="header" href="#sphere">Sphere</a></h3>
+<p>Spawns particles on a sphere surface, moving outward (or inward).</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_emitter(Emitter::Sphere {
+    center: Vec3::ZERO,
+    radius: 0.5,
+    speed: 1.0,     // positive = outward, negative = inward
+    rate: 1000.0,
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="box"><a class="header" href="#box">Box</a></h3>
+<p>Spawns particles at random positions within a box volume.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_emitter(Emitter::Box {
+    min: Vec3::new(-1.0, 1.0, -1.0),
+    max: Vec3::new(1.0, 1.2, 1.0),
+    velocity: Vec3::new(0.0, -2.0, 0.0),  // falling rain
+    rate: 2000.0,
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<p>Here's a fountain that continuously emits particles:</p>
+<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+
+#[derive(Particle, Clone)]
+struct Drop {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+}
+
+fn main() {
+    Simulation::&lt;Drop&gt;::new()
+        .with_particle_count(10_000)
+        .with_bounds(2.0)
+        // Start all particles dead - emitter will spawn them
+        .with_spawner(|_, _| Drop {
+            position: Vec3::ZERO,
+            velocity: Vec3::ZERO,
+            color: Vec3::new(0.3, 0.6, 1.0),
+        })
+        // Cone emitter shooting upward
+        .with_emitter(Emitter::Cone {
+            position: Vec3::new(0.0, -0.8, 0.0),
+            direction: Vec3::Y,
+            speed: 3.0,
+            spread: 0.2,
+            rate: 1000.0,
+        })
+        // Lifecycle management
+        .with_rule(Rule::Age)
+        .with_rule(Rule::Lifetime(2.0))
+        // Physics
+        .with_rule(Rule::Gravity(4.0))
+        .with_rule(Rule::Drag(0.3))
+        .with_rule(Rule::BounceWalls)
+        .run();
+}</code></pre></pre>
+<h2 id="multiple-emitters"><a class="header" href="#multiple-emitters">Multiple Emitters</a></h2>
+<p>You can add multiple emitters to create complex effects:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Twin fountains
+.with_emitter(Emitter::Cone {
+    position: Vec3::new(-0.5, -0.8, 0.0),
+    direction: Vec3::Y,
+    speed: 3.0,
+    spread: 0.15,
+    rate: 500.0,
+})
+.with_emitter(Emitter::Cone {
+    position: Vec3::new(0.5, -0.8, 0.0),
+    direction: Vec3::Y,
+    speed: 3.0,
+    spread: 0.15,
+    rate: 500.0,
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
+<ul>
+<li><strong>Rate tuning</strong>: Match your rate to particle count and lifetime. If <code>rate * lifetime &gt; particle_count</code>, you'll run out of dead particles to respawn.</li>
+<li><strong>Dead start</strong>: When using emitters, initialize particles as dead in your spawner (they'll be spawned by the emitter).</li>
+<li><strong>Burst timing</strong>: Burst emitters fire at <code>time &lt; 0.1</code>, so they work immediately on startup.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="typed-interactions"><a class="header" href="#typed-interactions">Typed Interactions</a></h1>
+<p>Typed interactions let different particle types behave differently toward each other. This enables predator-prey dynamics, team-based systems, and state machines.</p>
+<h2 id="defining-particle-types"><a class="header" href="#defining-particle-types">Defining Particle Types</a></h2>
+<p>Use <code>#[derive(ParticleType)]</code> to create a type-safe enum:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
+enum Species {
+    Prey,      // = 0
+    Predator,  // = 1
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The derive macro automatically:</p>
+<ul>
+<li>Implements <code>Into&lt;u32&gt;</code> (variants get sequential IDs: 0, 1, 2...)</li>
+<li>Implements <code>From&lt;u32&gt;</code> (convert back from runtime values)</li>
+<li>Adds a <code>count()</code> method</li>
+</ul>
+<p>Every particle has a <code>particle_type: u32</code> field. If you don't add it, it's auto-added with value 0.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct Creature {
+    position: Vec3,
+    velocity: Vec3,
+    particle_type: u32,
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Set types in the spawner:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spawner(|i, count| {
+    let species = if i &lt; 50 { Species::Predator } else { Species::Prey };
+    Creature {
+        position: random_pos(),
+        velocity: Vec3::ZERO,
+        particle_type: species.into(),
+    }
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="chase--evade"><a class="header" href="#chase--evade">Chase &amp; Evade</a></h2>
+<p>For predator-prey dynamics, use the dedicated rules:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Predators chase nearest prey
+.with_rule(Rule::Chase {
+    self_type: Species::Predator.into(),
+    target_type: Species::Prey.into(),
+    radius: 0.4,
+    strength: 4.0,
+})
+
+// Prey evades nearest predator
+.with_rule(Rule::Evade {
+    self_type: Species::Prey.into(),
+    threat_type: Species::Predator.into(),
+    radius: 0.25,
+    strength: 6.0,
+})
+<span class="boring">}</span></code></pre></pre>
+<p>These find the <strong>nearest</strong> target/threat and steer directly toward/away from it.</p>
+<h2 id="the-typed-wrapper"><a class="header" href="#the-typed-wrapper">The Typed Wrapper</a></h2>
+<p><code>Rule::Typed</code> wraps any neighbor rule with type filters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Typed {
+    self_type: u32,           // Which particles this rule affects
+    other_type: Option&lt;u32&gt;,  // Which neighbors to consider
+    rule: Box&lt;Rule&gt;,          // The wrapped rule
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="example-prey-flocking"><a class="header" href="#example-prey-flocking">Example: Prey Flocking</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Prey flocks with other prey
+.with_rule(Rule::Typed {
+    self_type: Species::Prey.into(),
+    other_type: Some(Species::Prey.into()),
+    rule: Box::new(Rule::Cohere { radius: 0.15, strength: 1.0 }),
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="interacting-with-all-types"><a class="header" href="#interacting-with-all-types">Interacting with All Types</a></h3>
+<p>Use <code>other_type: None</code> to interact with everyone:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Everyone avoids collisions with everyone
+.with_rule(Rule::Typed {
+    self_type: Species::Prey.into(),
+    other_type: None,  // All types
+    rule: Box::new(Rule::Collide { radius: 0.05, response: 0.5 }),
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="type-conversion"><a class="header" href="#type-conversion">Type Conversion</a></h2>
+<p><code>Rule::Convert</code> changes particle types at runtime:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
+enum Health {
+    Healthy,
+    Infected,
+    Recovered,
+}
+
+// Healthy can become infected
+.with_rule(Rule::Convert {
+    from_type: Health::Healthy.into(),
+    trigger_type: Health::Infected.into(),
+    to_type: Health::Infected.into(),
+    radius: 0.08,
+    probability: 0.15,
+})
+
+// Infected eventually recover
+.with_rule(Rule::Convert {
+    from_type: Health::Infected.into(),
+    trigger_type: Health::Infected.into(),  // Self-trigger
+    to_type: Health::Recovered.into(),
+    radius: 0.01,
+    probability: 0.002,
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="updating-visuals"><a class="header" href="#updating-visuals">Updating Visuals</a></h2>
+<p>When types change, you'll want colors to update. Use <code>Rule::Custom</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    if p.particle_type == 0u {
+        p.color = vec3&lt;f32&gt;(0.1, 0.9, 0.2); // Green
+    } else if p.particle_type == 1u {
+        p.color = vec3&lt;f32&gt;(1.0, 0.1, 0.1); // Red
+    } else {
+        p.color = vec3&lt;f32&gt;(0.2, 0.4, 1.0); // Blue
+    }
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Types</th><th>Interactions</th></tr></thead><tbody>
+<tr><td>Predator-Prey</td><td>Predator, Prey</td><td>Chase/Evade rules</td></tr>
+<tr><td>Infection</td><td>Healthy, Infected, Recovered</td><td>Convert rules for spread</td></tr>
+<tr><td>Charged Particles</td><td>Positive, Negative</td><td>Opposites attract, same repels</td></tr>
+<tr><td>Food Chain</td><td>Plant, Herbivore, Carnivore</td><td>Each level hunts the one below</td></tr>
+<tr><td>Teams</td><td>Team A, Team B</td><td>Same team coheres, enemies separate</td></tr>
+<tr><td>Life Stages</td><td>Young, Adult, Elder</td><td>Convert based on age</td></tr>
+</tbody></table>
+</div>
+<h2 id="performance-note"><a class="header" href="#performance-note">Performance Note</a></h2>
+<p>Typed rules add conditional checks inside the neighbor loop. For best performance:</p>
+<ul>
+<li>Use fewer distinct types when possible</li>
+<li>Group related type interactions</li>
+<li>Consider if untyped rules with Custom code might be simpler</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="spatial-hashing"><a class="header" href="#spatial-hashing">Spatial Hashing</a></h1>
+<p>Spatial hashing accelerates neighbor queries from O(n²) to approximately O(n). It's automatically enabled when you use neighbor-based rules.</p>
+<h2 id="why-its-needed"><a class="header" href="#why-its-needed">Why It's Needed</a></h2>
+<p>Without spatial hashing, checking every particle against every other particle is prohibitively slow:</p>
+<div class="table-wrapper"><table><thead><tr><th>Particles</th><th>Naive Comparisons</th><th>With Spatial Hash</th></tr></thead><tbody>
+<tr><td>1,000</td><td>1,000,000</td><td>~50,000</td></tr>
+<tr><td>10,000</td><td>100,000,000</td><td>~500,000</td></tr>
+<tr><td>100,000</td><td>10,000,000,000</td><td>~5,000,000</td></tr>
+</tbody></table>
+</div>
+<h2 id="how-it-works-1"><a class="header" href="#how-it-works-1">How It Works</a></h2>
+<h3 id="1-morton-encoding-z-order-curve"><a class="header" href="#1-morton-encoding-z-order-curve">1. Morton Encoding (Z-Order Curve)</a></h3>
+<p>3D space is divided into a grid of cells. Each cell gets a unique ID using Morton encoding:</p>
+<pre><code>3D Position → Cell Coordinates → Morton Code (single u32)
+</code></pre>
+<p>Morton codes preserve spatial locality - nearby cells have similar codes.</p>
+<h3 id="2-radix-sort"><a class="header" href="#2-radix-sort">2. Radix Sort</a></h3>
+<p>Particles are sorted by their Morton code using GPU radix sort:</p>
+<ul>
+<li>8 passes (4 bits per pass for 32-bit keys)</li>
+<li>Each pass: histogram → prefix sum → scatter</li>
+<li>Result: particles ordered by spatial cell</li>
+</ul>
+<h3 id="3-cell-table"><a class="header" href="#3-cell-table">3. Cell Table</a></h3>
+<p>After sorting, we build a lookup table:</p>
+<pre><code>cell_start[morton_code] = first particle index in this cell
+cell_end[morton_code] = one past last particle index
+</code></pre>
+<h3 id="4-neighbor-iteration"><a class="header" href="#4-neighbor-iteration">4. Neighbor Iteration</a></h3>
+<p>To find neighbors, check the 27 adjacent cells (3×3×3 cube):</p>
+<pre><code class="language-wgsl">for offset in 0..27 {
+    let neighbor_cell = get_neighbor_cell(my_cell, offset);
+    for particle in cell_start[neighbor_cell]..cell_end[neighbor_cell] {
+        // Check distance, apply rule
+    }
+}
+</code></pre>
+<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
+<p>Configure spatial hashing with:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spatial_config(cell_size, grid_resolution)
+<span class="boring">}</span></code></pre></pre>
+<h3 id="cell-size"><a class="header" href="#cell-size">Cell Size</a></h3>
+<p>Should be <strong>at least as large as your largest interaction radius</strong>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// If your largest rule has radius 0.15:
+.with_spatial_config(0.15, 32)
+
+// Or slightly larger for safety:
+.with_spatial_config(0.2, 32)
+<span class="boring">}</span></code></pre></pre>
+<p>If cell size is smaller than interaction radius, you might miss neighbors in non-adjacent cells.</p>
+<h3 id="grid-resolution"><a class="header" href="#grid-resolution">Grid Resolution</a></h3>
+<p>Must be a <strong>power of 2</strong> (16, 32, 64, 128, etc.):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spatial_config(0.1, 32)  // 32³ = 32,768 cells
+.with_spatial_config(0.1, 64)  // 64³ = 262,144 cells
+<span class="boring">}</span></code></pre></pre>
+<p>The grid covers space from <code>-resolution * cell_size / 2</code> to <code>+resolution * cell_size / 2</code>:</p>
+<div class="table-wrapper"><table><thead><tr><th>Resolution</th><th>Cell Size</th><th>Coverage</th></tr></thead><tbody>
+<tr><td>32</td><td>0.1</td><td>-1.6 to +1.6</td></tr>
+<tr><td>64</td><td>0.1</td><td>-3.2 to +3.2</td></tr>
+<tr><td>32</td><td>0.05</td><td>-0.8 to +0.8</td></tr>
+</tbody></table>
+</div>
+<p>Ensure your bounds fit within the grid coverage.</p>
+<h2 id="when-its-used"><a class="header" href="#when-its-used">When It's Used</a></h2>
+<p>Spatial hashing is automatically enabled when you use any of these rules:</p>
+<ul>
+<li><code>Rule::Separate</code></li>
+<li><code>Rule::Cohere</code></li>
+<li><code>Rule::Align</code></li>
+<li><code>Rule::Collide</code></li>
+<li><code>Rule::Convert</code></li>
+<li><code>Rule::Typed</code> (wrapping a neighbor rule)</li>
+</ul>
+<p>Non-neighbor rules (Gravity, Drag, BounceWalls, etc.) don't trigger spatial hashing.</p>
+<h2 id="memory-usage"><a class="header" href="#memory-usage">Memory Usage</a></h2>
+<p>The spatial hash requires additional GPU buffers:</p>
+<div class="table-wrapper"><table><thead><tr><th>Buffer</th><th>Size</th></tr></thead><tbody>
+<tr><td>Morton codes (×2)</td><td>4 bytes × particles × 2</td></tr>
+<tr><td>Particle indices (×2)</td><td>4 bytes × particles × 2</td></tr>
+<tr><td>Cell start</td><td>4 bytes × grid_resolution³</td></tr>
+<tr><td>Cell end</td><td>4 bytes × grid_resolution³</td></tr>
+<tr><td>Histogram</td><td>64 bytes</td></tr>
+</tbody></table>
+</div>
+<p>For 10,000 particles with 32³ grid:</p>
+<ul>
+<li>Morton/indices: 160 KB</li>
+<li>Cell tables: 256 KB</li>
+<li>Total: ~416 KB</li>
+</ul>
+<h2 id="performance-tips"><a class="header" href="#performance-tips">Performance Tips</a></h2>
+<ol>
+<li>
+<p><strong>Match cell size to interaction radius</strong> - Too small wastes work checking empty cells; too large checks too many particles per cell.</p>
+</li>
+<li>
+<p><strong>Don't over-resolve</strong> - 32³ is usually enough. 64³ only helps if particles are very spread out.</p>
+</li>
+<li>
+<p><strong>Spatial hash runs every frame</strong> - It's fast, but the cost is proportional to particle count.</p>
+</li>
+<li>
+<p><strong>Combine interaction radii</strong> - If possible, use similar radii for all neighbor rules to optimize cell size.</p>
+</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="custom-rules-1"><a class="header" href="#custom-rules-1">Custom Rules</a></h1>
+<p>When built-in rules aren't enough, <code>Rule::Custom</code> lets you write raw WGSL shader code.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    // Your WGSL code here
+    p.velocity.y += sin(uniforms.time) * 0.1;
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="available-variables"><a class="header" href="#available-variables">Available Variables</a></h2>
+<h3 id="particle-data"><a class="header" href="#particle-data">Particle Data</a></h3>
+<pre><code class="language-wgsl">p.position      // vec3&lt;f32&gt; - current position (read/write)
+p.velocity      // vec3&lt;f32&gt; - current velocity (read/write)
+p.color         // vec3&lt;f32&gt; - particle color (if defined)
+p.particle_type // u32 - particle type
+// Plus any custom fields you defined
+</code></pre>
+<h3 id="context"><a class="header" href="#context">Context</a></h3>
+<pre><code class="language-wgsl">index              // u32 - this particle's index
+uniforms.time      // f32 - total elapsed time in seconds
+uniforms.delta_time // f32 - time since last frame
+</code></pre>
+<h3 id="in-neighbor-loop-for-neighbor-rules-only"><a class="header" href="#in-neighbor-loop-for-neighbor-rules-only">In Neighbor Loop (for neighbor rules only)</a></h3>
+<pre><code class="language-wgsl">other_idx      // u32 - neighbor's index
+other          // Particle - neighbor's data
+neighbor_pos   // vec3&lt;f32&gt; - neighbor's position
+neighbor_vel   // vec3&lt;f32&gt; - neighbor's velocity
+neighbor_dist  // f32 - distance to neighbor
+neighbor_dir   // vec3&lt;f32&gt; - normalized direction to neighbor
+</code></pre>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<h3 id="oscillating-force"><a class="header" href="#oscillating-force">Oscillating Force</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Custom(r#"
+    let freq = 2.0;
+    let amp = 0.5;
+    p.velocity.y += sin(uniforms.time * freq) * amp * uniforms.delta_time;
+"#.to_string())
+<span class="boring">}</span></code></pre></pre>
+<h3 id="color-based-on-speed"><a class="header" href="#color-based-on-speed">Color Based on Speed</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Custom(r#"
+    let speed = length(p.velocity);
+    let normalized_speed = clamp(speed / 2.0, 0.0, 1.0);
+    p.color = mix(
+        vec3&lt;f32&gt;(0.0, 0.0, 1.0),  // Blue (slow)
+        vec3&lt;f32&gt;(1.0, 0.0, 0.0),  // Red (fast)
+        normalized_speed
+    );
+"#.to_string())
+<span class="boring">}</span></code></pre></pre>
+<h3 id="age-based-behavior"><a class="header" href="#age-based-behavior">Age-Based Behavior</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct AgingParticle {
+    position: Vec3,
+    velocity: Vec3,
+    age: f32,  // Custom field
+}
+
+// In simulation:
+.with_rule(Rule::Custom(r#"
+    p.age += uniforms.delta_time;
+
+    // Slow down with age
+    let age_factor = 1.0 / (1.0 + p.age * 0.1);
+    p.velocity *= age_factor;
+
+    // Change color with age
+    p.color = mix(
+        vec3&lt;f32&gt;(0.2, 1.0, 0.2),  // Young: green
+        vec3&lt;f32&gt;(0.6, 0.3, 0.1),  // Old: brown
+        clamp(p.age / 10.0, 0.0, 1.0)
+    );
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
+<h3 id="vortex-force"><a class="header" href="#vortex-force">Vortex Force</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Custom(r#"
+    // Circular force around Y axis
+    let to_center = -p.position;
+    let tangent = vec3&lt;f32&gt;(-to_center.z, 0.0, to_center.x);
+    let dist = length(to_center.xz);
+
+    if dist &gt; 0.01 {
+        let vortex_strength = 1.0 / (dist + 0.1);
+        p.velocity += normalize(tangent) * vortex_strength * uniforms.delta_time;
+    }
+"#.to_string())
+<span class="boring">}</span></code></pre></pre>
+<h3 id="pulsing-size-via-custom-field"><a class="header" href="#pulsing-size-via-custom-field">Pulsing Size (via Custom Field)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct PulsingParticle {
+    position: Vec3,
+    velocity: Vec3,
+    phase: f32,  // Each particle has different phase
+}
+
+.with_rule(Rule::Custom(r#"
+    // Update a "size" factor based on time and phase
+    let pulse = sin(uniforms.time * 3.0 + p.phase) * 0.5 + 0.5;
+    // Could use this in a custom renderer...
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
+<h3 id="random-noise-movement"><a class="header" href="#random-noise-movement">Random Noise Movement</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Custom(r#"
+    // Hash-based pseudo-random
+    let seed = index ^ u32(uniforms.time * 60.0);
+    let hash = (seed * 1103515245u + 12345u);
+
+    let rx = f32((hash &gt;&gt; 0u) &amp; 0xFFu) / 128.0 - 1.0;
+    let ry = f32((hash &gt;&gt; 8u) &amp; 0xFFu) / 128.0 - 1.0;
+    let rz = f32((hash &gt;&gt; 16u) &amp; 0xFFu) / 128.0 - 1.0;
+
+    p.velocity += vec3&lt;f32&gt;(rx, ry, rz) * 0.1 * uniforms.delta_time;
+"#.to_string())
+<span class="boring">}</span></code></pre></pre>
+<h2 id="wgsl-tips"><a class="header" href="#wgsl-tips">WGSL Tips</a></h2>
+<h3 id="type-suffixes"><a class="header" href="#type-suffixes">Type Suffixes</a></h3>
+<pre><code class="language-wgsl">let x = 1.0;      // f32
+let y = 1u;       // u32
+let z = 1i;       // i32
+</code></pre>
+<h3 id="vector-construction"><a class="header" href="#vector-construction">Vector Construction</a></h3>
+<pre><code class="language-wgsl">let v = vec3&lt;f32&gt;(1.0, 2.0, 3.0);
+let v2 = vec3&lt;f32&gt;(0.0);  // All zeros
+</code></pre>
+<h3 id="useful-functions"><a class="header" href="#useful-functions">Useful Functions</a></h3>
+<pre><code class="language-wgsl">length(v)         // Vector magnitude
+normalize(v)      // Unit vector
+dot(a, b)         // Dot product
+cross(a, b)       // Cross product
+clamp(x, lo, hi)  // Clamp to range
+mix(a, b, t)      // Linear interpolation
+sin(x), cos(x)    // Trig functions
+abs(x)            // Absolute value
+min(a, b), max(a, b)
+</code></pre>
+<h2 id="debugging"><a class="header" href="#debugging">Debugging</a></h2>
+<p>Custom rules can silently fail. Tips:</p>
+<ol>
+<li><strong>Start simple</strong> - Add one line at a time</li>
+<li><strong>Check types</strong> - WGSL is strictly typed</li>
+<li><strong>Use color</strong> - Set <code>p.color</code> to visualize values</li>
+<li><strong>Check compilation</strong> - Shader errors print on startup</li>
+</ol>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Debug: visualize a value as color
+Rule::Custom(r#"
+    let debug_value = length(p.velocity);
+    p.color = vec3&lt;f32&gt;(debug_value, 0.0, 0.0);
+"#.to_string())
+<span class="boring">}</span></code></pre></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="custom-uniforms"><a class="header" href="#custom-uniforms">Custom Uniforms</a></h1>
+<p>Custom uniforms let you pass dynamic values from Rust to your shader code every frame. This enables interactive simulations that respond to time, mouse input, or any other runtime data.</p>
+<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h2>
+<p>Define uniforms with <code>.with_uniform()</code> and access them in <code>Rule::Custom</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_uniform("target", Vec3::ZERO)
+    .with_uniform("strength", 1.0f32)
+    .with_rule(Rule::Custom(r#"
+        let dir = uniforms.target - p.position;
+        p.velocity += normalize(dir) * uniforms.strength * uniforms.delta_time;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>In your shader code, access uniforms via the <code>uniforms</code> struct:</p>
+<ul>
+<li><code>uniforms.time</code> - simulation time in seconds (built-in)</li>
+<li><code>uniforms.delta_time</code> - time since last frame (built-in)</li>
+<li><code>uniforms.your_name</code> - your custom uniforms</li>
+</ul>
+<h2 id="supported-types"><a class="header" href="#supported-types">Supported Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Rust Type</th><th>WGSL Type</th><th>Example</th></tr></thead><tbody>
+<tr><td><code>f32</code></td><td><code>f32</code></td><td><code>1.0f32</code></td></tr>
+<tr><td><code>i32</code></td><td><code>i32</code></td><td><code>-5i32</code></td></tr>
+<tr><td><code>u32</code></td><td><code>u32</code></td><td><code>10u32</code></td></tr>
+<tr><td><code>Vec2</code></td><td><code>vec2&lt;f32&gt;</code></td><td><code>Vec2::new(1.0, 2.0)</code></td></tr>
+<tr><td><code>Vec3</code></td><td><code>vec3&lt;f32&gt;</code></td><td><code>Vec3::new(1.0, 2.0, 3.0)</code></td></tr>
+<tr><td><code>Vec4</code></td><td><code>vec4&lt;f32&gt;</code></td><td><code>Vec4::new(1.0, 2.0, 3.0, 4.0)</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="updating-uniforms-at-runtime"><a class="header" href="#updating-uniforms-at-runtime">Updating Uniforms at Runtime</a></h2>
+<p>Use <code>.with_update()</code> to modify uniforms every frame:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_uniform("attractor", Vec3::ZERO)
+    .with_uniform("active", 0.0f32)
+    .with_update(|ctx| {
+        // Time-based animation
+        let t = ctx.time();
+        ctx.set("attractor", Vec3::new(t.cos(), 0.0, t.sin()));
+
+        // Mouse interaction
+        if ctx.mouse_pressed() {
+            ctx.set("active", 1.0f32);
+        } else {
+            ctx.set("active", 0.0f32);
+        }
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="updatecontext-api"><a class="header" href="#updatecontext-api">UpdateContext API</a></h3>
+<p>The <code>ctx</code> parameter provides:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>ctx.time()</code></td><td><code>f32</code></td><td>Simulation time in seconds</td></tr>
+<tr><td><code>ctx.delta_time()</code></td><td><code>f32</code></td><td>Time since last frame</td></tr>
+<tr><td><code>ctx.mouse_ndc()</code></td><td><code>Option&lt;Vec2&gt;</code></td><td>Mouse in normalized device coords (-1 to 1)</td></tr>
+<tr><td><code>ctx.mouse_pressed()</code></td><td><code>bool</code></td><td>Is left mouse button down?</td></tr>
+<tr><td><code>ctx.set(name, value)</code></td><td>-</td><td>Update a uniform value</td></tr>
+<tr><td><code>ctx.get(name)</code></td><td><code>Option&lt;&amp;UniformValue&gt;</code></td><td>Read current uniform value</td></tr>
+</tbody></table>
+</div>
+<h2 id="example-mouse-attractor"><a class="header" href="#example-mouse-attractor">Example: Mouse Attractor</a></h2>
+<p>Particles are attracted to the mouse when clicked:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Mote&gt;::new()
+    .with_particle_count(15_000)
+    .with_spawner(|_, _| /* ... */)
+    .with_uniform("attractor", Vec3::ZERO)
+    .with_uniform("strength", 0.0f32)
+    .with_update(|ctx| {
+        if ctx.mouse_pressed() {
+            if let Some(mouse) = ctx.mouse_ndc() {
+                // Map NDC to world space (approximate)
+                ctx.set("attractor", Vec3::new(
+                    mouse.x * 2.0,
+                    mouse.y * 2.0,
+                    0.0
+                ));
+                ctx.set("strength", 5.0f32);
+            }
+        } else {
+            ctx.set("strength", 0.0f32);
+        }
+    })
+    .with_rule(Rule::Custom(r#"
+        if uniforms.strength &gt; 0.0 {
+            let to_attractor = uniforms.attractor - p.position;
+            let dist = length(to_attractor);
+            if dist &gt; 0.01 {
+                let dir = to_attractor / dist;
+                let force = uniforms.strength / (dist * dist + 0.5);
+                p.velocity += dir * force * uniforms.delta_time;
+            }
+        }
+    "#.into()))
+    .with_rule(Rule::Drag(1.5))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="example-pulsing-attractor"><a class="header" href="#example-pulsing-attractor">Example: Pulsing Attractor</a></h2>
+<p>Automatic attraction/repulsion cycle:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_uniform("strength", 1.0f32)
+.with_update(|ctx| {
+    let cycle = ctx.time() % 4.0;
+    let strength = if cycle &lt; 3.0 {
+        3.0   // Attract for 3 seconds
+    } else {
+        -5.0  // Repel for 1 second
+    };
+    ctx.set("strength", strength);
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
+<ul>
+<li><strong>Initialize all uniforms</strong>: Always set initial values with <code>.with_uniform()</code> before using <code>.with_update()</code>.</li>
+<li><strong>Type suffixes</strong>: Use <code>1.0f32</code> not <code>1.0</code> to ensure correct type inference.</li>
+<li><strong>NDC coordinates</strong>: Mouse NDC ranges from -1 to 1 on both axes, with Y up.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="custom-functions"><a class="header" href="#custom-functions">Custom Functions</a></h1>
+<p>Custom functions let you define reusable WGSL code that can be called from your rules. This keeps complex logic organized and avoids code duplication.</p>
+<h2 id="defining-functions"><a class="header" href="#defining-functions">Defining Functions</a></h2>
+<p>Use <code>.with_function()</code> to add WGSL functions:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_function(r#"
+        fn swirl(pos: vec3&lt;f32&gt;, strength: f32) -&gt; vec3&lt;f32&gt; {
+            let d = length(pos.xz);
+            return vec3(-pos.z, 0.0, pos.x) * strength / (d + 0.1);
+        }
+    "#)
+    .with_rule(Rule::Custom(r#"
+        p.velocity += swirl(p.position, 2.0) * uniforms.delta_time;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="function-scope"><a class="header" href="#function-scope">Function Scope</a></h2>
+<p>Your custom functions have access to:</p>
+<ul>
+<li>All WGSL built-in functions (<code>sin</code>, <code>cos</code>, <code>length</code>, <code>normalize</code>, etc.)</li>
+<li>Built-in utility functions (see <a href="advanced/./shader-utilities.html">Shader Utilities</a>)</li>
+<li>Other custom functions defined before this one</li>
+<li>The <code>Particle</code> struct type</li>
+</ul>
+<p>They do <strong>not</strong> have direct access to:</p>
+<ul>
+<li>The <code>uniforms</code> struct (pass values as parameters instead)</li>
+<li>The particle arrays (operate on values passed to the function)</li>
+</ul>
+<h2 id="multiple-functions"><a class="header" href="#multiple-functions">Multiple Functions</a></h2>
+<p>Add multiple functions for complex effects:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_function(r#"
+    fn wave_height(x: f32, z: f32, t: f32) -&gt; f32 {
+        return sin(x * 3.0 + t) * cos(z * 2.0 + t * 0.7) * 0.2;
+    }
+"#)
+.with_function(r#"
+    fn wave_force(pos: vec3&lt;f32&gt;, t: f32) -&gt; vec3&lt;f32&gt; {
+        let h = wave_height(pos.x, pos.z, t);
+        let target_y = h;
+        return vec3(0.0, (target_y - pos.y) * 2.0, 0.0);
+    }
+"#)
+.with_rule(Rule::Custom(r#"
+    p.velocity += wave_force(p.position, uniforms.time) * uniforms.delta_time;
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="example-orbital-mechanics"><a class="header" href="#example-orbital-mechanics">Example: Orbital Mechanics</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_function(r#"
+    fn gravity_force(pos: vec3&lt;f32&gt;, center: vec3&lt;f32&gt;, mass: f32) -&gt; vec3&lt;f32&gt; {
+        let diff = center - pos;
+        let dist_sq = dot(diff, diff);
+        if dist_sq &lt; 0.01 {
+            return vec3(0.0);
+        }
+        let dist = sqrt(dist_sq);
+        return normalize(diff) * mass / dist_sq;
+    }
+"#)
+.with_function(r#"
+    fn orbital_velocity(pos: vec3&lt;f32&gt;, center: vec3&lt;f32&gt;, mass: f32) -&gt; vec3&lt;f32&gt; {
+        let r = length(pos - center);
+        let speed = sqrt(mass / r);
+        let radial = normalize(pos - center);
+        // Perpendicular to radial, in XZ plane
+        return vec3(-radial.z, 0.0, radial.x) * speed;
+    }
+"#)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="example-turbulence"><a class="header" href="#example-turbulence">Example: Turbulence</a></h2>
+<p>Combine custom functions with built-in noise:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_function(r#"
+    fn turbulence(pos: vec3&lt;f32&gt;, time: f32, strength: f32) -&gt; vec3&lt;f32&gt; {
+        let scale = 2.0;
+        let t = time * 0.5;
+        return vec3(
+            noise3(pos * scale + vec3(t, 0.0, 0.0)),
+            noise3(pos * scale + vec3(0.0, t, 100.0)),
+            noise3(pos * scale + vec3(100.0, 0.0, t))
+        ) * strength;
+    }
+"#)
+.with_rule(Rule::Custom(r#"
+    p.velocity += turbulence(p.position, uniforms.time, 1.5) * uniforms.delta_time;
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tips-2"><a class="header" href="#tips-2">Tips</a></h2>
+<ul>
+<li><strong>Parameter passing</strong>: Pass uniforms as function parameters rather than accessing them directly.</li>
+<li><strong>Return types</strong>: Always specify return types for WGSL functions.</li>
+<li><strong>Order matters</strong>: Functions can only call functions defined before them.</li>
+<li><strong>Keep it simple</strong>: Complex logic is fine, but avoid excessive branching for GPU performance.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="shader-utilities"><a class="header" href="#shader-utilities">Shader Utilities</a></h1>
+<p>RDPE includes built-in utility functions that are automatically available in all compute shaders. Use them in <code>Rule::Custom</code> or your custom functions.</p>
+<h2 id="random--hash-functions"><a class="header" href="#random--hash-functions">Random &amp; Hash Functions</a></h2>
+<p>Pseudo-random number generation based on integer hashing.</p>
+<h3 id="hashn-u32---u32"><a class="header" href="#hashn-u32---u32"><code>hash(n: u32) -&gt; u32</code></a></h3>
+<p>Hash a u32 to a pseudo-random u32.</p>
+<h3 id="hash2p-vec2u32---u32"><a class="header" href="#hash2p-vec2u32---u32"><code>hash2(p: vec2&lt;u32&gt;) -&gt; u32</code></a></h3>
+<p>Hash a 2D coordinate.</p>
+<h3 id="hash3p-vec3u32---u32"><a class="header" href="#hash3p-vec3u32---u32"><code>hash3(p: vec3&lt;u32&gt;) -&gt; u32</code></a></h3>
+<p>Hash a 3D coordinate.</p>
+<h3 id="randseed-u32---f32"><a class="header" href="#randseed-u32---f32"><code>rand(seed: u32) -&gt; f32</code></a></h3>
+<p>Returns a random float in the range [0, 1).</p>
+<pre><code class="language-wgsl">let r = rand(index * 12345u);  // Different value per particle
+</code></pre>
+<h3 id="rand_rangeseed-u32-min_val-f32-max_val-f32---f32"><a class="header" href="#rand_rangeseed-u32-min_val-f32-max_val-f32---f32"><code>rand_range(seed: u32, min_val: f32, max_val: f32) -&gt; f32</code></a></h3>
+<p>Returns a random float in the specified range.</p>
+<pre><code class="language-wgsl">let speed = rand_range(index, 0.5, 2.0);
+</code></pre>
+<h3 id="rand_vec3seed-u32---vec3f32"><a class="header" href="#rand_vec3seed-u32---vec3f32"><code>rand_vec3(seed: u32) -&gt; vec3&lt;f32&gt;</code></a></h3>
+<p>Returns a random vector with components in [-1, 1]. Not normalized.</p>
+<h3 id="rand_sphereseed-u32---vec3f32"><a class="header" href="#rand_sphereseed-u32---vec3f32"><code>rand_sphere(seed: u32) -&gt; vec3&lt;f32&gt;</code></a></h3>
+<p>Returns a random point on a unit sphere (normalized).</p>
+<pre><code class="language-wgsl">let direction = rand_sphere(index * 7u);
+p.velocity = direction * 2.0;
+</code></pre>
+<h2 id="noise-functions"><a class="header" href="#noise-functions">Noise Functions</a></h2>
+<p>Gradient noise for smooth, natural-looking randomness.</p>
+<h3 id="noise2p-vec2f32---f32"><a class="header" href="#noise2p-vec2f32---f32"><code>noise2(p: vec2&lt;f32&gt;) -&gt; f32</code></a></h3>
+<p>2D simplex noise. Returns values in [-1, 1].</p>
+<h3 id="noise3p-vec3f32---f32"><a class="header" href="#noise3p-vec3f32---f32"><code>noise3(p: vec3&lt;f32&gt;) -&gt; f32</code></a></h3>
+<p>3D simplex noise. Returns values in [-1, 1].</p>
+<pre><code class="language-wgsl">// Noise-based force field
+let force = vec3(
+    noise3(p.position * 2.0 + uniforms.time),
+    noise3(p.position * 2.0 + uniforms.time + vec3(100.0, 0.0, 0.0)),
+    noise3(p.position * 2.0 + uniforms.time + vec3(0.0, 100.0, 0.0))
+);
+p.velocity += force * uniforms.delta_time;
+</code></pre>
+<h3 id="fbm2p-vec2f32-octaves-i32---f32"><a class="header" href="#fbm2p-vec2f32-octaves-i32---f32"><code>fbm2(p: vec2&lt;f32&gt;, octaves: i32) -&gt; f32</code></a></h3>
+<p>2D fractal Brownian motion. Layered noise for more detail.</p>
+<h3 id="fbm3p-vec3f32-octaves-i32---f32"><a class="header" href="#fbm3p-vec3f32-octaves-i32---f32"><code>fbm3(p: vec3&lt;f32&gt;, octaves: i32) -&gt; f32</code></a></h3>
+<p>3D fractal Brownian motion.</p>
+<pre><code class="language-wgsl">// More detailed noise with 4 octaves
+let turbulence = fbm3(p.position * 1.5, 4);
+</code></pre>
+<h2 id="color-functions"><a class="header" href="#color-functions">Color Functions</a></h2>
+<p>Convert between color spaces.</p>
+<h3 id="hsv_to_rgbh-f32-s-f32-v-f32---vec3f32"><a class="header" href="#hsv_to_rgbh-f32-s-f32-v-f32---vec3f32"><code>hsv_to_rgb(h: f32, s: f32, v: f32) -&gt; vec3&lt;f32&gt;</code></a></h3>
+<p>Convert HSV to RGB.</p>
+<ul>
+<li><code>h</code>: Hue [0, 1] (wraps)</li>
+<li><code>s</code>: Saturation [0, 1]</li>
+<li><code>v</code>: Value/brightness [0, 1]</li>
+</ul>
+<pre><code class="language-wgsl">// Rainbow based on particle position
+let hue = (p.position.x + 1.0) * 0.5;  // Map -1..1 to 0..1
+p.color = hsv_to_rgb(hue, 0.8, 1.0);
+</code></pre>
+<h3 id="rgb_to_hsvrgb-vec3f32---vec3f32"><a class="header" href="#rgb_to_hsvrgb-vec3f32---vec3f32"><code>rgb_to_hsv(rgb: vec3&lt;f32&gt;) -&gt; vec3&lt;f32&gt;</code></a></h3>
+<p>Convert RGB to HSV. Returns <code>vec3(h, s, v)</code>.</p>
+<pre><code class="language-wgsl">let hsv = rgb_to_hsv(p.color);
+let new_hue = hsv.x + 0.1;  // Shift hue
+p.color = hsv_to_rgb(new_hue, hsv.y, hsv.z);
+</code></pre>
+<h2 id="complete-example-1"><a class="header" href="#complete-example-1">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+
+#[derive(Particle, Clone)]
+struct Mote {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+}
+
+fn main() {
+    Simulation::&lt;Mote&gt;::new()
+        .with_particle_count(25_000)
+        .with_spawner(|i, _| Mote {
+            position: Vec3::new(
+                rand::random::&lt;f32&gt;() * 2.0 - 1.0,
+                rand::random::&lt;f32&gt;() * 2.0 - 1.0,
+                rand::random::&lt;f32&gt;() * 2.0 - 1.0,
+            ),
+            velocity: Vec3::ZERO,
+            color: Vec3::ONE,
+        })
+        .with_rule(Rule::Custom(r#"
+            // 3D noise force field
+            let scale = 2.0;
+            let t = uniforms.time * 0.3;
+
+            let force = vec3&lt;f32&gt;(
+                noise3(p.position * scale + vec3&lt;f32&gt;(t, 0.0, 0.0)),
+                noise3(p.position * scale + vec3&lt;f32&gt;(0.0, t, 100.0)),
+                noise3(p.position * scale + vec3&lt;f32&gt;(0.0, 100.0, t))
+            );
+
+            p.velocity += force * uniforms.delta_time * 2.0;
+
+            // Color based on FBM noise
+            let color_noise = fbm3(p.position * 1.5 + uniforms.time * 0.2, 3);
+            let hue = (color_noise + 1.0) * 0.25 + 0.5;
+            p.color = hsv_to_rgb(hue, 0.8, 1.0);
+        "#.into()))
+        .with_rule(Rule::Drag(1.0))
+        .with_rule(Rule::WrapWalls)
+        .run();
+}</code></pre></pre>
+<h2 id="performance-notes"><a class="header" href="#performance-notes">Performance Notes</a></h2>
+<ul>
+<li><strong>Hash functions</strong> are very fast - use liberally</li>
+<li><strong>Noise functions</strong> are moderately expensive - a few calls per particle is fine</li>
+<li><strong>FBM</strong> multiplies the cost by the number of octaves</li>
+<li>For heavy noise use, consider lowering particle count or octaves</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="performance-tips-1"><a class="header" href="#performance-tips-1">Performance Tips</a></h1>
+<p>RDPE runs on the GPU, but performance still varies based on configuration.</p>
+<h2 id="particle-count"><a class="header" href="#particle-count">Particle Count</a></h2>
+<p>The GPU handles particles in parallel, but there are limits:</p>
+<div class="table-wrapper"><table><thead><tr><th>Particles</th><th>Typical Performance</th></tr></thead><tbody>
+<tr><td>1,000</td><td>Extremely fast</td></tr>
+<tr><td>10,000</td><td>Very fast</td></tr>
+<tr><td>50,000</td><td>Fast</td></tr>
+<tr><td>100,000</td><td>Good</td></tr>
+<tr><td>500,000</td><td>May drop frames</td></tr>
+<tr><td>1,000,000+</td><td>Depends on GPU</td></tr>
+</tbody></table>
+</div>
+<h3 id="tips-3"><a class="header" href="#tips-3">Tips</a></h3>
+<ul>
+<li>Start with fewer particles, increase until performance drops</li>
+<li>Integrated GPUs handle fewer particles than discrete GPUs</li>
+<li>Debug builds are slower; use <code>--release</code> for real performance</li>
+</ul>
+<pre><code class="language-bash">cargo run --example boids --release
+</code></pre>
+<h2 id="spatial-hashing-1"><a class="header" href="#spatial-hashing-1">Spatial Hashing</a></h2>
+<p>Neighbor rules trigger spatial hashing every frame.</p>
+<h3 id="cell-size-1"><a class="header" href="#cell-size-1">Cell Size</a></h3>
+<p><strong>Match cell size to your largest interaction radius:</strong></p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// If largest radius is 0.15:
+.with_spatial_config(0.15, 32)  // Good
+.with_spatial_config(0.05, 32)  // Bad: checking 27 cells when 1 would do
+.with_spatial_config(0.5, 32)   // Bad: too many particles per cell
+<span class="boring">}</span></code></pre></pre>
+<h3 id="grid-resolution-1"><a class="header" href="#grid-resolution-1">Grid Resolution</a></h3>
+<p>Higher resolution = more cells = more memory, but potentially fewer particles per cell:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spatial_config(0.1, 32)   // 32,768 cells - usually enough
+.with_spatial_config(0.1, 64)   // 262,144 cells - for very spread simulations
+.with_spatial_config(0.1, 128)  // 2,097,152 cells - rarely needed
+<span class="boring">}</span></code></pre></pre>
+<h3 id="when-spatial-hashing-helps"><a class="header" href="#when-spatial-hashing-helps">When Spatial Hashing Helps</a></h3>
+<ul>
+<li><strong>Many particles, small interaction radius</strong> - Huge win</li>
+<li><strong>Few particles</strong> - Overhead may not be worth it</li>
+<li><strong>Large interaction radius</strong> - Less benefit (checking many neighbors anyway)</li>
+</ul>
+<h2 id="rule-complexity"><a class="header" href="#rule-complexity">Rule Complexity</a></h2>
+<h3 id="simple-rules-fast"><a class="header" href="#simple-rules-fast">Simple Rules (Fast)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Gravity(9.8)      // Single operation
+Rule::Drag(1.0)         // Single multiply
+Rule::BounceWalls       // Few conditionals
+<span class="boring">}</span></code></pre></pre>
+<h3 id="neighbor-rules-slower"><a class="header" href="#neighbor-rules-slower">Neighbor Rules (Slower)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Separate { ... }  // Loops over neighbors
+Rule::Cohere { ... }    // Accumulates, then applies
+Rule::Collide { ... }   // Distance checks per neighbor
+<span class="boring">}</span></code></pre></pre>
+<h3 id="typed-rules"><a class="header" href="#typed-rules">Typed Rules</a></h3>
+<p>Add conditional checks per neighbor:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Typed {
+    self_type: 0,
+    other_type: Some(1),
+    rule: Box::new(Rule::Separate { ... }),
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Each <code>Typed</code> wrapper adds 1-2 comparisons per neighbor.</p>
+<h2 id="reducing-work"><a class="header" href="#reducing-work">Reducing Work</a></h2>
+<h3 id="combine-similar-rules"><a class="header" href="#combine-similar-rules">Combine Similar Rules</a></h3>
+<p>Instead of:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Typed { self_type: 0, other_type: Some(0), rule: ... })
+.with_rule(Rule::Typed { self_type: 0, other_type: Some(1), rule: ... })
+.with_rule(Rule::Typed { self_type: 0, other_type: Some(2), rule: ... })
+<span class="boring">}</span></code></pre></pre>
+<p>Consider if <code>other_type: None</code> works:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Typed { self_type: 0, other_type: None, rule: ... })
+<span class="boring">}</span></code></pre></pre>
+<h3 id="limit-interaction-radius"><a class="header" href="#limit-interaction-radius">Limit Interaction Radius</a></h3>
+<p>Smaller radius = fewer neighbors checked:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// More neighbors to check:
+Rule::Separate { radius: 0.2, strength: 1.0 }
+
+// Fewer neighbors:
+Rule::Separate { radius: 0.05, strength: 4.0 }  // Compensate with strength
+<span class="boring">}</span></code></pre></pre>
+<h3 id="reduce-particle-count-for-complex-interactions"><a class="header" href="#reduce-particle-count-for-complex-interactions">Reduce Particle Count for Complex Interactions</a></h3>
+<p>If you have many typed rules:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// 5 types × 5 types = 25 potential interaction pairs
+// Maybe 10,000 particles is enough instead of 50,000
+<span class="boring">}</span></code></pre></pre>
+<h2 id="custom-rule-performance"><a class="header" href="#custom-rule-performance">Custom Rule Performance</a></h2>
+<h3 id="avoid-expensive-operations"><a class="header" href="#avoid-expensive-operations">Avoid Expensive Operations</a></h3>
+<pre><code class="language-wgsl">// Expensive:
+let dist = length(some_vector);  // Square root
+
+// Cheaper (when comparing distances):
+let dist_sq = dot(some_vector, some_vector);
+if dist_sq &lt; radius * radius { ... }
+</code></pre>
+<h3 id="minimize-conditionals"><a class="header" href="#minimize-conditionals">Minimize Conditionals</a></h3>
+<pre><code class="language-wgsl">// Many branches:
+if p.particle_type == 0u { ... }
+else if p.particle_type == 1u { ... }
+else if p.particle_type == 2u { ... }
+
+// Consider: can you restructure to avoid this?
+</code></pre>
+<h2 id="profiling"><a class="header" href="#profiling">Profiling</a></h2>
+<h3 id="frame-time"><a class="header" href="#frame-time">Frame Time</a></h3>
+<p>Watch for dropped frames. Target: 16.6ms for 60 FPS.</p>
+<h3 id="identify-bottlenecks"><a class="header" href="#identify-bottlenecks">Identify Bottlenecks</a></h3>
+<ol>
+<li>Remove neighbor rules - does it speed up significantly?</li>
+<li>Reduce particle count - linear slowdown or worse?</li>
+<li>Remove <code>Typed</code> wrappers - any difference?</li>
+</ol>
+<h3 id="gpu-vs-cpu"><a class="header" href="#gpu-vs-cpu">GPU vs CPU</a></h3>
+<p>RDPE is GPU-bound. CPU does:</p>
+<ul>
+<li>Window event handling</li>
+<li>Uniform updates</li>
+<li>Command submission</li>
+</ul>
+<p>These are typically not bottlenecks.</p>
+<h2 id="hardware-considerations"><a class="header" href="#hardware-considerations">Hardware Considerations</a></h2>
+<h3 id="discrete-gpu"><a class="header" href="#discrete-gpu">Discrete GPU</a></h3>
+<p>Best performance. RDPE uses <code>wgpu</code> which supports:</p>
+<ul>
+<li>Vulkan (Linux, Windows)</li>
+<li>Metal (macOS)</li>
+<li>DX12 (Windows)</li>
+</ul>
+<h3 id="integrated-gpu"><a class="header" href="#integrated-gpu">Integrated GPU</a></h3>
+<p>Works but with lower particle limits. Intel UHD, AMD APUs, Apple Silicon all supported.</p>
+<h3 id="power-settings"><a class="header" href="#power-settings">Power Settings</a></h3>
+<p>Laptops may throttle GPU. Ensure:</p>
+<ul>
+<li>Plugged in (or high-performance mode)</li>
+<li>Not thermal throttling</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="examples-1"><a class="header" href="#examples-1">Examples</a></h1>
+<p>RDPE includes many self-documented examples in the <code>examples/</code> directory. Each example contains detailed comments explaining the concepts it demonstrates.</p>
+<h2 id="running-examples"><a class="header" href="#running-examples">Running Examples</a></h2>
+<pre><code class="language-bash">cargo run --example &lt;name&gt;
+</code></pre>
+<h2 id="available-examples"><a class="header" href="#available-examples">Available Examples</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>getting_started</code></td><td>Minimal RDPE simulation - start here!</td></tr>
+<tr><td><code>bouncing</code></td><td>Particles bouncing off walls</td></tr>
+<tr><td><code>fountain</code></td><td>Cone emitter with gravity and lifecycle</td></tr>
+<tr><td><code>boids</code></td><td>Classic flocking algorithm with spatial hashing</td></tr>
+<tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between types</td></tr>
+<tr><td><code>infection</code></td><td>SIR model with Convert rule</td></tr>
+<tr><td><code>particle_life</code></td><td>Emergent behavior from interaction matrix</td></tr>
+<tr><td><code>attractor</code></td><td>Mouse-controlled attraction force</td></tr>
+<tr><td><code>orbit</code></td><td>Time-animated orbiting attractor</td></tr>
+<tr><td><code>noisy</code></td><td>Flow field using built-in noise functions</td></tr>
+<tr><td><code>swirl</code></td><td>Custom WGSL functions for vortex effect</td></tr>
+<tr><td><code>explosion</code></td><td>Burst emitter for one-shot effects</td></tr>
+<tr><td><code>rain</code></td><td>Box emitter for environmental particles</td></tr>
+<tr><td><code>rocket</code></td><td>Downward cone emitter for thrust</td></tr>
+<tr><td><code>sphere_shell</code></td><td>Sphere emitter for 3D distributions</td></tr>
+</tbody></table>
+</div>
+<h2 id="learning-path"><a class="header" href="#learning-path">Learning Path</a></h2>
+<ol>
+<li><strong>Start with basics</strong>: <code>getting_started</code>, <code>bouncing</code>, <code>fountain</code></li>
+<li><strong>Explore interactions</strong>: <code>boids</code>, <code>predator_prey</code>, <code>infection</code>, <code>particle_life</code></li>
+<li><strong>Custom shaders</strong>: <code>attractor</code>, <code>orbit</code>, <code>noisy</code>, <code>swirl</code></li>
+<li><strong>Emitter types</strong>: <code>explosion</code>, <code>rain</code>, <code>rocket</code>, <code>sphere_shell</code></li>
+</ol>
+<p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

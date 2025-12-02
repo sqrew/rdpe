@@ -61,6 +61,7 @@ pub struct GpuState {
     compute_pipeline: wgpu::ComputePipeline,
     particle_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
+    uniform_buffer_size: usize,
     uniform_bind_group: wgpu::BindGroup,
     compute_bind_group: wgpu::BindGroup,
     depth_texture: wgpu::TextureView,
@@ -82,6 +83,10 @@ impl GpuState {
         render_shader_src: &str,
         has_neighbors: bool,
         spatial_config: SpatialConfig,
+        color_offset: Option<u32>,
+        alive_offset: u32,
+        scale_offset: u32,
+        custom_uniform_size: usize,
     ) -> Self {
         let size = window.inner_size();
 
@@ -154,11 +159,20 @@ impl GpuState {
             _padding: [0.0; 2],
         };
 
+        // Base uniform size + custom uniforms (aligned to 16 bytes for uniform buffer)
+        let base_size = std::mem::size_of::<Uniforms>();
+        let total_size = ((base_size + custom_uniform_size) + 15) & !15;
+
+        // Create buffer with base uniforms + space for custom uniforms
+        let mut uniform_data = bytemuck::bytes_of(&uniforms).to_vec();
+        uniform_data.resize(total_size, 0);
+
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[uniforms]),
+            contents: &uniform_data,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+        let uniform_buffer_size = total_size;
 
         // Create spatial hashing if needed
         let spatial = if has_neighbors {
@@ -352,6 +366,50 @@ impl GpuState {
                 push_constant_ranges: &[],
             });
 
+        // Build vertex attributes: position, optional color, alive, scale
+        let vertex_attributes: Vec<wgpu::VertexAttribute> = if let Some(offset) = color_offset {
+            vec![
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3, // position
+                },
+                wgpu::VertexAttribute {
+                    offset: offset as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x3, // color
+                },
+                wgpu::VertexAttribute {
+                    offset: alive_offset as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Uint32, // alive
+                },
+                wgpu::VertexAttribute {
+                    offset: scale_offset as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32, // scale
+                },
+            ]
+        } else {
+            vec![
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3, // position
+                },
+                wgpu::VertexAttribute {
+                    offset: alive_offset as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Uint32, // alive
+                },
+                wgpu::VertexAttribute {
+                    offset: scale_offset as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32, // scale
+                },
+            ]
+        };
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
@@ -361,11 +419,7 @@ impl GpuState {
                 buffers: &[wgpu::VertexBufferLayout {
                     array_stride: particle_stride as wgpu::BufferAddress,
                     step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &[wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x3,
-                    }],
+                    attributes: &vertex_attributes,
                 }],
                 compilation_options: Default::default(),
             },
@@ -433,6 +487,7 @@ impl GpuState {
             compute_pipeline,
             particle_buffer,
             uniform_buffer,
+            uniform_buffer_size,
             uniform_bind_group,
             compute_bind_group,
             depth_texture,
@@ -453,17 +508,20 @@ impl GpuState {
         }
     }
 
-    fn update_uniforms(&mut self) {
+    /// Get current time and delta time, updating internal state.
+    pub fn get_time_info(&mut self) -> (f32, f32) {
         let now = Instant::now();
         let delta_time = now.duration_since(self.last_frame_time).as_secs_f32();
         self.last_frame_time = now;
+        let time = self.start_time.elapsed().as_secs_f32();
+        (time, delta_time)
+    }
 
+    fn update_uniforms(&mut self, time: f32, delta_time: f32, custom_uniform_bytes: Option<&[u8]>) {
         let aspect = self.config.width as f32 / self.config.height as f32;
         let view = self.camera.view_matrix();
         let proj = Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 100.0);
         let view_proj = proj * view;
-
-        let time = self.start_time.elapsed().as_secs_f32();
 
         let uniforms = Uniforms {
             view_proj: view_proj.to_cols_array_2d(),
@@ -472,12 +530,23 @@ impl GpuState {
             _padding: [0.0; 2],
         };
 
-        self.queue
-            .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        // Write base uniforms
+        let base_bytes = bytemuck::bytes_of(&uniforms);
+
+        if let Some(custom_bytes) = custom_uniform_bytes {
+            // Combine base and custom uniforms
+            let mut combined = base_bytes.to_vec();
+            combined.extend_from_slice(custom_bytes);
+            // Pad to buffer size
+            combined.resize(self.uniform_buffer_size, 0);
+            self.queue.write_buffer(&self.uniform_buffer, 0, &combined);
+        } else {
+            self.queue.write_buffer(&self.uniform_buffer, 0, base_bytes);
+        }
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        self.update_uniforms();
+    pub fn render(&mut self, time: f32, delta_time: f32, custom_uniform_bytes: Option<&[u8]>) -> Result<(), wgpu::SurfaceError> {
+        self.update_uniforms(time, delta_time, custom_uniform_bytes);
 
         let output = self.surface.get_current_texture()?;
         let view = output

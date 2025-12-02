@@ -31,13 +31,14 @@ struct SortParams {
 }
 
 /// GPU resources for spatial hashing
+#[allow(dead_code)] // Fields used indirectly via bind groups
 pub struct SpatialGpu {
     // Buffers
-    pub morton_codes_a: wgpu::Buffer,
-    pub morton_codes_b: wgpu::Buffer,
+    morton_codes_a: wgpu::Buffer,
+    morton_codes_b: wgpu::Buffer,
     pub particle_indices_a: wgpu::Buffer,
-    pub particle_indices_b: wgpu::Buffer,
-    pub histogram: wgpu::Buffer,
+    particle_indices_b: wgpu::Buffer,
+    histogram: wgpu::Buffer,
     pub cell_start: wgpu::Buffer,
     pub cell_end: wgpu::Buffer,
     pub spatial_params_buffer: wgpu::Buffer,

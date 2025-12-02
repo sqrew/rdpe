@@ -1,8 +1,60 @@
-//! Simulation builder and runner
+//! Simulation builder and runner.
+//!
+//! This module provides the [`Simulation`] builder, which is the main entry point
+//! for creating and running particle simulations.
+//!
+//! # Overview
+//!
+//! A simulation is configured through method chaining:
+//!
+//! 1. Create with [`Simulation::new()`]
+//! 2. Configure particle count, bounds, spawner, and rules
+//! 3. Call [`.run()`](Simulation::run) to start the interactive window
+//!
+//! # Example
+//!
+//! ```ignore
+//! use rdpe::prelude::*;
+//!
+//! #[derive(Particle, Clone)]
+//! struct Ball {
+//!     position: Vec3,
+//!     velocity: Vec3,
+//! }
+//!
+//! Simulation::<Ball>::new()
+//!     .with_particle_count(10_000)
+//!     .with_bounds(1.0)
+//!     .with_spawner(|i, count| Ball {
+//!         position: Vec3::new(0.0, 0.5, 0.0),
+//!         velocity: Vec3::ZERO,
+//!     })
+//!     .with_rule(Rule::Gravity(9.8))
+//!     .with_rule(Rule::BounceWalls)
+//!     .run();
+//! ```
+//!
+//! # Execution Model
+//!
+//! When [`.run()`](Simulation::run) is called:
+//!
+//! 1. Particles are spawned using the provided spawner function
+//! 2. WGSL compute shaders are generated from the configured rules
+//! 3. A window opens with an interactive 3D view
+//! 4. The GPU runs the compute shader every frame to update particles
+//!
+//! # Controls
+//!
+//! - **Left-click + drag**: Rotate camera
+//! - **Scroll wheel**: Zoom in/out
 
+use crate::emitter::Emitter;
 use crate::gpu::GpuState;
+use crate::interactions::InteractionMatrix;
 use crate::rules::Rule;
+use crate::shader_utils;
 use crate::spatial::{SpatialConfig, MORTON_WGSL, NEIGHBOR_UTILS_WGSL};
+use crate::uniforms::{CustomUniforms, UniformValue, UpdateContext};
 use crate::ParticleTrait;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -15,43 +67,252 @@ use winit::{
 
 /// A particle simulation builder.
 ///
-/// Use method chaining to configure, then call `.run()` to start.
+/// `Simulation` uses the builder pattern to configure all aspects of a particle
+/// simulation before running it. The generic parameter `P` is your particle type,
+/// which must derive [`Particle`](crate::Particle).
+///
+/// # Type Parameter
+///
+/// - `P`: Your particle struct, must implement [`ParticleTrait`] (via `#[derive(Particle)]`)
+///
+/// # Builder Methods
+///
+/// | Method | Required | Description |
+/// |--------|----------|-------------|
+/// | [`with_particle_count`](Self::with_particle_count) | No | Number of particles (default: 10,000) |
+/// | [`with_bounds`](Self::with_bounds) | No | Simulation cube half-size (default: 1.0) |
+/// | [`with_particle_size`](Self::with_particle_size) | No | Base particle render size (default: 0.015) |
+/// | [`with_spawner`](Self::with_spawner) | **Yes** | Function to create each particle |
+/// | [`with_rule`](Self::with_rule) | No | Add behavior rules (can call multiple times) |
+/// | [`with_spatial_config`](Self::with_spatial_config) | Conditional | Required if using neighbor rules |
+///
+/// # Example
+///
+/// ```ignore
+/// use rdpe::prelude::*;
+///
+/// #[derive(Particle, Clone)]
+/// struct Boid {
+///     position: Vec3,
+///     velocity: Vec3,
+/// }
+///
+/// Simulation::<Boid>::new()
+///     .with_particle_count(5000)
+///     .with_bounds(1.0)
+///     .with_spatial_config(0.1, 32)  // Needed for Separate/Cohere/Align
+///     .with_spawner(|i, count| Boid {
+///         position: Vec3::new(
+///             (i as f32 / count as f32) * 2.0 - 1.0,
+///             0.0,
+///             0.0,
+///         ),
+///         velocity: Vec3::ZERO,
+///     })
+///     .with_rule(Rule::Separate { radius: 0.05, strength: 2.0 })
+///     .with_rule(Rule::Cohere { radius: 0.2, strength: 0.5 })
+///     .with_rule(Rule::Align { radius: 0.1, strength: 1.0 })
+///     .with_rule(Rule::SpeedLimit { min: 0.1, max: 1.5 })
+///     .with_rule(Rule::BounceWalls)
+///     .run();
+/// ```
 pub struct Simulation<P: ParticleTrait> {
+    /// Number of particles to simulate.
     particle_count: u32,
+    /// Half-size of the simulation bounding cube.
     bounds: f32,
+    /// Base particle render size (multiplied by per-particle scale).
+    particle_size: f32,
+    /// Function called to create each particle at startup.
     spawner: Option<Box<dyn Fn(u32, u32) -> P + Send + Sync>>,
+    /// List of rules that define particle behavior.
     rules: Vec<Rule>,
+    /// Particle emitters for runtime spawning.
+    emitters: Vec<Emitter>,
+    /// Interaction matrix for type-based forces.
+    interaction_matrix: Option<InteractionMatrix>,
+    /// Custom uniforms for user-defined shader data.
+    custom_uniforms: CustomUniforms,
+    /// Callback for updating custom uniforms each frame.
+    update_callback: Option<Box<dyn FnMut(&mut UpdateContext) + Send>>,
+    /// Custom WGSL functions that can be called from rules.
+    custom_functions: Vec<String>,
+    /// Configuration for spatial hashing (neighbor queries).
     spatial_config: SpatialConfig,
+    /// Phantom data for the particle type.
     _phantom: PhantomData<P>,
 }
 
 impl<P: ParticleTrait + 'static> Simulation<P> {
     /// Create a new simulation with default settings.
+    ///
+    /// # Defaults
+    ///
+    /// - Particle count: 10,000
+    /// - Bounds: 1.0 (cube from -1.0 to +1.0)
+    /// - No rules (particles won't move)
+    /// - No spawner (must be set before calling `.run()`)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let sim = Simulation::<MyParticle>::new();
+    /// ```
     pub fn new() -> Self {
         Self {
             particle_count: 10_000,
             bounds: 1.0,
+            particle_size: 0.015,
             spawner: None,
             rules: Vec::new(),
+            emitters: Vec::new(),
+            interaction_matrix: None,
+            custom_uniforms: CustomUniforms::new(),
+            update_callback: None,
+            custom_functions: Vec::new(),
             spatial_config: SpatialConfig::default(),
             _phantom: PhantomData,
         }
     }
 
     /// Set the number of particles.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Total number of particles to simulate
+    ///
+    /// # Performance
+    ///
+    /// Modern GPUs can handle millions of particles, but neighbor-based rules
+    /// (Separate, Cohere, Align, etc.) add significant per-particle cost.
+    /// Start with 10,000-50,000 for neighbor-heavy simulations.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_particle_count(100_000)
+    ///     // ...
+    /// ```
     pub fn with_particle_count(mut self, count: u32) -> Self {
         self.particle_count = count;
         self
     }
 
-    /// Set the bounding box half-size (cube from -bounds to +bounds).
+    /// Set the bounding box half-size.
+    ///
+    /// Creates a cube from `-bounds` to `+bounds` on all axes.
+    /// This defines the simulation space that [`Rule::BounceWalls`] and
+    /// [`Rule::WrapWalls`] use.
+    ///
+    /// # Arguments
+    ///
+    /// * `bounds` - Half-size of the cube (default: 1.0)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Create a larger simulation space
+    /// Simulation::<Ball>::new()
+    ///     .with_bounds(5.0)  // Cube from -5 to +5
+    ///     // ...
+    /// ```
     pub fn with_bounds(mut self, bounds: f32) -> Self {
         self.bounds = bounds;
         self
     }
 
+    /// Set the base particle render size.
+    ///
+    /// This is the base size for rendering particles. Each particle's
+    /// `scale` field multiplies this base size, so:
+    ///
+    /// `final_size = particle_size * particle.scale`
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - Base size in clip space (default: 0.015)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Larger particles
+    /// Simulation::<Ball>::new()
+    ///     .with_particle_size(0.03)  // 2x default size
+    ///     // ...
+    ///
+    /// // Tiny dots
+    /// Simulation::<Ball>::new()
+    ///     .with_particle_size(0.005)  // Small points
+    ///     // ...
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// For per-particle size variation, set the `scale` field in your
+    /// spawner or modify it in custom rules. Scale of 1.0 = base size.
+    pub fn with_particle_size(mut self, size: f32) -> Self {
+        self.particle_size = size;
+        self
+    }
+
     /// Set the particle spawner function.
-    /// Called with (particle_index, total_count) for each particle.
+    ///
+    /// The spawner is called once for each particle at simulation startup.
+    /// It receives the particle index and total count, and must return a
+    /// fully initialized particle.
+    ///
+    /// # Arguments
+    ///
+    /// * `spawner` - Function `(index, total_count) -> P`
+    ///
+    /// # Required
+    ///
+    /// This method **must** be called before `.run()`, or the simulation
+    /// will panic.
+    ///
+    /// # Examples
+    ///
+    /// ## Simple centered spawn
+    ///
+    /// ```ignore
+    /// .with_spawner(|i, count| Ball {
+    ///     position: Vec3::ZERO,
+    ///     velocity: Vec3::ZERO,
+    /// })
+    /// ```
+    ///
+    /// ## Random distribution
+    ///
+    /// ```ignore
+    /// let mut rng = rand::thread_rng();
+    /// let particles: Vec<Ball> = (0..count)
+    ///     .map(|_| Ball {
+    ///         position: Vec3::new(
+    ///             rng.gen_range(-1.0..1.0),
+    ///             rng.gen_range(-1.0..1.0),
+    ///             rng.gen_range(-1.0..1.0),
+    ///         ),
+    ///         velocity: Vec3::ZERO,
+    ///     })
+    ///     .collect();
+    ///
+    /// Simulation::<Ball>::new()
+    ///     .with_spawner(move |i, _| particles[i as usize].clone())
+    /// ```
+    ///
+    /// ## Type-based initialization
+    ///
+    /// ```ignore
+    /// .with_spawner(|i, count| {
+    ///     let is_predator = i < 50;
+    ///     Creature {
+    ///         position: random_pos(),
+    ///         velocity: Vec3::ZERO,
+    ///         particle_type: if is_predator { 1 } else { 0 },
+    ///     }
+    /// })
+    /// ```
     pub fn with_spawner<F>(mut self, spawner: F) -> Self
     where
         F: Fn(u32, u32) -> P + Send + Sync + 'static,
@@ -61,21 +322,261 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     }
 
     /// Add a rule to the simulation.
+    ///
+    /// Rules define particle behavior. They are executed in order every frame,
+    /// so the sequence matters. Common patterns:
+    ///
+    /// 1. **Forces first**: Gravity, attraction, neighbor interactions
+    /// 2. **Constraints**: Speed limits, drag
+    /// 3. **Boundaries last**: BounceWalls, WrapWalls
+    ///
+    /// # Arguments
+    ///
+    /// * `rule` - The [`Rule`] to add
+    ///
+    /// # Multiple rules
+    ///
+    /// Call this method multiple times to add multiple rules:
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_rule(Rule::Gravity(9.8))
+    ///     .with_rule(Rule::Drag(0.5))
+    ///     .with_rule(Rule::BounceWalls)
+    ///     // ...
+    /// ```
+    ///
+    /// # See Also
+    ///
+    /// See [`Rule`] for all available rules and their parameters.
     pub fn with_rule(mut self, rule: Rule) -> Self {
         self.rules.push(rule);
         self
     }
 
-    /// Configure spatial hashing (cell size and grid resolution).
-    /// Only needed if using neighbor-based rules.
+    /// Configure spatial hashing for neighbor queries.
+    ///
+    /// **Required** when using neighbor-based rules: `Separate`, `Cohere`,
+    /// `Align`, `Collide`, `Chase`, `Evade`, `Convert`, or `Typed` wrappers
+    /// around these.
+    ///
+    /// Spatial hashing divides space into a 3D grid to efficiently find
+    /// nearby particles. Without it, checking all pairs would be O(n²).
+    ///
+    /// # Arguments
+    ///
+    /// * `cell_size` - Size of each grid cell. Should be >= your largest
+    ///   interaction radius for best performance.
+    /// * `grid_resolution` - Number of cells per axis. **Must be a power of 2**
+    ///   (8, 16, 32, 64). Higher = more precision but more memory.
+    ///
+    /// # Guidelines
+    ///
+    /// | Scenario | cell_size | grid_resolution |
+    /// |----------|-----------|-----------------|
+    /// | Small interactions (radius < 0.1) | 0.1 | 32 |
+    /// | Medium interactions (radius 0.1-0.3) | 0.2-0.3 | 32 |
+    /// | Large bounds (> 1.0) | bounds / 16 | 32 or 64 |
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Boid>::new()
+    ///     .with_spatial_config(0.15, 32)  // Cell size 0.15, 32x32x32 grid
+    ///     .with_rule(Rule::Separate { radius: 0.1, strength: 2.0 })
+    ///     // ...
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `grid_resolution` is not a power of 2.
     pub fn with_spatial_config(mut self, cell_size: f32, grid_resolution: u32) -> Self {
         self.spatial_config = SpatialConfig::new(cell_size, grid_resolution);
         self
     }
 
+    /// Add a particle emitter for runtime spawning.
+    ///
+    /// Emitters respawn dead particles at a configurable rate. Use with
+    /// [`Rule::Age`] and [`Rule::Lifetime`] to create continuous particle
+    /// effects.
+    ///
+    /// # Arguments
+    ///
+    /// * `emitter` - The [`Emitter`] configuration
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Spark>::new()
+    ///     .with_particle_count(10_000)
+    ///     .with_emitter(Emitter::Point {
+    ///         position: Vec3::ZERO,
+    ///         rate: 500.0,  // 500 particles per second
+    ///     })
+    ///     .with_rule(Rule::Age)
+    ///     .with_rule(Rule::Lifetime(2.0))
+    ///     .with_rule(Rule::Gravity(9.8))
+    ///     .run();
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// When using emitters, particles should start dead (will be spawned by emitter)
+    /// or use a spawner that sets some particles alive initially.
+    pub fn with_emitter(mut self, emitter: Emitter) -> Self {
+        self.emitters.push(emitter);
+        self
+    }
+
+    /// Set up type-based interactions using an interaction matrix.
+    ///
+    /// The interaction matrix defines attraction and repulsion forces between
+    /// particle types. This is the foundation of "particle life" simulations.
+    ///
+    /// The closure receives an [`InteractionMatrix`] which you configure with
+    /// `set()`, `attract()`, `repel()`, or `set_symmetric()` calls.
+    ///
+    /// # Type Parameter
+    ///
+    /// `T` should be your `#[derive(ParticleType)]` enum. The `COUNT` const
+    /// from the derive tells us how many types exist.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// #[derive(ParticleType, Clone, Copy)]
+    /// enum Species { Red, Green, Blue }
+    ///
+    /// Simulation::<Particle>::new()
+    ///     .with_interactions::<Species>(|m| {
+    ///         use Species::*;
+    ///         m.attract(Red, Green, 1.0, 0.3);
+    ///         m.repel(Green, Red, 0.5, 0.2);
+    ///         m.set_symmetric(Blue, Blue, -0.3, 0.25);
+    ///     })
+    ///     .run();
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Using interactions automatically enables spatial hashing for neighbor
+    /// queries. The spatial config cell_size will be set to the maximum
+    /// interaction radius if not already configured larger.
+    pub fn with_interactions<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(&mut InteractionMatrix),
+    {
+        // We need to know how many types. For now, we require user to specify
+        // or we infer from the matrix configuration
+        let mut matrix = InteractionMatrix::new(16); // Default max 16 types
+        configure(&mut matrix);
+        self.interaction_matrix = Some(matrix);
+        self
+    }
+
+    /// Set up type-based interactions with a specific number of types.
+    ///
+    /// Use this if you have more than 16 particle types.
+    pub fn with_interactions_sized<F>(mut self, num_types: usize, configure: F) -> Self
+    where
+        F: FnOnce(&mut InteractionMatrix),
+    {
+        let mut matrix = InteractionMatrix::new(num_types);
+        configure(&mut matrix);
+        self.interaction_matrix = Some(matrix);
+        self
+    }
+
+    /// Add a custom uniform that can be used in shader rules.
+    ///
+    /// Custom uniforms are accessible in [`Rule::Custom`] as `uniforms.name`.
+    ///
+    /// # Supported Types
+    ///
+    /// - `f32`, `i32`, `u32` - scalar values
+    /// - `Vec2`, `Vec3`, `Vec4` - vector values
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Particle>::new()
+    ///     .with_uniform("attractor", Vec3::ZERO)
+    ///     .with_uniform("strength", 1.0f32)
+    ///     .with_rule(Rule::Custom(r#"
+    ///         let dir = uniforms.attractor - p.position;
+    ///         p.velocity += normalize(dir) * uniforms.strength;
+    ///     "#.into()))
+    ///     .run();
+    /// ```
+    pub fn with_uniform<V: Into<UniformValue>>(mut self, name: &str, value: V) -> Self {
+        self.custom_uniforms.set(name, value);
+        self
+    }
+
+    /// Set a callback that runs every frame to update custom uniforms.
+    ///
+    /// The callback receives an [`UpdateContext`] with:
+    /// - `time()` - current simulation time
+    /// - `delta_time()` - time since last frame
+    /// - `mouse_ndc()` - mouse position in normalized device coordinates
+    /// - `mouse_pressed()` - is left mouse button down
+    /// - `set(name, value)` - update a custom uniform
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Particle>::new()
+    ///     .with_uniform("target", Vec3::ZERO)
+    ///     .with_update(|ctx| {
+    ///         // Make target orbit based on time
+    ///         let t = ctx.time();
+    ///         ctx.set("target", Vec3::new(t.cos(), 0.0, t.sin()));
+    ///     })
+    ///     .run();
+    /// ```
+    pub fn with_update<F>(mut self, callback: F) -> Self
+    where
+        F: FnMut(&mut UpdateContext) + Send + 'static,
+    {
+        self.update_callback = Some(Box::new(callback));
+        self
+    }
+
+    /// Add a custom WGSL function that can be called from rules.
+    ///
+    /// Custom functions are injected into the compute shader and can be
+    /// called from [`Rule::Custom`] or other custom code.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Particle>::new()
+    ///     .with_function(r#"
+    ///         fn swirl(pos: vec3<f32>, strength: f32) -> vec3<f32> {
+    ///             let d = length(pos.xz);
+    ///             return vec3(-pos.z, 0.0, pos.x) * strength / (d + 0.1);
+    ///         }
+    ///     "#)
+    ///     .with_rule(Rule::Custom("p.velocity += swirl(p.position, 2.0);".into()))
+    ///     .run();
+    /// ```
+    ///
+    /// # Available in Functions
+    ///
+    /// Your functions have access to:
+    /// - All WGSL built-in functions
+    /// - The `Particle` struct type
+    /// - The `Uniforms` struct (via parameter passing)
+    /// - Other custom functions defined before this one
+    pub fn with_function(mut self, wgsl_code: &str) -> Self {
+        self.custom_functions.push(wgsl_code.to_string());
+        self
+    }
+
     /// Check if any rules require neighbor queries
     fn has_neighbor_rules(&self) -> bool {
-        self.rules.iter().any(|r| r.requires_neighbors())
+        self.rules.iter().any(|r| r.requires_neighbors()) || self.interaction_matrix.is_some()
     }
 
     /// Generate the compute shader WGSL code.
@@ -92,6 +593,36 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             .collect::<Vec<_>>()
             .join("\n\n");
 
+        // Generate emitter code
+        let emitter_code: String = self
+            .emitters
+            .iter()
+            .enumerate()
+            .map(|(i, e)| e.to_wgsl(i))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        // Generate custom uniform fields for WGSL
+        let custom_uniform_fields = if self.custom_uniforms.is_empty() {
+            String::new()
+        } else {
+            format!("\n{}", self.custom_uniforms.to_wgsl_fields())
+        };
+
+        // Built-in utility functions (always included)
+        let builtin_utils = shader_utils::all_utils_wgsl();
+
+        // Generate custom functions
+        let custom_functions_code = if self.custom_functions.is_empty() {
+            builtin_utils
+        } else {
+            format!(
+                "{}\n// Custom functions\n{}\n",
+                builtin_utils,
+                self.custom_functions.join("\n\n")
+            )
+        };
+
         if !has_neighbors {
             // Simple shader without neighbor queries
             format!(
@@ -100,7 +631,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
 struct Uniforms {{
     view_proj: mat4x4<f32>,
     time: f32,
-    delta_time: f32,
+    delta_time: f32,{custom_uniform_fields}
 }};
 
 @group(0) @binding(0)
@@ -109,6 +640,7 @@ var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1)
 var<uniform> uniforms: Uniforms;
 
+{custom_functions_code}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     let index = global_id.x;
@@ -119,6 +651,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     }}
 
     var p = particles[index];
+
+{emitter_code}
+
+    // Skip dead particles
+    if p.alive == 0u {{
+        return;
+    }}
 
 {simple_rules_code}
 
@@ -148,9 +687,23 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
                 .collect::<Vec<_>>()
                 .join("\n\n");
 
-            // Check if we need cohesion/alignment accumulators
-            let needs_cohesion = self.rules.iter().any(|r| matches!(r, Rule::Cohere { .. }));
-            let needs_alignment = self.rules.iter().any(|r| matches!(r, Rule::Align { .. }));
+            // Check if we need cohesion/alignment/chase/evade accumulators
+            let needs_cohesion = self.rules.iter().any(|r| r.needs_cohesion_accumulator());
+            let needs_alignment = self.rules.iter().any(|r| r.needs_alignment_accumulator());
+            let needs_chase = self.rules.iter().any(|r| r.needs_chase_accumulator());
+            let needs_evade = self.rules.iter().any(|r| r.needs_evade_accumulator());
+
+            // Generate interaction matrix code if present
+            let (interaction_init, interaction_neighbor, interaction_post) =
+                if let Some(ref matrix) = self.interaction_matrix {
+                    (
+                        matrix.to_wgsl_init(),
+                        matrix.to_wgsl_neighbor(),
+                        matrix.to_wgsl_post(),
+                    )
+                } else {
+                    (String::new(), String::new(), String::new())
+                };
 
             let accumulator_vars = {
                 let mut vars = String::new();
@@ -160,7 +713,41 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
                 if needs_alignment {
                     vars.push_str("    var alignment_sum = vec3<f32>(0.0);\n    var alignment_count = 0.0;\n");
                 }
+                if needs_chase {
+                    vars.push_str("    var chase_nearest_dist = 1000.0;\n    var chase_nearest_pos = vec3<f32>(0.0);\n");
+                }
+                if needs_evade {
+                    vars.push_str("    var evade_nearest_dist = 1000.0;\n    var evade_nearest_pos = vec3<f32>(0.0);\n");
+                }
+                // Add interaction matrix init
+                if !interaction_init.is_empty() {
+                    vars.push_str("\n");
+                    vars.push_str(&interaction_init);
+                    vars.push_str("\n");
+                }
                 vars
+            };
+
+            // Combine neighbor rules with interaction matrix neighbor code
+            let neighbor_rules_code = {
+                let mut code = neighbor_rules_code;
+                if !interaction_neighbor.is_empty() {
+                    code.push_str("\n");
+                    code.push_str(&interaction_neighbor);
+                }
+                code
+            };
+
+            // Combine post-neighbor code with interaction matrix post code
+            let post_neighbor_code = {
+                let mut code = post_neighbor_code;
+                if !interaction_post.is_empty() {
+                    if !code.is_empty() {
+                        code.push_str("\n\n");
+                    }
+                    code.push_str(&interaction_post);
+                }
+                code
             };
 
             format!(
@@ -173,7 +760,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 struct Uniforms {{
     view_proj: mat4x4<f32>,
     time: f32,
-    delta_time: f32,
+    delta_time: f32,{custom_uniform_fields}
 }};
 
 struct SpatialParams {{
@@ -201,6 +788,7 @@ var<storage, read> cell_end: array<u32>;
 @group(0) @binding(5)
 var<uniform> spatial: SpatialParams;
 
+{custom_functions_code}
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     let index = global_id.x;
@@ -211,6 +799,14 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     }}
 
     var p = particles[index];
+
+{emitter_code}
+
+    // Skip dead particles
+    if p.alive == 0u {{
+        return;
+    }}
+
     let my_pos = p.position;
     let my_cell = pos_to_cell(my_pos, spatial.cell_size, spatial.grid_resolution);
 
@@ -238,6 +834,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             }}
 
             let other = particles[other_idx];
+
+            // Skip dead neighbors
+            if other.alive == 0u {{
+                continue;
+            }}
+
             let neighbor_pos = other.position;
             let neighbor_vel = other.velocity;
             let diff = my_pos - neighbor_pos;
@@ -264,9 +866,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     /// Generate the render shader WGSL code.
     fn generate_render_shader(&self) -> String {
-        let color_expr = match P::COLOR_FIELD {
-            Some(field) => format!("particle_{}", field),
-            None => "normalize(particle_pos) * 0.5 + 0.5".to_string(),
+        let (color_input, color_expr) = match P::COLOR_FIELD {
+            Some(_) => (
+                "@location(1) particle_color: vec3<f32>,".to_string(),
+                "particle_color".to_string(),
+            ),
+            None => (
+                String::new(),
+                "normalize(particle_pos) * 0.5 + 0.5".to_string(),
+            ),
         };
 
         format!(
@@ -289,7 +897,20 @@ struct VertexOutput {{
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
     @location(0) particle_pos: vec3<f32>,
+    {color_input}
+    @location(2) alive: u32,
+    @location(3) scale: f32,
 ) -> VertexOutput {{
+    var out: VertexOutput;
+
+    // Cull dead particles by moving them off-screen
+    if alive == 0u {{
+        out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
+        out.color = vec3<f32>(0.0);
+        out.uv = vec2<f32>(0.0);
+        return out;
+    }}
+
     var quad_vertices = array<vec2<f32>, 6>(
         vec2<f32>(-1.0, -1.0),
         vec2<f32>( 1.0, -1.0),
@@ -300,7 +921,8 @@ fn vs_main(
     );
 
     let quad_pos = quad_vertices[vertex_index];
-    let particle_size = 0.015;
+    let base_size = {particle_size};
+    let particle_size = base_size * scale;
 
     let world_pos = vec4<f32>(particle_pos, 1.0);
     var clip_pos = uniforms.view_proj * world_pos;
@@ -308,7 +930,6 @@ fn vs_main(
     clip_pos.x += quad_pos.x * particle_size * clip_pos.w;
     clip_pos.y += quad_pos.y * particle_size * clip_pos.w;
 
-    var out: VertexOutput;
     out.clip_position = clip_pos;
     out.color = {color_expr};
     out.uv = quad_pos;
@@ -325,11 +946,51 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
     let alpha = 1.0 - smoothstep(0.5, 1.0, dist);
     return vec4<f32>(in.color, alpha);
 }}
-"#
+"#,
+            particle_size = self.particle_size
         )
     }
 
-    /// Run the simulation. This blocks until the window is closed.
+    /// Run the simulation.
+    ///
+    /// This is the final step that starts the simulation. It:
+    ///
+    /// 1. Spawns all particles using the spawner function
+    /// 2. Generates WGSL compute shaders from the configured rules
+    /// 3. Initializes the GPU and creates buffers
+    /// 4. Opens a window and starts the render loop
+    ///
+    /// # Blocking
+    ///
+    /// This method **blocks** until the user closes the window. It runs
+    /// the event loop on the main thread.
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - No spawner was provided (forgot to call `.with_spawner()`)
+    /// - GPU initialization fails (no compatible GPU found)
+    ///
+    /// # Window Controls
+    ///
+    /// - **Left-click + drag**: Rotate camera around the origin
+    /// - **Scroll wheel**: Zoom in/out
+    /// - **Close window**: Exits the application
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_particle_count(10_000)
+    ///     .with_bounds(1.0)
+    ///     .with_spawner(|_, _| Ball::default())
+    ///     .with_rule(Rule::Gravity(9.8))
+    ///     .with_rule(Rule::BounceWalls)
+    ///     .run();  // Blocks here until window closed
+    ///
+    /// // This code runs after window is closed
+    /// println!("Simulation ended");
+    /// ```
     pub fn run(mut self) {
         let spawner = self
             .spawner
@@ -342,6 +1003,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         let compute_shader = self.generate_compute_shader();
         let render_shader = self.generate_render_shader();
 
+        // Calculate custom uniform buffer size
+        let custom_uniform_size = self.custom_uniforms.byte_size();
+
         // Generate particles
         let particles: Vec<P> = (0..self.particle_count)
             .map(|i| spawner(i, self.particle_count))
@@ -353,28 +1017,56 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             render_shader,
             has_neighbors,
             spatial_config: self.spatial_config,
+            color_offset: P::COLOR_OFFSET,
+            alive_offset: P::ALIVE_OFFSET,
+            scale_offset: P::SCALE_OFFSET,
+            custom_uniform_size,
         };
 
         let event_loop = EventLoop::new().unwrap();
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        let mut app = App::<P>::new(particles, config);
+        let mut app = App::<P>::new(
+            particles,
+            config,
+            self.custom_uniforms,
+            self.update_callback,
+        );
         event_loop.run_app(&mut app).unwrap();
     }
 }
 
 impl<P: ParticleTrait + 'static> Default for Simulation<P> {
+    /// Creates a new simulation with default settings.
+    ///
+    /// Equivalent to [`Simulation::new()`].
     fn default() -> Self {
         Self::new()
     }
 }
 
+/// Internal configuration passed to the GPU renderer.
+///
+/// Contains all the computed values needed to initialize the GPU state.
 pub(crate) struct SimConfig {
+    /// Total number of particles.
     pub particle_count: u32,
+    /// Generated WGSL compute shader source.
     pub compute_shader: String,
+    /// Generated WGSL render shader source.
     pub render_shader: String,
+    /// Whether neighbor queries are needed.
     pub has_neighbors: bool,
+    /// Spatial hashing configuration.
     pub spatial_config: SpatialConfig,
+    /// Byte offset of color field in particle struct, if any.
+    pub color_offset: Option<u32>,
+    /// Byte offset of alive field in particle struct.
+    pub alive_offset: u32,
+    /// Byte offset of scale field in particle struct.
+    pub scale_offset: u32,
+    /// Size of custom uniforms in bytes.
+    pub custom_uniform_size: usize,
 }
 
 struct App<P: ParticleTrait> {
@@ -384,10 +1076,18 @@ struct App<P: ParticleTrait> {
     config: SimConfig,
     mouse_pressed: bool,
     last_mouse_pos: Option<(f64, f64)>,
+    current_mouse_ndc: Option<glam::Vec2>,
+    custom_uniforms: CustomUniforms,
+    update_callback: Option<Box<dyn FnMut(&mut UpdateContext) + Send>>,
 }
 
 impl<P: ParticleTrait + 'static> App<P> {
-    fn new(particles: Vec<P>, config: SimConfig) -> Self {
+    fn new(
+        particles: Vec<P>,
+        config: SimConfig,
+        custom_uniforms: CustomUniforms,
+        update_callback: Option<Box<dyn FnMut(&mut UpdateContext) + Send>>,
+    ) -> Self {
         // Convert user particles to GPU format
         let gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
 
@@ -398,6 +1098,9 @@ impl<P: ParticleTrait + 'static> App<P> {
             config,
             mouse_pressed: false,
             last_mouse_pos: None,
+            current_mouse_ndc: None,
+            custom_uniforms,
+            update_callback,
         }
     }
 }
@@ -422,6 +1125,10 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 &self.config.render_shader,
                 self.config.has_neighbors,
                 self.config.spatial_config,
+                self.config.color_offset,
+                self.config.alive_offset,
+                self.config.scale_offset,
+                self.config.custom_uniform_size,
             )));
         }
     }
@@ -445,6 +1152,16 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
+                // Track mouse position in NDC for custom uniforms
+                if let Some(gpu_state) = &self.gpu_state {
+                    let w = gpu_state.config.width as f32;
+                    let h = gpu_state.config.height as f32;
+                    let ndc_x = (position.x as f32 / w) * 2.0 - 1.0;
+                    let ndc_y = 1.0 - (position.y as f32 / h) * 2.0; // Flip Y
+                    self.current_mouse_ndc = Some(glam::Vec2::new(ndc_x, ndc_y));
+                }
+
+                // Camera drag
                 if self.mouse_pressed {
                     if let Some((last_x, last_y)) = self.last_mouse_pos {
                         let dx = position.x - last_x;
@@ -470,8 +1187,35 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::RedrawRequested => {
+                // Get time info once
+                let (time, delta_time) = if let Some(gpu_state) = &mut self.gpu_state {
+                    gpu_state.get_time_info()
+                } else {
+                    (0.0, 0.0)
+                };
+
+                // Call update callback if present
+                if let Some(ref mut callback) = self.update_callback {
+                    let mut ctx = UpdateContext {
+                        uniforms: &mut self.custom_uniforms,
+                        time,
+                        delta_time,
+                        mouse_ndc: self.current_mouse_ndc,
+                        mouse_pressed: self.mouse_pressed,
+                    };
+                    callback(&mut ctx);
+                }
+
+                // Get custom uniform bytes
+                let custom_bytes = if !self.custom_uniforms.is_empty() {
+                    Some(self.custom_uniforms.to_bytes())
+                } else {
+                    None
+                };
+
                 if let Some(gpu_state) = &mut self.gpu_state {
-                    match gpu_state.render() {
+                    let bytes_ref = custom_bytes.as_deref();
+                    match gpu_state.render(time, delta_time, bytes_ref) {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => {
                             gpu_state.resize(winit::dpi::PhysicalSize {

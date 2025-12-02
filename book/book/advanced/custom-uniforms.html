@@ -1,0 +1,352 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Custom Uniforms - RDPE - Reaction Diffusion Particle Engine</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="custom-uniforms"><a class="header" href="#custom-uniforms">Custom Uniforms</a></h1>
+<p>Custom uniforms let you pass dynamic values from Rust to your shader code every frame. This enables interactive simulations that respond to time, mouse input, or any other runtime data.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
+<p>Define uniforms with <code>.with_uniform()</code> and access them in <code>Rule::Custom</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_uniform("target", Vec3::ZERO)
+    .with_uniform("strength", 1.0f32)
+    .with_rule(Rule::Custom(r#"
+        let dir = uniforms.target - p.position;
+        p.velocity += normalize(dir) * uniforms.strength * uniforms.delta_time;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>In your shader code, access uniforms via the <code>uniforms</code> struct:</p>
+<ul>
+<li><code>uniforms.time</code> - simulation time in seconds (built-in)</li>
+<li><code>uniforms.delta_time</code> - time since last frame (built-in)</li>
+<li><code>uniforms.your_name</code> - your custom uniforms</li>
+</ul>
+<h2 id="supported-types"><a class="header" href="#supported-types">Supported Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Rust Type</th><th>WGSL Type</th><th>Example</th></tr></thead><tbody>
+<tr><td><code>f32</code></td><td><code>f32</code></td><td><code>1.0f32</code></td></tr>
+<tr><td><code>i32</code></td><td><code>i32</code></td><td><code>-5i32</code></td></tr>
+<tr><td><code>u32</code></td><td><code>u32</code></td><td><code>10u32</code></td></tr>
+<tr><td><code>Vec2</code></td><td><code>vec2&lt;f32&gt;</code></td><td><code>Vec2::new(1.0, 2.0)</code></td></tr>
+<tr><td><code>Vec3</code></td><td><code>vec3&lt;f32&gt;</code></td><td><code>Vec3::new(1.0, 2.0, 3.0)</code></td></tr>
+<tr><td><code>Vec4</code></td><td><code>vec4&lt;f32&gt;</code></td><td><code>Vec4::new(1.0, 2.0, 3.0, 4.0)</code></td></tr>
+</tbody></table>
+</div>
+<h2 id="updating-uniforms-at-runtime"><a class="header" href="#updating-uniforms-at-runtime">Updating Uniforms at Runtime</a></h2>
+<p>Use <code>.with_update()</code> to modify uniforms every frame:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_uniform("attractor", Vec3::ZERO)
+    .with_uniform("active", 0.0f32)
+    .with_update(|ctx| {
+        // Time-based animation
+        let t = ctx.time();
+        ctx.set("attractor", Vec3::new(t.cos(), 0.0, t.sin()));
+
+        // Mouse interaction
+        if ctx.mouse_pressed() {
+            ctx.set("active", 1.0f32);
+        } else {
+            ctx.set("active", 0.0f32);
+        }
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="updatecontext-api"><a class="header" href="#updatecontext-api">UpdateContext API</a></h3>
+<p>The <code>ctx</code> parameter provides:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>ctx.time()</code></td><td><code>f32</code></td><td>Simulation time in seconds</td></tr>
+<tr><td><code>ctx.delta_time()</code></td><td><code>f32</code></td><td>Time since last frame</td></tr>
+<tr><td><code>ctx.mouse_ndc()</code></td><td><code>Option&lt;Vec2&gt;</code></td><td>Mouse in normalized device coords (-1 to 1)</td></tr>
+<tr><td><code>ctx.mouse_pressed()</code></td><td><code>bool</code></td><td>Is left mouse button down?</td></tr>
+<tr><td><code>ctx.set(name, value)</code></td><td>-</td><td>Update a uniform value</td></tr>
+<tr><td><code>ctx.get(name)</code></td><td><code>Option&lt;&amp;UniformValue&gt;</code></td><td>Read current uniform value</td></tr>
+</tbody></table>
+</div>
+<h2 id="example-mouse-attractor"><a class="header" href="#example-mouse-attractor">Example: Mouse Attractor</a></h2>
+<p>Particles are attracted to the mouse when clicked:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Mote&gt;::new()
+    .with_particle_count(15_000)
+    .with_spawner(|_, _| /* ... */)
+    .with_uniform("attractor", Vec3::ZERO)
+    .with_uniform("strength", 0.0f32)
+    .with_update(|ctx| {
+        if ctx.mouse_pressed() {
+            if let Some(mouse) = ctx.mouse_ndc() {
+                // Map NDC to world space (approximate)
+                ctx.set("attractor", Vec3::new(
+                    mouse.x * 2.0,
+                    mouse.y * 2.0,
+                    0.0
+                ));
+                ctx.set("strength", 5.0f32);
+            }
+        } else {
+            ctx.set("strength", 0.0f32);
+        }
+    })
+    .with_rule(Rule::Custom(r#"
+        if uniforms.strength &gt; 0.0 {
+            let to_attractor = uniforms.attractor - p.position;
+            let dist = length(to_attractor);
+            if dist &gt; 0.01 {
+                let dir = to_attractor / dist;
+                let force = uniforms.strength / (dist * dist + 0.5);
+                p.velocity += dir * force * uniforms.delta_time;
+            }
+        }
+    "#.into()))
+    .with_rule(Rule::Drag(1.5))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="example-pulsing-attractor"><a class="header" href="#example-pulsing-attractor">Example: Pulsing Attractor</a></h2>
+<p>Automatic attraction/repulsion cycle:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_uniform("strength", 1.0f32)
+.with_update(|ctx| {
+    let cycle = ctx.time() % 4.0;
+    let strength = if cycle &lt; 3.0 {
+        3.0   // Attract for 3 seconds
+    } else {
+        -5.0  // Repel for 1 second
+    };
+    ctx.set("strength", strength);
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
+<ul>
+<li><strong>Initialize all uniforms</strong>: Always set initial values with <code>.with_uniform()</code> before using <code>.with_update()</code>.</li>
+<li><strong>Type suffixes</strong>: Use <code>1.0f32</code> not <code>1.0</code> to ensure correct type inference.</li>
+<li><strong>NDC coordinates</strong>: Mouse NDC ranges from -1 to 1 on both axes, with Y up.</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../advanced/custom-rules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../advanced/custom-functions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../advanced/custom-rules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../advanced/custom-functions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>
