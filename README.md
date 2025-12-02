@@ -291,8 +291,6 @@ Simulation::new()
 
 - All particle physics runs on GPU compute shaders
 - Spatial hashing enables O(n) neighbor queries
-- Trails use a ring buffer (no CPU overhead)
-- Connections are rendered via geometry shader
 - Tested smooth at 10k+ particles on integrated graphics (Intel HD 530)
 
 ## License
