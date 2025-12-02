@@ -102,6 +102,7 @@
 
 mod emitter;
 mod gpu;
+pub mod input;
 mod interactions;
 pub mod rules;
 pub mod shader_utils;
@@ -208,6 +209,7 @@ pub trait ParticleTrait: Clone + Send + Sync {
 /// - [`ParticleTrait`] - the particle trait (rarely needed directly)
 pub mod prelude {
     pub use crate::emitter::Emitter;
+    pub use crate::input::{Input, KeyCode, MouseButton};
     pub use crate::interactions::InteractionMatrix;
     pub use crate::rules::{Falloff, Rule};
     pub use crate::simulation::Simulation;

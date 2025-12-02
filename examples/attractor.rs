@@ -29,8 +29,9 @@
 //! .with_update(|ctx| {
 //!     ctx.time()          // Simulation time
 //!     ctx.delta_time()    // Time since last frame
-//!     ctx.mouse_ndc()     // Mouse position (-1 to 1)
-//!     ctx.mouse_pressed() // Is left button down?
+//!     ctx.mouse_ndc()     // Mouse position (-1 to 1) as Vec2
+//!     ctx.mouse_pressed() // Is left button held?
+//!     ctx.input           // Full input state access
 //!     ctx.set(name, value) // Update uniform
 //! })
 //! ```
@@ -80,11 +81,10 @@ fn main() {
         // Update uniforms based on mouse input
         .with_update(|ctx| {
             if ctx.mouse_pressed() {
-                if let Some(mouse) = ctx.mouse_ndc() {
-                    // Map NDC (-1 to 1) to world space (approximate)
-                    ctx.set("attractor", Vec3::new(mouse.x * 2.0, mouse.y * 2.0, 0.0));
-                    ctx.set("strength", 5.0f32);
-                }
+                let mouse = ctx.mouse_ndc();
+                // Map NDC (-1 to 1) to world space (approximate)
+                ctx.set("attractor", Vec3::new(mouse.x * 2.0, mouse.y * 2.0, 0.0));
+                ctx.set("strength", 5.0f32);
             } else {
                 ctx.set("strength", 0.0f32);
             }

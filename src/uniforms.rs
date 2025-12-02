@@ -23,6 +23,7 @@
 //!     .run();
 //! ```
 
+use crate::input::{Input, KeyCode, MouseButton};
 use glam::{Vec2, Vec3, Vec4};
 use std::collections::HashMap;
 
@@ -212,20 +213,54 @@ impl CustomUniforms {
 /// Context passed to the update callback each frame.
 ///
 /// Provides access to input state and allows updating custom uniforms.
+///
+/// # Input Access
+///
+/// The context provides full access to input state through the `input` field:
+///
+/// ```ignore
+/// .with_update(|ctx| {
+///     // Check if a key was just pressed this frame
+///     if ctx.input.key_pressed(KeyCode::Space) {
+///         ctx.set("burst", 1.0);
+///     }
+///
+///     // Check if left mouse is held down
+///     if ctx.input.mouse_held(MouseButton::Left) {
+///         ctx.set("attractor", ctx.input.mouse_ndc());
+///     }
+///
+///     // Get mouse movement delta
+///     let delta = ctx.input.mouse_delta();
+/// })
+/// ```
 pub struct UpdateContext<'a> {
     /// Custom uniforms that can be modified.
     pub(crate) uniforms: &'a mut CustomUniforms,
+    /// Input state for the current frame.
+    pub input: &'a Input,
     /// Current simulation time in seconds.
     pub(crate) time: f32,
     /// Time since last frame in seconds.
     pub(crate) delta_time: f32,
-    /// Current mouse position in normalized device coordinates (-1 to 1).
-    pub(crate) mouse_ndc: Option<Vec2>,
-    /// Is the left mouse button pressed?
-    pub(crate) mouse_pressed: bool,
 }
 
 impl<'a> UpdateContext<'a> {
+    /// Create a new update context.
+    pub(crate) fn new(
+        uniforms: &'a mut CustomUniforms,
+        input: &'a Input,
+        time: f32,
+        delta_time: f32,
+    ) -> Self {
+        Self {
+            uniforms,
+            input,
+            time,
+            delta_time,
+        }
+    }
+
     /// Get the current simulation time in seconds.
     pub fn time(&self) -> f32 {
         self.time
@@ -236,17 +271,37 @@ impl<'a> UpdateContext<'a> {
         self.delta_time
     }
 
+    // ========== Convenience methods that delegate to Input ==========
+
     /// Get the mouse position in normalized device coordinates (-1 to 1).
     ///
-    /// Returns `None` if the mouse is outside the window.
-    pub fn mouse_ndc(&self) -> Option<Vec2> {
-        self.mouse_ndc
+    /// This is a convenience method. For full input access, use `ctx.input`.
+    pub fn mouse_ndc(&self) -> Vec2 {
+        self.input.mouse_ndc()
     }
 
-    /// Check if the left mouse button is pressed.
+    /// Check if the left mouse button is currently held down.
+    ///
+    /// This is a convenience method. For full input access, use `ctx.input`.
     pub fn mouse_pressed(&self) -> bool {
-        self.mouse_pressed
+        self.input.mouse_held(MouseButton::Left)
     }
+
+    /// Check if a key was just pressed this frame.
+    ///
+    /// This is a convenience method. For full input access, use `ctx.input`.
+    pub fn key_pressed(&self, key: KeyCode) -> bool {
+        self.input.key_pressed(key)
+    }
+
+    /// Check if a key is currently held down.
+    ///
+    /// This is a convenience method. For full input access, use `ctx.input`.
+    pub fn key_held(&self, key: KeyCode) -> bool {
+        self.input.key_held(key)
+    }
+
+    // ========== Uniform methods ==========
 
     /// Set a custom uniform value.
     pub fn set<V: Into<UniformValue>>(&mut self, name: &str, value: V) {

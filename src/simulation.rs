@@ -50,6 +50,7 @@
 
 use crate::emitter::Emitter;
 use crate::gpu::GpuState;
+use crate::input::Input;
 use crate::interactions::InteractionMatrix;
 use crate::rules::Rule;
 use crate::shader_utils;
@@ -1491,9 +1492,10 @@ struct App<P: ParticleTrait> {
     gpu_state: Option<GpuState>,
     gpu_particles: Vec<P::Gpu>,
     config: SimConfig,
-    mouse_pressed: bool,
+    // Input state (single source of truth for user input)
+    input: Input,
+    // Last mouse position for camera dragging (internal use)
     last_mouse_pos: Option<(f64, f64)>,
-    current_mouse_ndc: Option<glam::Vec2>,
     custom_uniforms: CustomUniforms,
     update_callback: Option<UpdateCallback>,
     #[cfg(feature = "egui")]
@@ -1518,9 +1520,8 @@ impl<P: ParticleTrait + 'static> App<P> {
             gpu_state: None,
             gpu_particles,
             config,
-            mouse_pressed: false,
+            input: Input::new(),
             last_mouse_pos: None,
-            current_mouse_ndc: None,
             custom_uniforms,
             update_callback,
             #[cfg(feature = "egui")]
@@ -1584,36 +1585,30 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
         #[cfg(not(feature = "egui"))]
         let egui_consumed = false;
 
+        // Pass all events to Input for tracking
+        self.input.handle_event(&event);
+
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
             WindowEvent::Resized(physical_size) => {
+                // Update input's window size for NDC calculations
+                self.input.set_window_size(physical_size.width, physical_size.height);
                 if let Some(gpu_state) = &mut self.gpu_state {
                     gpu_state.resize(physical_size);
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                // Only process if egui didn't consume the event
-                if !egui_consumed && button == MouseButton::Left {
-                    self.mouse_pressed = state == ElementState::Pressed;
-                    if !self.mouse_pressed {
-                        self.last_mouse_pos = None;
-                    }
+                // Reset camera drag state when left mouse is released
+                if !egui_consumed && button == MouseButton::Left && state == ElementState::Released {
+                    self.last_mouse_pos = None;
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                // Track mouse position in NDC for custom uniforms (always)
-                if let Some(gpu_state) = &self.gpu_state {
-                    let w = gpu_state.config.width as f32;
-                    let h = gpu_state.config.height as f32;
-                    let ndc_x = (position.x as f32 / w) * 2.0 - 1.0;
-                    let ndc_y = 1.0 - (position.y as f32 / h) * 2.0; // Flip Y
-                    self.current_mouse_ndc = Some(glam::Vec2::new(ndc_x, ndc_y));
-                }
-
-                // Camera drag (only if egui didn't consume)
-                if !egui_consumed && self.mouse_pressed {
+                // Camera drag (only if egui didn't consume and left mouse is held)
+                use crate::input::MouseButton as InputMouseButton;
+                if !egui_consumed && self.input.mouse_held(InputMouseButton::Left) {
                     if let Some((last_x, last_y)) = self.last_mouse_pos {
                         let dx = position.x - last_x;
                         let dy = position.y - last_y;
@@ -1641,6 +1636,9 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::RedrawRequested => {
+                // Begin new frame for input (clears per-frame state)
+                self.input.begin_frame();
+
                 // Update time (single source of truth)
                 let (time, delta_time) = self.time.update();
 
@@ -1660,13 +1658,12 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
 
                 // Call update callback if present
                 if let Some(ref mut callback) = self.update_callback {
-                    let mut ctx = UpdateContext {
-                        uniforms: &mut self.custom_uniforms,
+                    let mut ctx = UpdateContext::new(
+                        &mut self.custom_uniforms,
+                        &self.input,
                         time,
                         delta_time,
-                        mouse_ndc: self.current_mouse_ndc,
-                        mouse_pressed: self.mouse_pressed,
-                    };
+                    );
                     callback(&mut ctx);
                 }
 

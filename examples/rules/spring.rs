@@ -38,10 +38,11 @@ fn main() {
 
             // Color based on starting position
             let t = i as f32 / 10_000.0;
+            let tau = std::f32::consts::TAU;
             let color = Vec3::new(
-                0.5 + 0.5 * (t * 6.28).sin(),
-                0.5 + 0.5 * (t * 6.28 + 2.09).sin(),
-                0.5 + 0.5 * (t * 6.28 + 4.19).sin(),
+                0.5 + 0.5 * (t * tau).sin(),
+                0.5 + 0.5 * (t * tau + 2.09).sin(),
+                0.5 + 0.5 * (t * tau + 4.19).sin(),
             );
 
             Bouncy {
