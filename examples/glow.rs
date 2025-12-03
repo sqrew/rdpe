@@ -1,7 +1,42 @@
-//! Glowy particles with additive blending.
+//! # Additive Glow Example
 //!
-//! Demonstrates the visual system with BlendMode::Additive.
-//! Overlapping particles add up to create bright, glowing effects.
+//! Demonstrates `BlendMode::Additive` - overlapping particles add up
+//! to create bright, glowing effects like fire, magic, or starfields.
+//!
+//! ## What This Demonstrates
+//!
+//! - `BlendMode::Additive` - colors add together (brighter where dense)
+//! - Small particle size for high-density glow accumulation
+//! - Swirl motion via custom rule
+//! - HSV color generation for rainbow effects
+//!
+//! ## How Additive Blending Works
+//!
+//! In additive mode, overlapping particle colors are summed:
+//! - 1 particle: normal color
+//! - 10 particles overlapping: 10x brighter (clamped to white)
+//!
+//! This creates natural "density visualization" - areas with more
+//! particles glow brighter. Perfect for:
+//! - Fire and explosions
+//! - Magic effects and energy
+//! - Stars and galaxies
+//! - Glowing fog and plasma
+//!
+//! ## Additive vs Alpha
+//!
+//! - **Additive**: Colors add up, no occlusion, always brightens
+//! - **Alpha**: Standard transparency, particles can occlude each other
+//!
+//! ## Try This
+//!
+//! - Increase particle count to 100k for denser glow
+//! - Reduce particle size to 0.004 for finer detail
+//! - Switch to `BlendMode::Alpha` to see the difference
+//! - Add a custom fragment shader with radial glow falloff
+//! - Try monochrome (all white particles) for pure brightness effect
+//!
+//! Run with: `cargo run --example glow`
 
 use rand::Rng;
 use rdpe::prelude::*;

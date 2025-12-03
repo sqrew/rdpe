@@ -4,6 +4,36 @@
 //! Red and blue particles have opposite polarity: opposites attract,
 //! same repels.
 //!
+//! ## What This Demonstrates
+//!
+//! - `Rule::Magnetism` - type-based attraction/repulsion
+//! - `particle_type` field for distinguishing particle polarities
+//! - `same_repel: true` to make same-type particles push away
+//! - `Rule::Collide` for soft collision response
+//! - Color-coding to visualize particle types
+//!
+//! ## The Physics
+//!
+//! **Electromagnetic Analogy**: Like charges repel, opposite charges attract.
+//! Particles with `particle_type = 0` (red/positive) attract particles with
+//! `particle_type = 1` (blue/negative), while same-type particles repel.
+//!
+//! **Cluster Formation**: Over time, alternating red-blue clusters form as
+//! opposites pair up while pushing away same-polarity neighbors. This
+//! creates crystal-like structures.
+//!
+//! **Collision Response**: The `Collide` rule prevents particles from
+//! overlapping when attraction brings them too close, maintaining
+//! distinct particles rather than collapse.
+//!
+//! ## Try This
+//!
+//! - Set `same_repel: false` to make everything attract (black hole effect)
+//! - Increase `strength` to 5.0 for violent pairing dynamics
+//! - Add a third type with `particle_type = 2` for complex interactions
+//! - Remove `Collide` to see particles overlap at attraction points
+//! - Add `Rule::Turbulence` to prevent stable configurations
+//!
 //! Run with: `cargo run --example magnetism`
 
 use rand::Rng;

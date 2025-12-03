@@ -203,6 +203,7 @@ impl Emitter {
             p.alive = 1u;
             p.age = 0.0;
             p.scale = 1.0;
+            p.particle_type = 0u;
             p.position = vec3<f32>({}, {}, {});
 
             // Random direction
@@ -226,6 +227,7 @@ impl Emitter {
         p.alive = 1u;
         p.age = 0.0;
         p.scale = 1.0;
+        p.particle_type = 0u;
         p.position = vec3<f32>({}, {}, {});
 
         // Random outward direction (uniform on sphere)
@@ -257,6 +259,7 @@ impl Emitter {
             p.alive = 1u;
             p.age = 0.0;
             p.scale = 1.0;
+            p.particle_type = 0u;
             p.position = vec3<f32>({}, {}, {});
 
             // Cone direction with spread
@@ -300,6 +303,7 @@ impl Emitter {
             p.alive = 1u;
             p.age = 0.0;
             p.scale = 1.0;
+            p.particle_type = 0u;
 
             // Random point on sphere surface
             let vhash = spawn_hash * 0x45d9f3bu;
@@ -332,6 +336,7 @@ impl Emitter {
             p.alive = 1u;
             p.age = 0.0;
             p.scale = 1.0;
+            p.particle_type = 0u;
 
             // Random position within box
             let vhash = spawn_hash * 0x45d9f3bu;

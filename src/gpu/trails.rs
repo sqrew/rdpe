@@ -1,6 +1,6 @@
 //! Trail rendering system for particle motion history.
 //!
-//! Stores position history for each particle and renders fading trails
+//! Stores position and color history for each particle and renders fading trails
 //! behind moving particles.
 
 use bytemuck::{Pod, Zeroable};
@@ -21,7 +21,8 @@ struct TrailParams {
 /// GPU resources for trail rendering.
 #[allow(dead_code)]
 pub struct TrailState {
-    /// Buffer storing trail position history.
+    /// Buffer storing trail position and color history.
+    /// Each trail point is 2 vec4s: (position.xyz, valid), (color.rgb, _)
     pub buffer: wgpu::Buffer,
     /// Compute pipeline for updating trails.
     pub compute_pipeline: wgpu::ComputePipeline,
@@ -49,13 +50,14 @@ impl TrailState {
         num_particles: u32,
         trail_length: u32,
         particle_stride: usize,
+        color_offset: Option<u32>,
         particle_size: f32,
         blend_mode: BlendMode,
         surface_format: wgpu::TextureFormat,
     ) -> Self {
-        // Trail buffer: stores position history for each particle
-        // Each entry is vec4<f32> (xyz = position, w = alpha/validity)
-        let buffer_size = (num_particles as usize) * (trail_length as usize) * 16;
+        // Trail buffer: stores position AND color history for each particle
+        // Each entry is 2 * vec4<f32>: (xyz = position, w = validity) + (rgb = color, w = unused)
+        let buffer_size = (num_particles as usize) * (trail_length as usize) * 32; // 2 vec4s = 32 bytes
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Trail Buffer"),
             size: buffer_size as u64,
@@ -82,6 +84,7 @@ impl TrailState {
             &buffer,
             &params_buffer,
             particle_stride,
+            color_offset,
         );
 
         // Create render pipeline
@@ -114,8 +117,9 @@ fn create_compute_pipeline(
     trail_buffer: &wgpu::Buffer,
     params_buffer: &wgpu::Buffer,
     particle_stride: usize,
+    color_offset: Option<u32>,
 ) -> (wgpu::ComputePipeline, wgpu::BindGroup) {
-    let shader_src = generate_compute_shader(particle_stride);
+    let shader_src = generate_compute_shader(particle_stride, color_offset);
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Trail Compute Shader"),
         source: wgpu::ShaderSource::Wgsl(shader_src.into()),
@@ -214,7 +218,7 @@ fn create_render_pipeline(
         entries: &[
             wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -224,7 +228,7 @@ fn create_render_pipeline(
             },
             wgpu::BindGroupLayoutEntry {
                 binding: 1,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
@@ -234,7 +238,7 @@ fn create_render_pipeline(
             },
             wgpu::BindGroupLayoutEntry {
                 binding: 2,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -313,8 +317,25 @@ fn create_render_pipeline(
     (pipeline, bind_group)
 }
 
-fn generate_compute_shader(particle_stride: usize) -> String {
+fn generate_compute_shader(particle_stride: usize, color_offset: Option<u32>) -> String {
     let particle_stride_vec4 = particle_stride / 16;
+
+    // Color offset in vec4 units (if available)
+    let color_code = if let Some(offset) = color_offset {
+        let color_vec4_idx = offset as usize / 16;
+        format!(
+            r#"
+    // Read particle color
+    let color_data = particles[particle_idx * {particle_stride_vec4}u + {color_vec4_idx}u];
+    let color = color_data.xyz;"#,
+            particle_stride_vec4 = particle_stride_vec4,
+            color_vec4_idx = color_vec4_idx,
+        )
+    } else {
+        // Default white color if no color field
+        "    let color = vec3<f32>(1.0, 1.0, 1.0);".to_string()
+    };
+
     format!(
         r#"
 struct TrailParams {{
@@ -338,18 +359,27 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
         return;
     }}
 
-    let trail_base = particle_idx * params.trail_length;
+    // Each trail point is 2 vec4s: (position, valid) + (color, unused)
+    let trail_base = particle_idx * params.trail_length * 2u;
 
     // Shift trail positions back (from end to start)
     for (var i = params.trail_length - 1u; i > 0u; i--) {{
-        trails[trail_base + i] = trails[trail_base + i - 1u];
+        let dst = trail_base + i * 2u;
+        let src = trail_base + (i - 1u) * 2u;
+        trails[dst] = trails[src];         // position
+        trails[dst + 1u] = trails[src + 1u]; // color
     }}
 
     // Store current position at front with full alpha
     let pos = particles[particle_idx * {particle_stride_vec4}u];
+{color_code}
+
     trails[trail_base] = vec4<f32>(pos.xyz, 1.0);
+    trails[trail_base + 1u] = vec4<f32>(color, 1.0);
 }}
-"#
+"#,
+        particle_stride_vec4 = particle_stride_vec4,
+        color_code = color_code,
     )
 }
 
@@ -380,6 +410,7 @@ struct VertexOutput {{
     @builtin(position) clip_position: vec4<f32>,
     @location(0) alpha: f32,
     @location(1) uv: vec2<f32>,
+    @location(2) color: vec3<f32>,
 }};
 
 @vertex
@@ -393,17 +424,22 @@ fn vs_main(
     let particle_idx = instance_index / params.trail_length;
     let trail_idx = instance_index % params.trail_length;
 
-    // Get trail position
-    let trail_base = particle_idx * params.trail_length;
-    let trail_data = trails[trail_base + trail_idx];
-    let pos = trail_data.xyz;
-    let valid = trail_data.w;
+    // Get trail data (2 vec4s per point: position + color)
+    let trail_base = particle_idx * params.trail_length * 2u;
+    let point_base = trail_base + trail_idx * 2u;
+    let trail_pos_data = trails[point_base];
+    let trail_color_data = trails[point_base + 1u];
+
+    let pos = trail_pos_data.xyz;
+    let valid = trail_pos_data.w;
+    let color = trail_color_data.xyz;
 
     // Skip invalid trail points
     if valid < 0.5 {{
         out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
         out.alpha = 0.0;
         out.uv = vec2<f32>(0.0);
+        out.color = vec3<f32>(0.0);
         return out;
     }}
 
@@ -436,6 +472,7 @@ fn vs_main(
     out.clip_position = clip_pos;
     out.alpha = alpha_factor * 0.5;
     out.uv = quad_pos;
+    out.color = color;
 
     return out;
 }}
@@ -447,8 +484,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         discard;
     }}
     let circle_alpha = 1.0 - smoothstep(0.3, 1.0, dist);
-    let color = vec3<f32>(0.7, 0.8, 1.0);
-    return vec4<f32>(color, circle_alpha * in.alpha);
+    return vec4<f32>(in.color, circle_alpha * in.alpha);
 }}
 "#
     )

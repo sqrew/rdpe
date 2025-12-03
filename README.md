@@ -1,159 +1,164 @@
-# RDPE - Reaction Diffusion Particle Engine
+# RDPE - Rapid Dev Particle Engine
 
-GPU-accelerated particle simulations with a declarative API. Define particles, write rules, customize shaders - RDPE handles the GPU complexity.
+GPU-accelerated particle simulations with a declarative API. Describe behaviors with composable rules, RDPE generates the compute shaders.
 
 ```rust
 use rdpe::prelude::*;
 
 #[derive(Particle, Clone)]
-struct Firefly {
+struct Boid {
     position: Vec3,
     velocity: Vec3,
     #[color]
     color: Vec3,
-    phase: f32,
 }
 
 fn main() {
-    Simulation::<Firefly>::new()
-        .with_particle_count(5000)
-        .with_spawner(|i, _| Firefly {
-            position: random_sphere(0.8),
-            velocity: Vec3::ZERO,
-            color: Vec3::new(0.2, 1.0, 0.3),
-            phase: i as f32 * 0.1,
+    Simulation::<Boid>::new()
+        .with_particle_count(10_000)
+        .with_bounds(1.0)
+        .with_spawner(|_, _| Boid {
+            position: random_in_sphere(0.5),
+            velocity: random_direction() * 0.5,
+            color: Vec3::new(0.2, 0.8, 1.0),
         })
-        .with_rule(Rule::Orbit { speed: 0.3 })
-        .with_rule(Rule::Custom(r#"
-            p.color.g = 0.5 + 0.5 * sin(uniforms.time * 2.0 + p.phase);
-        "#.into()))
-        .with_visuals(|v| {
-            v.blend_mode(BlendMode::Additive);
-            v.trails(4);
-        })
+        .with_rule(Rule::Separate { radius: 0.05, strength: 2.0 })
+        .with_rule(Rule::Cohere { radius: 0.15, strength: 0.5 })
+        .with_rule(Rule::Align { radius: 0.1, strength: 1.0 })
+        .with_rule(Rule::SpeedLimit { min: 0.3, max: 1.5 })
+        .with_rule(Rule::BounceWalls)
         .run();
 }
 ```
 
+Add `--features egui` for interactive controls:
+
+```rust
+use rdpe::prelude::*;
+use std::sync::{Arc, Mutex};
+
+fn main() {
+    let separation = Arc::new(Mutex::new(2.0_f32));
+    let cohesion = Arc::new(Mutex::new(0.5_f32));
+
+    Simulation::<Boid>::new()
+        .with_particle_count(10_000)
+        .with_bounds(1.0)
+        .with_spawner(|_, _| /* ... */)
+        // Uniforms can be updated at runtime
+        .with_uniform("separation", 2.0)
+        .with_uniform("cohesion", 0.5)
+        // egui UI
+        .with_ui({
+            let sep = separation.clone();
+            let coh = cohesion.clone();
+            move |ctx| {
+                egui::Window::new("Flocking").show(ctx, |ui| {
+                    ui.add(egui::Slider::new(&mut *sep.lock().unwrap(), 0.0..=5.0).text("Separation"));
+                    ui.add(egui::Slider::new(&mut *coh.lock().unwrap(), 0.0..=2.0).text("Cohesion"));
+                });
+            }
+        })
+        // Sync UI state to shader uniforms
+        .with_update({
+            let sep = separation.clone();
+            let coh = cohesion.clone();
+            move |ctx| {
+                ctx.set("separation", *sep.lock().unwrap());
+                ctx.set("cohesion", *coh.lock().unwrap());
+            }
+        })
+        // Rules using dynamic uniforms
+        .with_rule(Rule::Custom("p.velocity += separation_force * uniforms.separation;".into()))
+        .with_rule(Rule::Custom("p.velocity += cohesion_force * uniforms.cohesion;".into()))
+        .run();
+}
+```
+
+## Why RDPE?
+
+Most particle libraries are either too low-level (raw compute shaders, manual memory layouts) or too constrained (fixed behavior sets). RDPE hits a sweet spot:
+
+- **Describe intent, not implementation** - Say "separate, cohere, align" not "implement Reynolds' boids in WGSL"
+- **Rapid prototyping** - Go from idea to running simulation in minutes
+- **Escape hatches** - Custom WGSL rules when built-ins don't cover it
+- **GPU performance** - 10k+ particles at 60fps on integrated graphics
+
+Perfect for creative coding, generative art, simulations, and quick experimentation.
+
 ## Features
 
-### Core
-- **Declarative simulation** - Composable rules define particle behavior
-- **GPU compute shaders** - All particle logic runs massively parallel on the GPU
-- **Type-safe** - Derive macro generates GPU code from your Rust structs
-- **Custom fields** - Add any `f32` fields to particles for state, phase, type, etc.
+### Simulation
+- **30+ built-in rules** - Physics, flocking, forces, type interactions, lifecycle
+- **Custom WGSL rules** - Arbitrary compute logic per particle
+- **Spatial hashing** - O(n) neighbor queries for local interactions
+- **3D spatial fields** - Pheromone trails, density fields, flow fields
+- **Runtime emitters** - Continuous particle spawning (fountains, explosions)
+- **Typed particles** - Different behaviors per particle type (predator/prey, infection)
 
 ### Visual
-- **Custom fragment shaders** - WGSL snippets control how particles look
-- **Post-processing** - Screen-space effects (bloom, CRT, chromatic aberration, etc.)
-- **Particle trails** - Motion blur / light trails with configurable length
-- **Connections** - Lines between nearby particles (neural networks, webs)
+- **Custom fragment shaders** - Control particle appearance
+- **Post-processing** - Screen-space effects (bloom, CRT, chromatic aberration)
+- **Particle trails** - Motion blur / light trails
+- **Connections** - Lines between nearby particles
 - **Blend modes** - Additive (glows) or alpha (solid)
-- **Background color** - Set the scene backdrop
+- **Textures** - Sample custom textures in shaders
 
 ### Interactivity
-- **egui integration** - Runtime sliders, buttons, and controls (optional feature)
-- **Custom uniforms** - Define variables, update them per-frame from Rust
-- **Update callbacks** - Run Rust code every frame to sync state
-
-### Simulation
-- **Built-in rules** - Gravity, flocking, attraction, boundaries, and more
-- **Custom WGSL rules** - Write arbitrary compute logic per particle
-- **Neighbor iteration** - Efficient spatial queries for local interactions
-- **Spatial hashing** - O(n) neighbor lookups instead of O(n²)
+- **Input handling** - Keyboard and mouse state
+- **egui integration** - Runtime UI controls (optional feature)
+- **Custom uniforms** - Pass values from Rust to shaders each frame
+- **Update callbacks** - Run Rust code every frame
 
 ## Quick Start
 
 ```bash
-# Simple example
 cargo run --example boids
-
-# With egui controls
+cargo run --example predator_prey
 cargo run --example slime_mold --features egui
-
-# Creative/experimental
 cargo run --example neon_assault
-cargo run --example ethereal_web
 ```
 
 ## Examples
 
-### Core Examples
+### Core
 | Example | Description |
 |---------|-------------|
 | `boids` | Classic flocking (separation, cohesion, alignment) |
-| `predator_prey` | Two particle types with chase/evade |
-| `infection` | SIR epidemic - particles convert types on contact |
+| `predator_prey` | Chase/evade between particle types |
+| `infection` | SIR epidemic with type conversion |
+| `slime_mold` | Physarum-inspired emergent patterns |
+| `multi_field` | Competing pheromone fields |
 
-### Single-Rule Demos (`examples/rules/`)
+### Rules (`examples/rules/`)
 | Example | Description |
 |---------|-------------|
-| `bounce_walls` | Particles bouncing off boundaries |
-| `vortex` | Circular flow field |
-| `curl` | Turbulent curl noise motion |
-| `orbit` | Particles orbiting a center point |
-| `neighbors` | Demonstrates neighbor iteration |
-| `nbody` | Gravitational attraction between all particles |
-| `fluid` | SPH-style fluid dynamics |
-| `magnetism` | Magnetic pole attraction/repulsion |
-| `spring` | Spring forces toward origin |
+| `bounce_walls` | Boundary reflection |
+| `vortex` | Circular flow |
+| `curl` | Divergence-free turbulence |
+| `nbody` | Gravitational attraction |
+| `fluid` | SPH-style dynamics |
+| `magnetism` | Charge attraction/repulsion |
 
-### Visual Examples
+### Visual
 | Example | Description |
 |---------|-------------|
-| `custom_shader` | Custom fragment shader (glow effect) |
-| `post_process` | Post-processing (vignette, chromatic aberration, grain) |
-| `inbox` | Particle communication via inbox system |
+| `custom_shader` | Custom fragment shader |
+| `post_process` | Screen-space effects |
+| `texture_example` | Texture sampling |
 
 ### Experimental (`examples/experimental/`)
 | Example | Description |
 |---------|-------------|
-| `ethereal_web` | Dreamlike visualization with all features combined |
-| `neon_assault` | 80s arcade aesthetic with CRT post-processing |
-| `neon_assault_interactive` | Neon assault with egui runtime controls |
+| `ethereal_web` | All features combined |
+| `neon_assault` | 80s arcade aesthetic |
 | `cosmic_jellyfish` | Organic pulsing creature |
-| `firefly_grove` | Synchronized blinking lights |
-| `black_hole` | Gravitational lensing effect |
-| `thought_storm` | Neural activity visualization |
-| `plasma_storm` | Interactive plasma with egui |
-| `fluid_galaxy` | Galaxy formation with egui |
+| `black_hole` | Gravitational lensing |
 | `murmuration` | Starling flock patterns |
 
-## API Reference
+## API Overview
 
-### Simulation Builder
-
-```rust
-Simulation::<MyParticle>::new()
-    // Basics
-    .with_particle_count(10_000)
-    .with_bounds(2.0)
-    .with_particle_size(0.02)
-    .with_spawner(|index, total| { /* return particle */ })
-
-    // Rules (physics/behavior)
-    .with_rule(Rule::Gravity(9.8))
-    .with_rule(Rule::Custom("/* WGSL code */".into()))
-
-    // Visuals
-    .with_fragment_shader("/* WGSL snippet */")
-    .with_visuals(|v| {
-        v.blend_mode(BlendMode::Additive);
-        v.background(Vec3::new(0.0, 0.0, 0.02));
-        v.trails(8);
-        v.connections(0.1);  // max distance
-        v.post_process("/* WGSL snippet */");
-    })
-
-    // Interactivity (requires `egui` feature)
-    .with_uniform("my_value", 0.5)
-    .with_ui(|ctx| { /* egui code */ })
-    .with_update(|ctx| { ctx.set("my_value", new_value); })
-
-    .run();
-```
-
-### Particle Struct
+### Particles
 
 ```rust
 #[derive(Particle, Clone)]
@@ -162,136 +167,145 @@ struct MyParticle {
     velocity: Vec3,    // Required
     #[color]
     color: Vec3,       // Optional - particle tint
+    particle_type: u32, // Optional - for typed interactions
 
-    // Custom fields (all f32)
-    phase: f32,
+    // Custom fields
     energy: f32,
-    particle_type: f32,
+    phase: f32,
 }
 ```
 
+The derive macro auto-injects `age`, `alive`, and `scale` fields for lifecycle management.
+
 ### Built-in Rules
 
+**Physics**
 | Rule | Description |
 |------|-------------|
-| `Gravity(f32)` | Constant downward acceleration |
-| `Drag(f32)` | Velocity damping (0.0-1.0) |
-| `BounceWalls` | Reflect off simulation bounds |
-| `WrapWalls` | Teleport to opposite side |
-| `Separate { radius, strength }` | Push away from nearby particles |
-| `Cohere { radius, strength }` | Pull toward nearby particles |
-| `Align { radius, strength }` | Match velocity of nearby particles |
-| `AttractTo(Vec3)` | Pull toward a point |
-| `RepelFrom(Vec3)` | Push away from a point |
-| `Orbit { speed }` | Circular motion around Y axis |
-| `Vortex { strength }` | Swirling flow field |
-| `Curl { scale, strength }` | Turbulent noise-based motion |
-| `SpeedLimit(f32)` | Cap maximum velocity |
-| `Custom(String)` | Arbitrary WGSL compute code |
+| `Gravity(f32)` | Downward acceleration |
+| `Drag(f32)` | Velocity damping |
+| `BounceWalls` / `WrapWalls` | Boundary handling |
+| `SpeedLimit { min, max }` | Clamp velocity |
 
-### Custom Shaders
+**Forces**
+| Rule | Description |
+|------|-------------|
+| `AttractTo { point, strength }` | Pull toward point |
+| `RepelFrom { point, strength, radius }` | Push from point |
+| `PointGravity { point, strength, softening }` | Inverse-square attraction |
+| `Vortex { center, axis, strength }` | Swirling flow |
+| `Turbulence { scale, strength }` | Chaotic noise motion |
+| `Curl { scale, strength }` | Divergence-free flow |
 
-**Fragment Shader** - Controls particle appearance:
+**Flocking** (require spatial hashing)
+| Rule | Description |
+|------|-------------|
+| `Separate { radius, strength }` | Avoid crowding |
+| `Cohere { radius, strength }` | Steer toward neighbors |
+| `Align { radius, strength }` | Match neighbor velocity |
+| `Collide { radius, response }` | Particle collision |
+
+**Typed Interactions**
+| Rule | Description |
+|------|-------------|
+| `Chase { self_type, target_type, radius, strength }` | Pursue target type |
+| `Evade { self_type, threat_type, radius, strength }` | Flee from threat |
+| `Convert { from, trigger, to, radius, probability }` | Type conversion on contact |
+
+**Lifecycle**
+| Rule | Description |
+|------|-------------|
+| `Age` | Increment particle age |
+| `Lifetime(f32)` | Kill after duration |
+| `FadeOut(f32)` | Dim color over lifetime |
+| `ShrinkOut(f32)` | Shrink over lifetime |
+
+### Emitters
+
+Continuously spawn particles (requires `Age` + `Lifetime` rules):
+
 ```rust
-.with_fragment_shader(r#"
-    let dist = length(in.uv);  // -1 to 1, center is 0
-    let glow = 1.0 / (dist * dist * 8.0 + 0.3);
-    let alpha = clamp(glow * 0.5, 0.0, 1.0);
-    return vec4<f32>(in.color * glow, alpha);
-"#)
+.with_emitter(Emitter::Cone {
+    position: Vec3::new(0.0, -0.5, 0.0),
+    direction: Vec3::Y,
+    speed: 2.0,
+    spread: 0.3,
+    rate: 1000.0,  // particles per second
+})
 ```
 
-Available in fragment shader:
-- `in.uv` - Vec2, particle-local coordinates (-1 to 1)
-- `in.color` - Vec3, particle color
-- `uniforms.time` - f32, seconds since start
+Types: `Point`, `Cone`, `Sphere`, `Box`, `Burst`
 
-**Post-Process Shader** - Screen-space effects:
+### Spatial Fields
+
+3D grids for indirect particle communication:
+
 ```rust
-v.post_process(r#"
-    // Chromatic aberration
-    let r = textureSample(scene, scene_sampler, in.uv + vec2(0.003, 0.0)).r;
-    let g = textureSample(scene, scene_sampler, in.uv).g;
-    let b = textureSample(scene, scene_sampler, in.uv - vec2(0.003, 0.0)).b;
-    return vec4<f32>(r, g, b, 1.0);
-"#);
-```
-
-Available in post-process:
-- `in.uv` - Vec2, screen coordinates (0 to 1)
-- `scene` / `scene_sampler` - The rendered particle scene
-- `uniforms.time` - f32, seconds since start
-
-**Custom Rules** - Compute shader logic:
-```rust
+.with_field("pheromone", FieldConfig::new(64)
+    .with_decay(0.98)
+    .with_blur(0.1))
 .with_rule(Rule::Custom(r#"
-    // Access particle fields
-    let pos = p.position;
-
-    // Modify velocity
-    p.velocity += some_force * 0.1;
-
-    // Available: uniforms.time, uniforms.delta_time, uniforms.bounds
-    // Custom uniforms: uniforms.my_value
+    field_write(0u, p.position, 0.1);  // deposit
+    let val = field_read(0u, p.position);  // sample
+    let grad = field_gradient(0u, p.position, 0.05);  // direction
 "#.into()))
 ```
 
-### Neighbor Iteration
+### Custom Rules
 
-For local interactions (flocking, SPH, etc.):
+Write WGSL directly:
+
 ```rust
 .with_rule(Rule::Custom(r#"
-    var force = vec3<f32>(0.0);
+    // Available: p (particle), uniforms.time, uniforms.delta_time
+    p.velocity.y += sin(uniforms.time + p.position.x * 5.0) * 0.1;
+    p.color = mix(p.color, vec3(1.0, 0.5, 0.0), 0.01);
+"#.into()))
+```
 
-    for (var i = 0u; i < neighbor_count; i++) {
-        let other = get_neighbor(i);
-        let diff = p.position - other.position;
-        let dist = length(diff);
-        if dist > 0.0 && dist < 0.2 {
-            force += normalize(diff) / dist;
-        }
+### Input
+
+```rust
+.with_update(|ctx| {
+    if ctx.input.key_pressed(KeyCode::Space) {
+        ctx.set("burst", 1.0);
     }
-
-    p.velocity += force * 0.01;
-"#.into()))
+    if ctx.input.mouse_held(MouseButton::Left) {
+        let pos = ctx.input.mouse_ndc();
+        ctx.set("attractor", [pos.x, pos.y]);
+    }
+})
 ```
 
-## egui Integration
-
-Enable with `--features egui`:
+### egui Integration
 
 ```rust
-use std::sync::{Arc, Mutex};
-
-struct State { speed: f32 }
-
-let state = Arc::new(Mutex::new(State { speed: 1.0 }));
-let ui_state = state.clone();
-let update_state = state.clone();
-
-Simulation::new()
-    .with_uniform("speed", 1.0)
-    .with_ui(move |ctx| {
-        let mut s = ui_state.lock().unwrap();
-        egui::Window::new("Controls").show(ctx, |ui| {
-            ui.add(egui::Slider::new(&mut s.speed, 0.0..=2.0));
-        });
-    })
-    .with_update(move |ctx| {
-        let s = update_state.lock().unwrap();
-        ctx.set("speed", s.speed);
-    })
-    .with_rule(Rule::Custom(r#"
-        p.velocity *= uniforms.speed;
-    "#.into()))
-    .run();
+// Requires --features egui
+.with_uniform("speed", 1.0)
+.with_ui(|ctx| {
+    egui::Window::new("Controls").show(ctx, |ui| {
+        // UI code
+    });
+})
+.with_update(|ctx| {
+    ctx.set("speed", new_value);
+})
 ```
 
-## Performance Notes
+## Performance
 
-- All particle physics runs on GPU compute shaders
-- Spatial hashing enables O(n) neighbor queries
-- Tested smooth at 10k+ particles on integrated graphics (Intel HD 530)
+- All particle logic runs on GPU compute shaders
+- Spatial hashing: O(n) neighbor queries
+- Tested: 10k+ particles at 60fps on Intel HD 530
+- Fields add overhead; start with 32³ or 64³ resolution
+
+## Documentation
+
+Full documentation at [book/](book/) or build locally:
+
+```bash
+cd book && mdbook serve
+```
 
 ## License
 

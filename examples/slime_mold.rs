@@ -3,6 +3,46 @@
 //! Physarum-inspired particle simulation where agents deposit and follow
 //! pheromone trails, creating emergent network structures.
 //!
+//! ## What This Demonstrates
+//!
+//! - **Inbox system** - particle-to-particle messaging
+//! - **Emergent behavior** - simple rules creating complex patterns
+//! - **egui integration** - real-time parameter tuning
+//! - **Custom neighbor interactions** - sensing pheromones from neighbors
+//! - **Heading-based movement** - agents maintain direction state
+//!
+//! ## The Biology
+//!
+//! This simulates *Physarum polycephalum* (slime mold) behavior:
+//! 1. Agents deposit pheromone trails
+//! 2. Agents sense pheromones in three directions (left, center, right)
+//! 3. Agents turn toward strongest pheromone concentration
+//! 4. Pheromones decay and diffuse over time
+//!
+//! The result: organic network patterns emerge from simple local rules.
+//!
+//! ## Key Parameters
+//!
+//! - **Speed/Turn Speed**: How fast agents move and rotate
+//! - **Sense Distance/Angle**: How far and wide agents sense
+//! - **Deposit/Decay Rate**: Pheromone dynamics
+//! - **Repulsion**: Prevents agents from bunching up
+//!
+//! ## Technical Notes
+//!
+//! Uses the **inbox system** for pheromone communication:
+//! - `inbox_send(particle_idx, slot, value)` - send data to a particle
+//! - `inbox_receive_at(idx, slot)` - receive accumulated data
+//!
+//! Compare with `slime_mold_field.rs` which uses 3D spatial fields instead.
+//!
+//! ## Try This
+//!
+//! - Increase deposit rate for thicker trails
+//! - Reduce sense angle for straighter paths
+//! - Increase repulsion for more spread-out networks
+//! - Set decay very high to see trails form and fade quickly
+//!
 //! Run with: `cargo run --example slime_mold --features egui`
 
 use rand::Rng;

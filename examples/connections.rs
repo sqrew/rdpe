@@ -1,6 +1,43 @@
-//! Network/web visualization with particle connections.
+//! # Particle Connections Example
 //!
-//! Demonstrates drawing lines between nearby particles.
+//! Network/web visualization with lines drawn between nearby particles.
+//! Creates organic, web-like structures as particles move.
+//!
+//! ## What This Demonstrates
+//!
+//! - `.with_visuals(|v| v.connections(radius))` - enable connection lines
+//! - Spatial hashing required for neighbor detection
+//! - `Rule::Separate` + `Rule::AttractTo` for organic spacing
+//! - `Rule::Wander` for random exploration
+//!
+//! ## How Connections Work
+//!
+//! The renderer uses spatial hashing to find particles within `radius`
+//! of each other, then draws lines between them. Line opacity fades
+//! with distance - closer particles have brighter connections.
+//!
+//! **Requirements**:
+//! - Must call `.with_spatial_config()` with cell size >= connection radius
+//! - Fewer particles (100-1000) show clearer structure
+//! - Many particles create dense webs
+//!
+//! ## Use Cases
+//!
+//! - Neural networks / brain visualization
+//! - Social network graphs
+//! - Constellation patterns
+//! - Organic tissue simulation
+//! - Plexus / geometric patterns
+//!
+//! ## Try This
+//!
+//! - Increase connection radius to 0.25 for denser web
+//! - Add more particles (2000) for complex network
+//! - Color particles by `particle_type` for multi-network visualization
+//! - Remove `Wander` for more stable structures
+//! - Add `Rule::Align` for flowing, directional networks
+//!
+//! Run with: `cargo run --example connections`
 
 use rand::Rng;
 use rdpe::prelude::*;

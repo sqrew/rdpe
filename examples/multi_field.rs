@@ -6,6 +6,43 @@
 //! - Red particles deposit to field 0, avoid field 1
 //! - Blue particles deposit to field 1, avoid field 0
 //!
+//! ## What This Demonstrates
+//!
+//! - Multiple `.with_field()` calls for separate fields
+//! - Field indices: first field = 0, second = 1, etc.
+//! - `field_write(field_id, pos, value)` - write to specific field
+//! - `field_read(field_id, pos)` - read from specific field
+//! - Competing pheromone territories
+//! - Team-based particle behavior
+//!
+//! ## The Dynamics
+//!
+//! Each team follows a simple strategy:
+//! 1. Deposit pheromone to own field (attract teammates)
+//! 2. Read both fields at sensor positions
+//! 3. Score = (own pheromone) - 1.5 × (other pheromone)
+//! 4. Turn toward highest score
+//!
+//! This creates territorial behavior: each team claims regions
+//! while avoiding enemy territory. Boundaries form where pheromones
+//! balance out.
+//!
+//! ## Field Indexing
+//!
+//! Fields are indexed in order of `.with_field()` calls:
+//! - First field added → index 0
+//! - Second field added → index 1
+//! - etc.
+//!
+//! In WGSL: `field_write(0u, pos, val)` writes to first field.
+//!
+//! ## Try This
+//!
+//! - Add a third team (green) with field 2
+//! - Change avoidance multiplier (1.5) for different boundary behavior
+//! - Increase blur for faster territory spread
+//! - Make teams asymmetric: one fast deposit, one slow
+//!
 //! Run with: `cargo run --example multi_field`
 
 use rand::Rng;

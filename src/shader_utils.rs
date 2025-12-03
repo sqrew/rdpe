@@ -24,6 +24,13 @@
 //! - `hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3<f32>` - Convert HSV to RGB
 //! - `rgb_to_hsv(rgb: vec3<f32>) -> vec3<f32>` - Convert RGB to HSV
 //!
+//! ## Lifecycle
+//! - `is_alive(p) -> bool` - Check if particle is alive
+//! - `is_dead(p) -> bool` - Check if particle is dead
+//! - `kill_particle(&p)` - Mark particle as dead
+//! - `respawn_particle(&p)` - Reset lifecycle (age, alive, scale)
+//! - `respawn_at(&p, pos, vel)` - Respawn at position with velocity
+//!
 //! # Example
 //!
 //! ```ignore
@@ -264,10 +271,74 @@ fn rgb_to_hsv(rgb: vec3<f32>) -> vec3<f32> {
 }
 "#;
 
+/// WGSL code for particle lifecycle helpers.
+///
+/// These functions help manage particle lifecycle state in custom rules.
+/// They're useful for manual respawning or conditional death.
+///
+/// # Available Functions
+///
+/// - `kill_particle(p)` - Mark particle as dead (sets alive = 0)
+/// - `respawn_particle(p)` - Reset lifecycle state (age = 0, alive = 1, scale = 1)
+/// - `respawn_at(p, pos, vel)` - Respawn at specific position with velocity
+/// - `is_alive(p) -> bool` - Check if particle is alive
+/// - `is_dead(p) -> bool` - Check if particle is dead
+///
+/// # Example
+///
+/// ```ignore
+/// .with_rule(Rule::Custom(r#"
+///     // Kill particles that go too far
+///     if length(p.position) > 2.0 {
+///         kill_particle(&p);
+///     }
+///
+///     // Respawn dead particles at origin
+///     if is_dead(p) {
+///         respawn_at(&p, vec3<f32>(0.0), rand_vec3(index));
+///     }
+/// "#.into()))
+/// ```
+pub const LIFECYCLE_WGSL: &str = r#"
+// Particle lifecycle helpers
+
+// Check if particle is alive
+fn is_alive(p: Particle) -> bool {
+    return p.alive == 1u;
+}
+
+// Check if particle is dead
+fn is_dead(p: Particle) -> bool {
+    return p.alive == 0u;
+}
+
+// Kill a particle (mark as dead)
+fn kill_particle(p: ptr<function, Particle>) {
+    (*p).alive = 0u;
+}
+
+// Reset particle lifecycle state (for respawning)
+// Resets age to 0, marks alive, restores scale to 1
+fn respawn_particle(p: ptr<function, Particle>) {
+    (*p).age = 0.0;
+    (*p).alive = 1u;
+    (*p).scale = 1.0;
+}
+
+// Respawn particle at a specific position with velocity
+fn respawn_at(p: ptr<function, Particle>, pos: vec3<f32>, vel: vec3<f32>) {
+    (*p).position = pos;
+    (*p).velocity = vel;
+    (*p).age = 0.0;
+    (*p).alive = 1u;
+    (*p).scale = 1.0;
+}
+"#;
+
 /// Get all built-in utility functions combined.
 pub fn all_utils_wgsl() -> String {
     format!(
-        "// Built-in utility functions\n{}\n{}\n{}\n",
-        RANDOM_WGSL, NOISE_WGSL, COLOR_WGSL
+        "// Built-in utility functions\n{}\n{}\n{}\n{}\n",
+        RANDOM_WGSL, NOISE_WGSL, COLOR_WGSL, LIFECYCLE_WGSL
     )
 }

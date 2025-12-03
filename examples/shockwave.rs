@@ -1,7 +1,41 @@
-//! Shockwave demonstration.
+//! # Shockwave Demonstration
 //!
-//! Shows expanding shockwaves that push particles outward.
-//! Particles also breathe in and out with a pulse effect.
+//! Shows expanding shockwaves that push particles outward combined
+//! with a pulsing breathing effect. Creates rhythmic ripple patterns.
+//!
+//! ## What This Demonstrates
+//!
+//! - `Rule::Shockwave` - expanding ring of force
+//! - `Rule::Pulse` - rhythmic push/pull from a point
+//! - `Rule::Radial` - distance-based force with falloff
+//! - `Falloff::Linear` - force decreases linearly with distance
+//! - `Palette::Ocean` with `ColorMapping::Distance`
+//!
+//! ## Shockwave Parameters
+//!
+//! ```rust
+//! Rule::Shockwave {
+//!     origin: Vec3::ZERO,   // Center of wave
+//!     speed: 0.8,           // How fast ring expands
+//!     width: 0.25,          // Thickness of push zone
+//!     strength: 4.0,        // Force magnitude
+//!     repeat: 3.0,          // Seconds between waves (0 = once)
+//! }
+//! ```
+//!
+//! ## Pulse vs Shockwave
+//!
+//! - **Pulse**: Sinusoidal push/pull, always active, affects all particles
+//! - **Shockwave**: One-time (or repeating) expanding ring of force
+//!
+//! ## Try This
+//!
+//! - Set `repeat: 0.0` for a single shockwave
+//! - Increase `width` for a fatter wave
+//! - Try multiple shockwaves from different origins
+//! - Replace `Radial` with `AttractTo` for different return behavior
+//!
+//! Run with: `cargo run --example shockwave`
 
 use rdpe::prelude::*;
 

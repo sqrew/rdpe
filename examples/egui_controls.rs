@@ -1,12 +1,51 @@
 //! # Egui Controls Demo
 //!
-//! Demonstrates egui UI integration with RDPE. Shows a control panel
-//! that doesn't actually affect the simulation (just demonstrates the UI works).
+//! Basic egui UI integration showing a floating control panel.
+//! This example demonstrates the UI framework works, but the controls
+//! don't affect the simulation. See `egui_interactive` for connected controls.
 //!
-//! Features:
-//! - Floating egui window
-//! - Sliders and buttons
-//! - Real-time FPS display
+//! ## What This Demonstrates
+//!
+//! - `.with_ui(|ctx| { ... })` - add egui windows
+//! - `egui::Window` - floating control panels
+//! - `egui::Slider` - numeric controls
+//! - State persistence in closures
+//!
+//! ## Basic egui Setup
+//!
+//! ```rust
+//! .with_ui(|ctx| {
+//!     egui::Window::new("Controls").show(ctx, |ui| {
+//!         ui.label("Hello from egui!");
+//!         if ui.button("Click me").clicked() {
+//!             println!("Clicked!");
+//!         }
+//!     });
+//! })
+//! ```
+//!
+//! ## State in Closures
+//!
+//! For simple state that doesn't need to affect the simulation,
+//! you can store it directly in the closure:
+//!
+//! ```rust
+//! .with_ui({
+//!     let mut value = 1.0f32;  // Captured by closure
+//!     move |ctx| {
+//!         egui::Window::new("Test").show(ctx, |ui| {
+//!             ui.add(egui::Slider::new(&mut value, 0.0..=2.0));
+//!         });
+//!     }
+//! })
+//! ```
+//!
+//! ## Try This
+//!
+//! - Connect sliders to uniforms (see `egui_interactive`)
+//! - Add color pickers for particle colors
+//! - Create tabs with `egui::TopBottomPanel`
+//! - Add graphs with `egui_plot` (external crate)
 //!
 //! Run with: `cargo run --example egui_controls --features egui`
 

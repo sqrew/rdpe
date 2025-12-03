@@ -11,7 +11,7 @@
 //! - Cosmic color palette (deep space blues, hot stellar whites)
 //! - Interactive egui controls
 //!
-//! Run with: `cargo run --example fluid_galaxy --features egui`
+//! Run with: `cargo run --example fluid_galaxy_interactive --features egui`
 
 use rand::Rng;
 use rdpe::prelude::*;
@@ -85,15 +85,15 @@ fn main() {
             let disk_height = 0.02 * (1.0 - r * 0.5); // Thinner at edges
             let z = rng.gen_range(-disk_height..disk_height);
 
-            let pos = Vec3::new(
-                r * theta.cos(),
-                z,
-                r * theta.sin(),
-            );
+            let pos = Vec3::new(r * theta.cos(), z, r * theta.sin());
 
             // Keplerian rotation: v = sqrt(GM/r), but simplified
             // Inner particles orbit faster
-            let orbital_speed = if r > 0.05 { (0.8 / r.sqrt()).min(2.0) } else { 0.5 };
+            let orbital_speed = if r > 0.05 {
+                (0.8 / r.sqrt()).min(2.0)
+            } else {
+                0.5
+            };
 
             // Tangential velocity (perpendicular to radius in xz plane)
             let vel = Vec3::new(
@@ -298,7 +298,7 @@ fn main() {
 }
 
 /// Generate cosmic colors based on radius and temperature
-fn cosmic_color(r: f32, temperature: f32) -> Vec3 {
+fn cosmic_color(_r: f32, temperature: f32) -> Vec3 {
     let temp = temperature.clamp(0.0, 1.5);
     if temp < 0.4 {
         // Cool: deep purple to blue

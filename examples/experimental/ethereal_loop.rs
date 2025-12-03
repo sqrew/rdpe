@@ -1,11 +1,44 @@
 //! # Ethereal Web
 //!
-//! A dreamlike visualization combining all RDPE features:
-//! - Custom fragment shader with animated ethereal glow
-//! - Post-processing with chromatic aberration, radial blur, and color grading
-//! - Particle trails creating flowing light ribbons
-//! - Connections forming an organic neural web
-//! - Complex movement with breathing, orbital, and curl-like motion
+//! A dreamlike visualization combining all major RDPE features into one
+//! cohesive artistic piece. This is a showcase of what's possible.
+//!
+//! ## What This Demonstrates
+//!
+//! - **Fragment shader**: Multi-layered ethereal glow with animated pulse
+//! - **Post-processing**: Chromatic aberration, radial blur, color grading,
+//!   vignette, and breathing brightness effect
+//! - **Trails**: 8-frame trails for flowing light ribbons
+//! - **Connections**: Neural web structure between nearby particles
+//! - **Movement**: Orbital + breathing + curl turbulence + vertical waves
+//!
+//! ## Visual Techniques
+//!
+//! The fragment shader uses three glow layers:
+//! - Inner: Sharp exponential falloff (bright core)
+//! - Mid: Softer falloff (main body)
+//! - Outer: Inverse square (ambient glow)
+//!
+//! Post-processing creates the "dreamlike" quality:
+//! - Edge chromatic aberration (color fringing)
+//! - Subtle radial blur near edges
+//! - "Film-like" contrast curve: `color / (color + 0.5) * 1.5`
+//!
+//! ## Motion Layering
+//!
+//! Five forces combine for organic motion:
+//! 1. Orbital rotation around Y axis
+//! 2. Radial breathing (expand/contract with time)
+//! 3. Curl-like turbulence (pseudo-fluid motion)
+//! 4. Vertical wave displacement
+//! 5. Soft boundary containment
+//!
+//! ## Try This
+//!
+//! - Increase trail length to 20 for longer ribbons
+//! - Reduce connection distance for tighter web
+//! - Add `v.palette()` instead of per-particle colors
+//! - Modify curl_scale for different turbulence patterns
 //!
 //! Run with: `cargo run --example ethereal_web`
 

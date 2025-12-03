@@ -1,6 +1,53 @@
-//! Texture example - demonstrates sampling textures in fragment shaders.
+//! # Texture Sampling Example
 //!
-//! Run with: cargo run --example texture_example
+//! Demonstrates sampling custom textures in fragment shaders for
+//! procedural effects and color lookup tables.
+//!
+//! ## What This Demonstrates
+//!
+//! - `.with_texture(name, config)` - add textures to shaders
+//! - `TextureConfig::noise()` - procedural noise texture
+//! - `TextureConfig::gradient()` - color gradient lookup table
+//! - `tex_<name>` and `tex_<name>_sampler` - access in WGSL
+//! - Texture-based color modulation
+//!
+//! ## How Textures Work
+//!
+//! Textures added via `.with_texture()` become available in fragment
+//! shaders as `tex_<name>` (the texture) and `tex_<name>_sampler`.
+//!
+//! ```wgsl
+//! // Sample a texture
+//! let color = textureSample(tex_myname, tex_myname_sampler, uv);
+//! ```
+//!
+//! ## Built-in Texture Types
+//!
+//! - `TextureConfig::noise(size, seed)` - Perlin-like noise
+//! - `TextureConfig::gradient(width, start_rgba, end_rgba)` - 1D gradient
+//! - `TextureConfig::from_image(path)` - load from file (feature: image)
+//!
+//! ## Common Patterns
+//!
+//! ```wgsl
+//! // Use noise for distortion
+//! let offset = textureSample(tex_noise, tex_noise_sampler, in.uv).rg * 0.1;
+//! let distorted_uv = in.uv + offset;
+//!
+//! // Use gradient as color lookup table (LUT)
+//! let speed = length(particle.velocity);
+//! let color = textureSample(tex_gradient, tex_gradient_sampler, vec2(speed, 0.5));
+//! ```
+//!
+//! ## Try This
+//!
+//! - Change noise seed for different patterns
+//! - Create a rainbow gradient with more color stops
+//! - Use world position for texture coordinates: `in.world_pos.xy`
+//! - Animate UV offset with `uniforms.time`
+//! - Tile noise: `fract(in.uv * 4.0)` for repeating pattern
+//!
+//! Run with: `cargo run --example texture_example`
 
 use rdpe::prelude::*;
 

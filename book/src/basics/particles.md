@@ -64,6 +64,26 @@ struct TypedParticle {
 
 If you don't add this field, it's auto-added with a default value of 0.
 
+## Auto-Injected Lifecycle Fields
+
+The `#[derive(Particle)]` macro automatically adds these lifecycle fields to every particle:
+
+| Field | Type | Default | Purpose |
+|-------|------|---------|---------|
+| `particle_type` | `u32` | 0 | Type identifier for typed interactions |
+| `age` | `f32` | 0.0 | Time since spawn (updated by `Rule::Age`) |
+| `alive` | `u32` | 1 | 1 = alive, 0 = dead (set by `Rule::Lifetime`) |
+| `scale` | `f32` | 1.0 | Per-particle size multiplier (used by `Rule::ShrinkOut`) |
+
+These are always available in your WGSL code via `p.age`, `p.alive`, `p.scale`, even if you don't define them in your struct.
+
+```rust
+// These fields exist automatically:
+.with_rule(Rule::Age)                    // Increments p.age each frame
+.with_rule(Rule::Lifetime(5.0))          // Sets p.alive = 0 when p.age > 5.0
+.with_rule(Rule::ShrinkOut(5.0))         // Scales p.scale from 1.0 to 0.0
+```
+
 ## Spawning Particles
 
 The spawner function is called once per particle at initialization:
@@ -112,7 +132,7 @@ struct GameParticle {
     color: Vec3,
     particle_type: u32,
     health: f32,      // Custom field
-    age: f32,         // Custom field
+    energy: f32,      // Custom field
     team_id: u32,     // Custom field
 }
 ```
@@ -121,9 +141,16 @@ Access these in `Rule::Custom` WGSL code:
 
 ```rust
 .with_rule(Rule::Custom(r#"
-    p.age += uniforms.delta_time;
-    if p.health < 0.0 {
-        p.particle_type = 2u; // Dead
+    // Drain energy over time
+    p.energy -= uniforms.delta_time * 0.1;
+
+    // Use auto-injected age for time-based effects
+    let fade = 1.0 - (p.age / 5.0);
+    p.color *= fade;
+
+    // Mark as dead when health depleted
+    if p.health <= 0.0 {
+        p.alive = 0u;
     }
 "#.to_string()))
 ```

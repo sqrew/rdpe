@@ -345,12 +345,12 @@ Simulation::&lt;SlimeAgent&gt;::new()
     .run();
 <span class="boring">}</span></code></pre></pre>
 <h2 id="multiple-fields"><a class="header" href="#multiple-fields">Multiple Fields</a></h2>
-<p>Register multiple fields for complex simulations:</p>
+<p>Register multiple fields for complex simulations. Each field can have independent resolution, decay, blur, and extent settings. Fields are accessed by index in registration order.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Simulation::&lt;Agent&gt;::new()
-    .with_field("food", FieldConfig::new(64).with_decay(0.99))
-    .with_field("danger", FieldConfig::new(32).with_decay(0.9).with_blur(0.2))
+    .with_field("food", FieldConfig::new(64).with_decay(0.99))       // Index 0
+    .with_field("danger", FieldConfig::new(32).with_decay(0.9).with_blur(0.2))  // Index 1
     .with_rule(Rule::Custom(r#"
         let food = field_read(0u, p.position);      // Field 0
         let danger = field_read(1u, p.position);    // Field 1
@@ -363,6 +363,38 @@ Simulation::&lt;SlimeAgent&gt;::new()
     "#.into()))
     .run();
 <span class="boring">}</span></code></pre></pre>
+<h3 id="example-competing-teams"><a class="header" href="#example-competing-teams">Example: Competing Teams</a></h3>
+<p>Two particle teams, each depositing to their own field and avoiding the other:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Agent&gt;::new()
+    // Each team gets its own pheromone field
+    .with_field("red_pheromone", FieldConfig::new(48).with_decay(0.97).with_blur(0.15))
+    .with_field("blue_pheromone", FieldConfig::new(48).with_decay(0.97).with_blur(0.15))
+    .with_rule(Rule::Custom(r#"
+        // p.team is 0 or 1
+        let my_field = p.team;
+        let other_field = 1u - p.team;
+
+        // Deposit to my team's field
+        field_write(my_field, p.position, 0.15);
+
+        // Sense ahead
+        let ahead = p.position + normalize(p.velocity) * 0.1;
+
+        // Follow my team, avoid other team
+        let my_val = field_read(my_field, ahead);
+        let other_val = field_read(other_field, ahead);
+        let score = my_val - other_val * 1.5;
+
+        // Steer based on combined score
+        let my_grad = field_gradient(my_field, p.position, 0.05);
+        let other_grad = field_gradient(other_field, p.position, 0.05);
+        p.velocity += (my_grad - other_grad * 1.5) * uniforms.delta_time;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>See <code>examples/multi_field.rs</code> for a complete working example.</p>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
 <ul>
 <li><strong>Match extents</strong>: Set field extent to match or exceed your simulation bounds</li>

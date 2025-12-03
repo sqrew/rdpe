@@ -3,6 +3,48 @@
 //! Demonstrates custom fragment shaders for particle rendering effects.
 //! Shows glowing particles with animated pulsing.
 //!
+//! ## What This Demonstrates
+//!
+//! - `.with_fragment_shader()` - custom WGSL for particle appearance
+//! - `in.uv` - UV coordinates relative to particle center (-0.5 to 0.5)
+//! - `in.color` - particle's color from the simulation
+//! - `uniforms.time` - animated effects (pulsing glow)
+//! - `BlendMode::Additive` - overlapping particles add brightness
+//! - `smoothstep()` for soft falloff effects
+//!
+//! ## How Fragment Shaders Work
+//!
+//! Each particle is rendered as a screen-facing quad. The fragment shader
+//! runs for every pixel in the quad, receiving:
+//!
+//! - `in.uv` - position within quad (center = 0,0)
+//! - `in.color` - RGB from the particle struct
+//! - `in.world_pos` - world-space position
+//!
+//! Return `vec4<f32>(r, g, b, alpha)` to set the pixel color.
+//!
+//! ## Common Techniques
+//!
+//! ```wgsl
+//! // Soft circle (default behavior)
+//! let dist = length(in.uv);
+//! let alpha = 1.0 - smoothstep(0.0, 0.5, dist);
+//!
+//! // Glowing orb
+//! let glow = 1.0 / (dist * dist * 8.0 + 0.1);
+//!
+//! // Hard circle with outline
+//! let circle = step(dist, 0.4);
+//! let ring = step(0.35, dist) * circle;
+//! ```
+//!
+//! ## Try This
+//!
+//! - Change pulse frequency: `sin(uniforms.time * 5.0)` for faster
+//! - Add color shifting: `in.color * hsv_shift(uniforms.time)`
+//! - Create a ring: `smoothstep(0.3, 0.35, dist) * smoothstep(0.45, 0.4, dist)`
+//! - Add sparkle: multiply by noise based on `in.world_pos + time`
+//!
 //! Run with: `cargo run --example custom_shader`
 
 use rand::Rng;

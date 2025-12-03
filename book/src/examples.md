@@ -22,6 +22,8 @@ These showcase fundamental RDPE capabilities:
 | `infection` | SIR epidemic model with type conversion |
 | `inbox` | Particle-to-particle communication system |
 | `slime_mold` | Physarum-inspired emergent patterns (requires `--features egui`) |
+| `slime_mold_field` | Slime mold using 3D spatial fields (requires `--features egui`) |
+| `multi_field` | Multiple competing pheromone fields |
 
 ## Single-Rule Examples
 
@@ -50,6 +52,8 @@ Demonstrating rendering customization:
 |---------|-------------|
 | `custom_shader` | Custom fragment shader for particle appearance |
 | `post_process` | Screen-space post-processing (vignette, aberration, grain) |
+| `texture_example` | Custom texture sampling in shaders |
+| `input_demo` | Keyboard and mouse input handling |
 
 ## Interactive Examples
 
@@ -115,6 +119,7 @@ To quickly try everything:
 cargo run --example boids
 cargo run --example predator_prey
 cargo run --example infection
+cargo run --example multi_field
 
 # Rules
 cargo run --example orbit
@@ -124,6 +129,8 @@ cargo run --example nbody
 # Visual
 cargo run --example custom_shader
 cargo run --example post_process
+cargo run --example texture_example
+cargo run --example input_demo
 
 # Creative
 cargo run --example ethereal_web
@@ -131,6 +138,7 @@ cargo run --example neon_assault
 
 # Interactive (requires egui feature)
 cargo run --example slime_mold --features egui
+cargo run --example slime_mold_field --features egui
 cargo run --example neon_assault_interactive --features egui
 ```
 

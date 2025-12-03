@@ -381,6 +381,23 @@ struct TypedParticle {
 }
 <span class="boring">}</span></code></pre></pre>
 <p>If you don't add this field, it's auto-added with a default value of 0.</p>
+<h2 id="auto-injected-lifecycle-fields"><a class="header" href="#auto-injected-lifecycle-fields">Auto-Injected Lifecycle Fields</a></h2>
+<p>The <code>#[derive(Particle)]</code> macro automatically adds these lifecycle fields to every particle:</p>
+<div class="table-wrapper"><table><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Purpose</th></tr></thead><tbody>
+<tr><td><code>particle_type</code></td><td><code>u32</code></td><td>0</td><td>Type identifier for typed interactions</td></tr>
+<tr><td><code>age</code></td><td><code>f32</code></td><td>0.0</td><td>Time since spawn (updated by <code>Rule::Age</code>)</td></tr>
+<tr><td><code>alive</code></td><td><code>u32</code></td><td>1</td><td>1 = alive, 0 = dead (set by <code>Rule::Lifetime</code>)</td></tr>
+<tr><td><code>scale</code></td><td><code>f32</code></td><td>1.0</td><td>Per-particle size multiplier (used by <code>Rule::ShrinkOut</code>)</td></tr>
+</tbody></table>
+</div>
+<p>These are always available in your WGSL code via <code>p.age</code>, <code>p.alive</code>, <code>p.scale</code>, even if you don't define them in your struct.</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// These fields exist automatically:
+.with_rule(Rule::Age)                    // Increments p.age each frame
+.with_rule(Rule::Lifetime(5.0))          // Sets p.alive = 0 when p.age &gt; 5.0
+.with_rule(Rule::ShrinkOut(5.0))         // Scales p.scale from 1.0 to 0.0
+<span class="boring">}</span></code></pre></pre>
 <h2 id="spawning-particles"><a class="header" href="#spawning-particles">Spawning Particles</a></h2>
 <p>The spawner function is called once per particle at initialization:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -426,7 +443,7 @@ struct GameParticle {
     color: Vec3,
     particle_type: u32,
     health: f32,      // Custom field
-    age: f32,         // Custom field
+    energy: f32,      // Custom field
     team_id: u32,     // Custom field
 }
 <span class="boring">}</span></code></pre></pre>
@@ -434,9 +451,16 @@ struct GameParticle {
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_rule(Rule::Custom(r#"
-    p.age += uniforms.delta_time;
-    if p.health &lt; 0.0 {
-        p.particle_type = 2u; // Dead
+    // Drain energy over time
+    p.energy -= uniforms.delta_time * 0.1;
+
+    // Use auto-injected age for time-based effects
+    let fade = 1.0 - (p.age / 5.0);
+    p.color *= fade;
+
+    // Mark as dead when health depleted
+    if p.health &lt;= 0.0 {
+        p.alive = 0u;
     }
 "#.to_string()))
 <span class="boring">}</span></code></pre></pre>
@@ -1053,6 +1077,214 @@ enum Health {
 <li>Group related type interactions</li>
 <li>Consider if untyped rules with Custom code might be simpler</li>
 </ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="input-handling"><a class="header" href="#input-handling">Input Handling</a></h1>
+<p>RDPE provides a simple input system for keyboard and mouse interaction. Input state is available in your update callback via <code>UpdateContext</code>.</p>
+<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_uniform::&lt;f32&gt;("burst", 0.0)
+    .with_uniform::&lt;[f32; 2]&gt;("attractor", [0.0, 0.0])
+    .with_update(|ctx| {
+        // React to space bar press
+        if ctx.input.key_pressed(KeyCode::Space) {
+            ctx.set("burst", 1.0);
+        }
+
+        // Track mouse position while held
+        if ctx.input.mouse_held(MouseButton::Left) {
+            let pos = ctx.input.mouse_ndc();
+            ctx.set("attractor", [pos.x, pos.y]);
+        }
+    })
+    .with_rule(Rule::Custom(r#"
+        // Use input in shader
+        if uniforms.burst &gt; 0.5 {
+            p.velocity *= 2.0;
+        }
+
+        let target = vec3&lt;f32&gt;(uniforms.attractor[0], uniforms.attractor[1], 0.0);
+        p.velocity += normalize(target - p.position) * 0.1;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="keyboard-input"><a class="header" href="#keyboard-input">Keyboard Input</a></h2>
+<h3 id="key-states"><a class="header" href="#key-states">Key States</a></h3>
+<p>Three types of key queries are available:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Returns <code>true</code> when</th></tr></thead><tbody>
+<tr><td><code>key_pressed(key)</code></td><td>Key was just pressed this frame</td></tr>
+<tr><td><code>key_held(key)</code></td><td>Key is currently down</td></tr>
+<tr><td><code>key_released(key)</code></td><td>Key was just released this frame</td></tr>
+</tbody></table>
+</div>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_update(|ctx| {
+    // Toggle on key press (not hold)
+    if ctx.input.key_pressed(KeyCode::T) {
+        // Toggle something once per press
+    }
+
+    // Continuous action while held
+    if ctx.input.key_held(KeyCode::W) {
+        // Move forward every frame
+    }
+
+    // Cleanup on release
+    if ctx.input.key_released(KeyCode::Shift) {
+        // Stop sprint mode
+    }
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="available-keys"><a class="header" href="#available-keys">Available Keys</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use rdpe::prelude::KeyCode;
+
+// Letters
+KeyCode::A, KeyCode::B, ... KeyCode::Z
+
+// Numbers
+KeyCode::Key0, KeyCode::Key1, ... KeyCode::Key9
+
+// Function keys
+KeyCode::F1, KeyCode::F2, ... KeyCode::F12
+
+// Arrows
+KeyCode::Up, KeyCode::Down, KeyCode::Left, KeyCode::Right
+
+// Common keys
+KeyCode::Space, KeyCode::Enter, KeyCode::Escape
+KeyCode::Tab, KeyCode::Backspace, KeyCode::Delete
+KeyCode::Shift, KeyCode::Control, KeyCode::Alt
+<span class="boring">}</span></code></pre></pre>
+<h2 id="mouse-input"><a class="header" href="#mouse-input">Mouse Input</a></h2>
+<h3 id="button-states"><a class="header" href="#button-states">Button States</a></h3>
+<p>Mouse buttons work the same as keys:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Returns <code>true</code> when</th></tr></thead><tbody>
+<tr><td><code>mouse_pressed(button)</code></td><td>Button was just clicked</td></tr>
+<tr><td><code>mouse_held(button)</code></td><td>Button is currently down</td></tr>
+<tr><td><code>mouse_released(button)</code></td><td>Button was just released</td></tr>
+</tbody></table>
+</div>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use rdpe::prelude::MouseButton;
+
+.with_update(|ctx| {
+    if ctx.input.mouse_pressed(MouseButton::Left) {
+        // Click action
+    }
+
+    if ctx.input.mouse_held(MouseButton::Right) {
+        // Drag action
+    }
+})
+<span class="boring">}</span></code></pre></pre>
+<p>Available buttons: <code>MouseButton::Left</code>, <code>MouseButton::Right</code>, <code>MouseButton::Middle</code></p>
+<h3 id="mouse-position"><a class="header" href="#mouse-position">Mouse Position</a></h3>
+<p>Several position formats are available:</p>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Returns</th></tr></thead><tbody>
+<tr><td><code>mouse_position()</code></td><td>Screen pixels <code>Vec2</code></td></tr>
+<tr><td><code>mouse_ndc()</code></td><td>Normalized coordinates (-1 to 1) <code>Vec2</code></td></tr>
+<tr><td><code>mouse_delta()</code></td><td>Movement since last frame in pixels <code>Vec2</code></td></tr>
+<tr><td><code>scroll_delta()</code></td><td>Scroll wheel movement <code>f32</code></td></tr>
+</tbody></table>
+</div>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_update(|ctx| {
+    // NDC is most useful for particle interactions
+    // Center of screen = (0, 0)
+    // X: -1 (left) to +1 (right)
+    // Y: -1 (bottom) to +1 (top)
+    let pos = ctx.input.mouse_ndc();
+
+    // Pass to shader as attractor point
+    ctx.set("mouse_x", pos.x);
+    ctx.set("mouse_y", pos.y);
+
+    // Check for scroll zoom
+    let scroll = ctx.input.scroll_delta();
+    if scroll != 0.0 {
+        // Zoom in/out
+    }
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
+<h3 id="mouse-attractor"><a class="header" href="#mouse-attractor">Mouse Attractor</a></h3>
+<p>Particles attracted to mouse position:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_uniform::&lt;[f32; 2]&gt;("mouse", [0.0, 0.0])
+    .with_uniform::&lt;f32&gt;("attract_strength", 0.0)
+    .with_update(|ctx| {
+        let pos = ctx.input.mouse_ndc();
+        ctx.set("mouse", [pos.x, pos.y]);
+
+        // Only attract while clicking
+        let strength = if ctx.input.mouse_held(MouseButton::Left) { 2.0 } else { 0.0 };
+        ctx.set("attract_strength", strength);
+    })
+    .with_rule(Rule::Custom(r#"
+        let target = vec3&lt;f32&gt;(uniforms.mouse[0], uniforms.mouse[1], 0.0);
+        let dir = target - p.position;
+        p.velocity += normalize(dir) * uniforms.attract_strength * uniforms.delta_time;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="wasd-movement"><a class="header" href="#wasd-movement">WASD Movement</a></h3>
+<p>Move a point of interest with keyboard:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_uniform::&lt;[f32; 2]&gt;("focus", [0.0, 0.0])
+    .with_update(|ctx| {
+        let mut focus = [0.0_f32, 0.0_f32];
+        let speed = 2.0 * ctx.time.delta_time();
+
+        if ctx.input.key_held(KeyCode::W) { focus[1] += speed; }
+        if ctx.input.key_held(KeyCode::S) { focus[1] -= speed; }
+        if ctx.input.key_held(KeyCode::A) { focus[0] -= speed; }
+        if ctx.input.key_held(KeyCode::D) { focus[0] += speed; }
+
+        // Accumulate movement
+        // In practice, you'd store this in shared state
+        ctx.set("focus", focus);
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="toggle-effects"><a class="header" href="#toggle-effects">Toggle Effects</a></h3>
+<p>Toggle particle behavior with key presses:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use std::sync::{Arc, Mutex};
+
+let gravity_on = Arc::new(Mutex::new(true));
+let gravity_clone = gravity_on.clone();
+
+Simulation::&lt;Particle&gt;::new()
+    .with_uniform::&lt;f32&gt;("gravity", 9.8)
+    .with_update(move |ctx| {
+        let mut on = gravity_clone.lock().unwrap();
+
+        // Toggle with G key
+        if ctx.input.key_pressed(KeyCode::G) {
+            *on = !*on;
+        }
+
+        ctx.set("gravity", if *on { 9.8 } else { 0.0 });
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="notes"><a class="header" href="#notes">Notes</a></h2>
+<ul>
+<li>Input is processed once per frame before the update callback runs</li>
+<li><code>key_pressed</code> and <code>mouse_pressed</code> only return <code>true</code> for one frame</li>
+<li>Mouse NDC coordinates assume a standard coordinate system (Y-up)</li>
+<li>The scroll delta is positive for scrolling up/forward</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="time"><a class="header" href="#time">Time</a></h1>
 <p>RDPE provides a <code>Time</code> module as the universal source of truth for all timing-related values in the simulation. It uses <code>std::time</code> internally with no external dependencies.</p>
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
@@ -1063,7 +1295,7 @@ enum Health {
 <li><strong>Frame count</strong> - total frames rendered</li>
 <li><strong>FPS</strong> - calculated frames per second</li>
 </ul>
-<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h2>
+<h2 id="basic-usage-2"><a class="header" href="#basic-usage-2">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use rdpe::time::Time;
@@ -1297,7 +1529,7 @@ cell_end[morton_code] = one past last particle index
 <li><strong>Temperature/heat</strong>: Particles emit or absorb heat from the environment</li>
 <li><strong>Flow fields</strong>: Pre-computed or dynamic velocity guidance</li>
 </ul>
-<h2 id="basic-usage-2"><a class="header" href="#basic-usage-2">Basic Usage</a></h2>
+<h2 id="basic-usage-3"><a class="header" href="#basic-usage-3">Basic Usage</a></h2>
 <p>Add a field with <code>.with_field()</code> and access it in custom rules:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -1458,12 +1690,12 @@ Simulation::&lt;SlimeAgent&gt;::new()
     .run();
 <span class="boring">}</span></code></pre></pre>
 <h2 id="multiple-fields"><a class="header" href="#multiple-fields">Multiple Fields</a></h2>
-<p>Register multiple fields for complex simulations:</p>
+<p>Register multiple fields for complex simulations. Each field can have independent resolution, decay, blur, and extent settings. Fields are accessed by index in registration order.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Simulation::&lt;Agent&gt;::new()
-    .with_field("food", FieldConfig::new(64).with_decay(0.99))
-    .with_field("danger", FieldConfig::new(32).with_decay(0.9).with_blur(0.2))
+    .with_field("food", FieldConfig::new(64).with_decay(0.99))       // Index 0
+    .with_field("danger", FieldConfig::new(32).with_decay(0.9).with_blur(0.2))  // Index 1
     .with_rule(Rule::Custom(r#"
         let food = field_read(0u, p.position);      // Field 0
         let danger = field_read(1u, p.position);    // Field 1
@@ -1476,6 +1708,38 @@ Simulation::&lt;SlimeAgent&gt;::new()
     "#.into()))
     .run();
 <span class="boring">}</span></code></pre></pre>
+<h3 id="example-competing-teams"><a class="header" href="#example-competing-teams">Example: Competing Teams</a></h3>
+<p>Two particle teams, each depositing to their own field and avoiding the other:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Agent&gt;::new()
+    // Each team gets its own pheromone field
+    .with_field("red_pheromone", FieldConfig::new(48).with_decay(0.97).with_blur(0.15))
+    .with_field("blue_pheromone", FieldConfig::new(48).with_decay(0.97).with_blur(0.15))
+    .with_rule(Rule::Custom(r#"
+        // p.team is 0 or 1
+        let my_field = p.team;
+        let other_field = 1u - p.team;
+
+        // Deposit to my team's field
+        field_write(my_field, p.position, 0.15);
+
+        // Sense ahead
+        let ahead = p.position + normalize(p.velocity) * 0.1;
+
+        // Follow my team, avoid other team
+        let my_val = field_read(my_field, ahead);
+        let other_val = field_read(other_field, ahead);
+        let score = my_val - other_val * 1.5;
+
+        // Steer based on combined score
+        let my_grad = field_gradient(my_field, p.position, 0.05);
+        let other_grad = field_gradient(other_field, p.position, 0.05);
+        p.velocity += (my_grad - other_grad * 1.5) * uniforms.delta_time;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>See <code>examples/multi_field.rs</code> for a complete working example.</p>
 <h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
 <ul>
 <li><strong>Match extents</strong>: Set field extent to match or exceed your simulation bounds</li>
@@ -1486,7 +1750,7 @@ Simulation::&lt;SlimeAgent&gt;::new()
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="custom-rules-1"><a class="header" href="#custom-rules-1">Custom Rules</a></h1>
 <p>When built-in rules aren't enough, <code>Rule::Custom</code> lets you write raw WGSL shader code.</p>
-<h2 id="basic-usage-3"><a class="header" href="#basic-usage-3">Basic Usage</a></h2>
+<h2 id="basic-usage-4"><a class="header" href="#basic-usage-4">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_rule(Rule::Custom(r#"
@@ -1649,7 +1913,7 @@ Rule::Custom(r#"
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="fragment-shaders"><a class="header" href="#fragment-shaders">Fragment Shaders</a></h1>
 <p>Fragment shaders control how each particle looks - its shape, glow, color effects, and more.</p>
-<h2 id="basic-usage-4"><a class="header" href="#basic-usage-4">Basic Usage</a></h2>
+<h2 id="basic-usage-5"><a class="header" href="#basic-usage-5">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Simulation::&lt;MyParticle&gt;::new()
@@ -1679,7 +1943,7 @@ Rule::Custom(r#"
 (-1,1) --------- (1,1)
 </code></pre>
 <p>The center is <code>(0,0)</code>, so <code>length(in.uv)</code> gives distance from center.</p>
-<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
+<h2 id="common-patterns-1"><a class="header" href="#common-patterns-1">Common Patterns</a></h2>
 <h3 id="soft-circle-default-look"><a class="header" href="#soft-circle-default-look">Soft Circle (Default Look)</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2035,7 +2299,7 @@ fn main() {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="post-processing-1"><a class="header" href="#post-processing-1">Post-Processing</a></h1>
 <p>Post-processing applies screen-space effects to the rendered scene - things like bloom, vignette, chromatic aberration, and CRT scanlines.</p>
-<h2 id="basic-usage-5"><a class="header" href="#basic-usage-5">Basic Usage</a></h2>
+<h2 id="basic-usage-6"><a class="header" href="#basic-usage-6">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_visuals(|v| {
@@ -2250,7 +2514,7 @@ v.post_process(r#"
 <li><strong>Fragment shaders</strong> (<code>.with_fragment_shader()</code>) - for per-particle visuals</li>
 <li><strong>Post-process shaders</strong> (<code>.post_process()</code>) - for screen-space effects</li>
 </ul>
-<h2 id="basic-usage-6"><a class="header" href="#basic-usage-6">Basic Usage</a></h2>
+<h2 id="basic-usage-7"><a class="header" href="#basic-usage-7">Basic Usage</a></h2>
 <p>Define uniforms with <code>.with_uniform()</code> and access them in any shader:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2598,7 +2862,7 @@ rdpe = { version = "0.1", features = ["egui"] }
 <p>Or run examples with:</p>
 <pre><code class="language-bash">cargo run --example egui_interactive --features egui
 </code></pre>
-<h2 id="basic-usage-7"><a class="header" href="#basic-usage-7">Basic Usage</a></h2>
+<h2 id="basic-usage-8"><a class="header" href="#basic-usage-8">Basic Usage</a></h2>
 <p>Use <code>.with_ui()</code> to add an egui callback:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -3022,6 +3286,8 @@ cargo run --example &lt;name&gt; --features egui
 <tr><td><code>infection</code></td><td>SIR epidemic model with type conversion</td></tr>
 <tr><td><code>inbox</code></td><td>Particle-to-particle communication system</td></tr>
 <tr><td><code>slime_mold</code></td><td>Physarum-inspired emergent patterns (requires <code>--features egui</code>)</td></tr>
+<tr><td><code>slime_mold_field</code></td><td>Slime mold using 3D spatial fields (requires <code>--features egui</code>)</td></tr>
+<tr><td><code>multi_field</code></td><td>Multiple competing pheromone fields</td></tr>
 </tbody></table>
 </div>
 <h2 id="single-rule-examples"><a class="header" href="#single-rule-examples">Single-Rule Examples</a></h2>
@@ -3046,6 +3312,8 @@ cargo run --example &lt;name&gt; --features egui
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>custom_shader</code></td><td>Custom fragment shader for particle appearance</td></tr>
 <tr><td><code>post_process</code></td><td>Screen-space post-processing (vignette, aberration, grain)</td></tr>
+<tr><td><code>texture_example</code></td><td>Custom texture sampling in shaders</td></tr>
+<tr><td><code>input_demo</code></td><td>Keyboard and mouse input handling</td></tr>
 </tbody></table>
 </div>
 <h2 id="interactive-examples"><a class="header" href="#interactive-examples">Interactive Examples</a></h2>
@@ -3109,6 +3377,7 @@ cargo run --example &lt;name&gt; --features egui
 cargo run --example boids
 cargo run --example predator_prey
 cargo run --example infection
+cargo run --example multi_field
 
 # Rules
 cargo run --example orbit
@@ -3118,6 +3387,8 @@ cargo run --example nbody
 # Visual
 cargo run --example custom_shader
 cargo run --example post_process
+cargo run --example texture_example
+cargo run --example input_demo
 
 # Creative
 cargo run --example ethereal_web
@@ -3125,6 +3396,7 @@ cargo run --example neon_assault
 
 # Interactive (requires egui feature)
 cargo run --example slime_mold --features egui
+cargo run --example slime_mold_field --features egui
 cargo run --example neon_assault_interactive --features egui
 </code></pre>
 <p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>

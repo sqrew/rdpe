@@ -1,13 +1,58 @@
 //! # Interactive Egui Controls
 //!
 //! Demonstrates egui UI that actually controls the simulation in real-time.
-//! Uses Arc<Mutex<T>> to share state between UI and update callbacks.
+//! Uses `Arc<Mutex<T>>` to share state between UI and update callbacks.
 //!
-//! Features:
-//! - Gravity slider (pulls particles down)
-//! - Speed multiplier
-//! - Drag coefficient
-//! - Reset button
+//! ## What This Demonstrates
+//!
+//! - `Arc<Mutex<T>>` pattern for UI ↔ simulation communication
+//! - `.with_ui()` - UI callback that modifies shared state
+//! - `.with_update()` - update callback that reads state and sets uniforms
+//! - `.with_uniform()` - shader-accessible values
+//! - Accessing uniforms in `Rule::Custom` WGSL
+//!
+//! ## The Pattern
+//!
+//! ```rust
+//! // 1. Create shared state
+//! let state = Arc::new(Mutex::new(MyState::default()));
+//! let ui_state = state.clone();
+//! let update_state = state.clone();
+//!
+//! // 2. Define uniforms with defaults
+//! .with_uniform("gravity", 0.5f32)
+//!
+//! // 3. UI modifies state
+//! .with_ui(move |ctx| {
+//!     let mut s = ui_state.lock().unwrap();
+//!     ui.slider(&mut s.gravity, 0.0..=2.0);
+//! })
+//!
+//! // 4. Update syncs state → uniforms
+//! .with_update(move |ctx| {
+//!     let s = update_state.lock().unwrap();
+//!     ctx.set("gravity", s.gravity);
+//! })
+//!
+//! // 5. Rules read uniforms
+//! .with_rule(Rule::Custom(r#"
+//!     p.velocity.y -= uniforms.gravity * uniforms.delta_time;
+//! "#.into()))
+//! ```
+//!
+//! ## Why Arc<Mutex>?
+//!
+//! - UI and update run on different threads
+//! - Both need mutable access to the same state
+//! - Mutex ensures safe concurrent access
+//! - Arc allows multiple owners
+//!
+//! ## Try This
+//!
+//! - Add a color picker that modifies particle colors
+//! - Add a "pause" checkbox that sets time multiplier to 0
+//! - Create presets with different parameter combinations
+//! - Add a reset button that respawns particles
 //!
 //! Run with: `cargo run --example egui_interactive --features egui`
 

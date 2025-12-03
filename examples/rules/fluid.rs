@@ -4,6 +4,30 @@
 //! fluid-like behavior. Particles spread to fill space evenly while
 //! maintaining smooth, coherent flow.
 //!
+//! ## What This Demonstrates
+//!
+//! - `Rule::Pressure` - particles push apart when crowded
+//! - `Rule::Viscosity` - smooths velocity field (gooey feel)
+//! - `Rule::Custom` - color based on velocity (visual feedback)
+//! - SPH (Smoothed Particle Hydrodynamics) style simulation
+//!
+//! ## The Physics
+//!
+//! **Pressure**: When a particle has more neighbors than `target_density`,
+//! it gets pushed outward. This creates incompressible fluid behavior -
+//! particles spread to fill space evenly rather than clumping.
+//!
+//! **Viscosity**: Blends each particle's velocity with its neighbors,
+//! creating smooth, coherent flow. Higher values = thicker fluid (honey),
+//! lower values = thinner (water).
+//!
+//! ## Try This
+//!
+//! - Increase `target_density` to 10+ for denser fluid
+//! - Set viscosity `strength` to 0.5 for water-like behavior
+//! - Remove gravity to see surface tension effects
+//! - Add `Rule::SurfaceTension` for blob cohesion
+//!
 //! Run with: `cargo run --example fluid`
 
 use rand::Rng;

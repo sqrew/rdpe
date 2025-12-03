@@ -1,7 +1,41 @@
-//! Color palette demonstration.
+//! # Color Palettes Example
 //!
-//! Shows different palettes and color mappings.
-//! Press space to cycle through palettes.
+//! Demonstrates automatic color palette and mapping system for particles
+//! without needing a `#[color]` field.
+//!
+//! ## What This Demonstrates
+//!
+//! - `v.palette(Palette, ColorMapping)` - automatic coloring
+//! - `Palette::Fire` - one of many built-in palettes
+//! - `ColorMapping::Distance { max_dist }` - color by distance from center
+//! - No `#[color]` field needed - colors computed automatically
+//!
+//! ## Available Palettes
+//!
+//! - `Palette::Fire` - Black → red → orange → yellow → white
+//! - `Palette::Ice` - Dark blue → cyan → white
+//! - `Palette::Rainbow` - Full spectrum hue cycle
+//! - `Palette::Plasma` - Purple → pink → orange
+//! - `Palette::Viridis` - Scientific visualization (colorblind-friendly)
+//! - `Palette::Grayscale` - Black to white
+//!
+//! ## Color Mappings
+//!
+//! - `ColorMapping::Distance { max_dist }` - by distance from origin
+//! - `ColorMapping::Speed { min, max }` - by velocity magnitude
+//! - `ColorMapping::Age { max_age }` - by particle age
+//! - `ColorMapping::PositionY { min, max }` - by vertical position
+//! - `ColorMapping::Index` - by particle index (creates bands)
+//! - `ColorMapping::Random` - random per particle
+//!
+//! ## Try This
+//!
+//! - Try `Palette::Rainbow` with `ColorMapping::Speed { min: 0.0, max: 1.0 }`
+//! - Use `ColorMapping::Index` to color by spawn order
+//! - Combine with `BlendMode::Alpha` for solid colors
+//! - Try `Palette::Neon` or `Palette::Ocean` for different aesthetics
+//!
+//! Run with: `cargo run --example palettes`
 
 use rdpe::prelude::*;
 

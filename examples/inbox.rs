@@ -3,6 +3,46 @@
 //! Demonstrates particle-to-particle communication using the inbox system.
 //! Particles transfer energy to their neighbors, creating a diffusion effect.
 //!
+//! ## What This Demonstrates
+//!
+//! - `.with_inbox()` - enable particle messaging system
+//! - `inbox_send(particle_idx, channel, value)` - send data to a particle
+//! - `inbox_receive_at(idx, channel)` - receive accumulated data
+//! - Energy diffusion using neighbor communication
+//! - Heat map coloring (blue → cyan → yellow → red)
+//!
+//! ## How the Inbox System Works
+//!
+//! The inbox provides per-particle communication channels:
+//!
+//! 1. **Sending**: In neighbor rules, send values to other particles
+//!    ```wgsl
+//!    inbox_send(other_idx, 0u, amount);  // Send to channel 0
+//!    ```
+//!
+//! 2. **Receiving**: In custom rules, read accumulated values
+//!    ```wgsl
+//!    let received = inbox_receive_at(index, 0u);  // Sum of all sends
+//!    ```
+//!
+//! Values sent in one frame are accumulated and available the next frame.
+//! Each particle has 4 channels (0-3) for different data types.
+//!
+//! ## Inbox vs Fields
+//!
+//! - **Inbox**: Direct particle-to-particle, discrete messages
+//! - **Fields**: Continuous 3D grid, automatic diffusion
+//!
+//! Use inbox when you need precise particle targeting.
+//! Use fields for continuous pheromone-like effects.
+//!
+//! ## Try This
+//!
+//! - Increase transfer rate (0.02) for faster diffusion
+//! - Add more hot spots by changing the modulo pattern
+//! - Use channel 1 for a second energy type
+//! - Add `Rule::Separate` to spread particles apart
+//!
 //! Run with: `cargo run --example inbox`
 
 use rand::Rng;

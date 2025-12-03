@@ -191,6 +191,8 @@ cargo run --example &lt;name&gt; --features egui
 <tr><td><code>infection</code></td><td>SIR epidemic model with type conversion</td></tr>
 <tr><td><code>inbox</code></td><td>Particle-to-particle communication system</td></tr>
 <tr><td><code>slime_mold</code></td><td>Physarum-inspired emergent patterns (requires <code>--features egui</code>)</td></tr>
+<tr><td><code>slime_mold_field</code></td><td>Slime mold using 3D spatial fields (requires <code>--features egui</code>)</td></tr>
+<tr><td><code>multi_field</code></td><td>Multiple competing pheromone fields</td></tr>
 </tbody></table>
 </div>
 <h2 id="single-rule-examples"><a class="header" href="#single-rule-examples">Single-Rule Examples</a></h2>
@@ -215,6 +217,8 @@ cargo run --example &lt;name&gt; --features egui
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>custom_shader</code></td><td>Custom fragment shader for particle appearance</td></tr>
 <tr><td><code>post_process</code></td><td>Screen-space post-processing (vignette, aberration, grain)</td></tr>
+<tr><td><code>texture_example</code></td><td>Custom texture sampling in shaders</td></tr>
+<tr><td><code>input_demo</code></td><td>Keyboard and mouse input handling</td></tr>
 </tbody></table>
 </div>
 <h2 id="interactive-examples"><a class="header" href="#interactive-examples">Interactive Examples</a></h2>
@@ -278,6 +282,7 @@ cargo run --example &lt;name&gt; --features egui
 cargo run --example boids
 cargo run --example predator_prey
 cargo run --example infection
+cargo run --example multi_field
 
 # Rules
 cargo run --example orbit
@@ -287,6 +292,8 @@ cargo run --example nbody
 # Visual
 cargo run --example custom_shader
 cargo run --example post_process
+cargo run --example texture_example
+cargo run --example input_demo
 
 # Creative
 cargo run --example ethereal_web
@@ -294,6 +301,7 @@ cargo run --example neon_assault
 
 # Interactive (requires egui feature)
 cargo run --example slime_mold --features egui
+cargo run --example slime_mold_field --features egui
 cargo run --example neon_assault_interactive --features egui
 </code></pre>
 <p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>

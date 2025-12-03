@@ -4,6 +4,37 @@
 //! Particles orbit around the center like planets around a star or matter
 //! spiraling into a black hole.
 //!
+//! ## What This Demonstrates
+//!
+//! - `Rule::PointGravity` - attraction toward a single point
+//! - `softening` to prevent singularity at the center
+//! - Initial tangential velocity for orbital motion
+//! - `Rule::ColorBySpeed` for velocity-based coloring
+//! - Disk-shaped spawning (flattened in Y) for galaxy appearance
+//!
+//! ## The Physics
+//!
+//! **Inverse-Square Law**: Force ~ 1/r². Particles closer to the center
+//! experience much stronger pull. Combined with tangential velocity,
+//! this creates Keplerian orbits where inner particles move faster.
+//!
+//! **Orbital Mechanics**: Initial velocity is set perpendicular to the
+//! radius (tangential) and scaled by 1/sqrt(r). This approximates
+//! circular orbital velocity, creating a stable disk.
+//!
+//! **Softening**: Without it, particles passing very close to the
+//! center would experience near-infinite acceleration. Softening
+//! adds a minimum effective distance.
+//!
+//! ## Try This
+//!
+//! - Increase `strength` to 3.0+ for faster spiral-in
+//! - Remove tangential velocity (`velocity: Vec3::ZERO`) for direct collapse
+//! - Move `point` off-center: `Vec3::new(0.3, 0.0, 0.0)`
+//! - Add a second `PointGravity` for binary star dynamics
+//! - Remove drag entirely to see pure orbital mechanics
+//! - Use input handling to move the gravity point with mouse
+//!
 //! Run with: `cargo run --example point_gravity`
 
 use rand::Rng;

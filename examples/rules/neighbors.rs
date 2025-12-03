@@ -8,6 +8,36 @@
 //! - Particles repel neighbors at close range
 //! - Color blends between nearby particles
 //!
+//! ## What This Demonstrates
+//!
+//! - `Rule::NeighborCustom` - raw WGSL code with neighbor access
+//! - Available variables: `other` (neighbor particle), `neighbor_dir`, `neighbor_dist`
+//! - Distance-based attraction/repulsion zones
+//! - Color blending between particles (`mix()` function)
+//! - Combining custom rules with center attraction
+//!
+//! ## The Mechanics
+//!
+//! **WGSL Variables Available**:
+//! - `other` - the neighbor particle struct (access `other.position`, `other.color`, etc.)
+//! - `neighbor_dir` - normalized direction from this particle to neighbor
+//! - `neighbor_dist` - distance between particles
+//!
+//! **Zone Logic**: This example creates two behavior zones:
+//! - Close range (< 0.05): Strong repulsion (personal space)
+//! - Medium range (0.05-0.12): Gentle attraction (social zone)
+//!
+//! The result is particles that cluster into groups at a comfortable
+//! spacing, similar to slime mold aggregation.
+//!
+//! ## Try This
+//!
+//! - Adjust zone boundaries (0.05, 0.12) for different clustering
+//! - Change attraction/repulsion strengths (8.0, 2.0)
+//! - Remove color blending to see distinct color regions
+//! - Add `other.velocity` alignment for flocking behavior
+//! - Try repulsion at medium range for dispersed patterns
+//!
 //! Run with: `cargo run --example neighbors`
 
 use rand::Rng;

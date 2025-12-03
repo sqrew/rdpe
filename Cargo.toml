@@ -47,6 +47,10 @@ path = "examples/predator_prey.rs"
 name = "infection"
 path = "examples/infection.rs"
 
+[[example]]
+name = "lifecycle_demo"
+path = "examples/lifecycle_demo.rs"
+
 # Single-rule examples in rules/ subdirectory
 [[example]]
 name = "bounce_walls"
@@ -117,10 +121,6 @@ required-features = ["egui"]
 
 # Experimental/creative examples in experimental/ subdirectory
 [[example]]
-name = "cosmic_jellyfish"
-path = "examples/experimental/cosmic_jellyfish.rs"
-
-[[example]]
 name = "firefly_grove"
 path = "examples/experimental/firefly_grove.rs"
 
@@ -133,31 +133,31 @@ name = "thought_storm"
 path = "examples/experimental/thought_storm.rs"
 
 [[example]]
-name = "plasma_storm"
-path = "examples/experimental/plasma_storm.rs"
+name = "fluid_galaxy_interactive"
+path = "examples/experimental/fluid_galaxy_interactive.rs"
 required-features = ["egui"]
 
 [[example]]
-name = "fluid_galaxy"
-path = "examples/experimental/fluid_galaxy.rs"
-required-features = ["egui"]
-
-[[example]]
-name = "murmuration"
-path = "examples/experimental/murmuration.rs"
-required-features = ["egui"]
-
-[[example]]
-name = "ethereal_web"
-path = "examples/experimental/ethereal_web.rs"
-
-[[example]]
-name = "neon_assault"
-path = "examples/experimental/neon_assault.rs"
+name = "ethereal_loop"
+path = "examples/experimental/ethereal_loop.rs"
 
 [[example]]
 name = "neon_assault_interactive"
 path = "examples/experimental/neon_assault_interactive.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "mycelial_network_interactive"
+path = "examples/experimental/mycelial_network_interactive.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "lorenz_attractor"
+path = "examples/experimental/lorenz_attractor.rs"
+
+[[example]]
+name = "lorenz_attractor_interactive"
+path = "examples/experimental/lorenz_attractor_interactive.rs"
 required-features = ["egui"]
 
 # Egui examples (require --features egui)

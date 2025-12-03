@@ -3,6 +3,36 @@
 //! Demonstrates `Rule::NBodyGravity` - inverse-square gravitational
 //! attraction between particles. Watch clusters form and orbit!
 //!
+//! ## What This Demonstrates
+//!
+//! - `Rule::NBodyGravity` - every particle attracts every other particle
+//! - `softening` parameter to prevent infinite forces at close range
+//! - `radius` parameter for performance (skip distant interactions)
+//! - Initial orbital velocity setup for stable disk formation
+//! - Color-coding particles by distance from center
+//!
+//! ## The Physics
+//!
+//! **Inverse-Square Gravity**: Force = G * m1 * m2 / r². Closer particles
+//! experience much stronger attraction. Without softening, particles that
+//! get very close would accelerate to infinity.
+//!
+//! **Softening**: Adds a small constant to the distance calculation,
+//! preventing the denominator from approaching zero. Essential for
+//! n-body stability.
+//!
+//! **Orbital Velocity**: Particles start with tangential velocity scaled
+//! by sqrt(r), roughly matching Keplerian orbital mechanics. This creates
+//! a spinning disk rather than immediate collapse.
+//!
+//! ## Try This
+//!
+//! - Set `strength` to 0.5+ for faster galaxy collapse
+//! - Remove initial orbital velocity to see direct collapse
+//! - Lower `softening` to 0.01 for more dramatic close encounters
+//! - Increase `radius` to 1.0+ for larger-scale structure
+//! - Add `Rule::Turbulence` for chaotic gas cloud behavior
+//!
 //! Run with: `cargo run --example nbody`
 
 use rand::Rng;

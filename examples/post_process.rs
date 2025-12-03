@@ -3,6 +3,49 @@
 //! Demonstrates screen-space post-processing effects.
 //! Shows vignette, color grading, and chromatic aberration.
 //!
+//! ## What This Demonstrates
+//!
+//! - `.with_visuals(|v| v.post_process(...))` - screen-space effects
+//! - `textureSample(scene, scene_sampler, uv)` - read rendered scene
+//! - Chromatic aberration (RGB channel offset)
+//! - Vignette (edge darkening)
+//! - Color grading (contrast, tint)
+//! - Film grain (noise overlay)
+//!
+//! ## How Post-Processing Works
+//!
+//! After all particles are rendered, the post-process shader runs once
+//! per screen pixel. It receives:
+//!
+//! - `in.uv` - screen UV coordinates (0,0 = top-left, 1,1 = bottom-right)
+//! - `scene` + `scene_sampler` - texture containing the rendered particles
+//! - `uniforms.time` - for animated effects
+//!
+//! Sample the scene and modify colors before output.
+//!
+//! ## Common Effects
+//!
+//! ```wgsl
+//! // Chromatic aberration
+//! let r = textureSample(scene, scene_sampler, uv + vec2(0.005, 0.0)).r;
+//! let g = textureSample(scene, scene_sampler, uv).g;
+//! let b = textureSample(scene, scene_sampler, uv - vec2(0.005, 0.0)).b;
+//!
+//! // Vignette
+//! let vignette = 1.0 - length(uv - 0.5) * 1.2;
+//!
+//! // Scanlines (CRT effect)
+//! let scanline = sin(uv.y * 800.0) * 0.1 + 0.9;
+//! ```
+//!
+//! ## Try This
+//!
+//! - Increase aberration offset for glitchy look: `0.01`
+//! - Add scanlines: `color *= sin(in.uv.y * 600.0) * 0.1 + 0.9`
+//! - Invert colors: `color = 1.0 - color`
+//! - Add bloom: sample with offset and blur, add to original
+//! - Try barrel distortion: warp UVs based on distance from center
+//!
 //! Run with: `cargo run --example post_process`
 
 use rand::Rng;

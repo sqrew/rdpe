@@ -3,6 +3,36 @@
 //! Demonstrates `Rule::Oscillate` - sine-wave modulation for pulsing and wave effects.
 //! Creates radial ripple waves emanating outward from the center.
 //!
+//! ## What This Demonstrates
+//!
+//! - `Rule::Oscillate` - sine-based position modulation
+//! - `spatial_scale` parameter for wave wavelength
+//! - Layering multiple oscillations for complexity
+//! - Grid-based particle spawning for uniform coverage
+//! - Height-based color mapping with `Rule::Custom`
+//! - `Rule::Spring` to anchor particles in place
+//!
+//! ## The Physics
+//!
+//! **Wave Equation**: Position offset = amplitude * sin(time * frequency + distance * spatial_scale).
+//! The `spatial_scale` creates radial ripples - higher values = tighter, more
+//! frequent waves; lower values = broad, slow-moving swells.
+//!
+//! **Superposition**: Two oscillations with different frequencies and scales
+//! combine to create more organic, less mechanical motion - like real water
+//! with wind chop over larger swells.
+//!
+//! **Spring Anchor**: Particles would drift from accumulated velocity, so
+//! the spring gently pulls them back to their grid positions.
+//!
+//! ## Try This
+//!
+//! - Increase `spatial_scale` to 20+ for tight ripples
+//! - Add a third oscillation on a different axis (Vec3::X)
+//! - Set `amplitude` higher for dramatic waves
+//! - Remove `Spring` to see particles drift over time
+//! - Try `axis: Vec3::new(1.0, 1.0, 0.0)` for diagonal waves
+//!
 //! Run with: `cargo run --example oscillate`
 
 use rdpe::prelude::*;

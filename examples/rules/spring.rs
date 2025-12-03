@@ -3,6 +3,36 @@
 //! Demonstrates `Rule::Spring` - Hooke's law spring force tethering particles.
 //! Particles are pulled back toward the origin with a bouncy, elastic motion.
 //!
+//! ## What This Demonstrates
+//!
+//! - `Rule::Spring` - Hooke's law elastic force
+//! - `stiffness` parameter (spring constant k)
+//! - `damping` to reduce oscillation over time
+//! - Combining with `Rule::Turbulence` for dynamic behavior
+//! - Distance-based color in `Rule::Custom`
+//!
+//! ## The Physics
+//!
+//! **Hooke's Law**: F = -k * x, where k is stiffness and x is displacement
+//! from the anchor point. Greater displacement = stronger restoring force.
+//!
+//! **Damping**: Without damping, particles would oscillate forever.
+//! The damping coefficient removes energy each frame, causing oscillations
+//! to decay toward equilibrium.
+//!
+//! **Underdamped vs Overdamped**: Low damping (< 1.0) creates bouncy, oscillatory
+//! motion. High damping (> 2.0) creates sluggish, overdamped motion where
+//! particles slowly return without overshooting.
+//!
+//! ## Try This
+//!
+//! - Set `damping: 0.1` for long-lasting bouncy oscillation
+//! - Increase `stiffness` to 10.0 for snappy, high-frequency vibration
+//! - Move `anchor` off-center: `Vec3::new(0.3, 0.2, 0.0)`
+//! - Remove `Turbulence` to see pure spring dynamics
+//! - Add `Rule::Gravity(1.0)` to see springs fighting gravity
+//! - Try very high damping (5.0) for viscous, gooey motion
+//!
 //! Run with: `cargo run --example spring`
 
 use rand::Rng;

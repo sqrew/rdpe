@@ -10,6 +10,7 @@
 - [Visual Configuration](./basics/visuals.md)
 - [Emitters](./basics/emitters.md)
 - [Typed Interactions](./basics/typed-interactions.md)
+- [Input Handling](./basics/input.md)
 - [Time](./basics/time.md)
 
 # Advanced

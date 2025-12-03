@@ -3,6 +3,7 @@ mod connections;
 mod field_gpu;
 mod post_process;
 mod spatial_gpu;
+pub mod sub_emitter_gpu;
 mod trails;
 
 #[cfg(feature = "egui")]
@@ -13,6 +14,7 @@ pub use camera::Camera;
 pub use connections::ConnectionState;
 pub use field_gpu::{FieldSystemGpu, create_particle_field_bind_group_layout};
 pub use post_process::PostProcessState;
+pub use sub_emitter_gpu::SubEmitterGpu;
 pub use trails::TrailState;
 
 use crate::field::FieldRegistry;
@@ -120,6 +122,8 @@ pub struct GpuState {
     egui: Option<EguiIntegration>,
     #[cfg(feature = "egui")]
     window: Arc<Window>,
+    // Sub-emitter system for spawning particles on death
+    sub_emitter: Option<SubEmitterGpu>,
 }
 
 impl GpuState {
@@ -153,6 +157,8 @@ impl GpuState {
         texture_registry: &crate::textures::TextureRegistry,
         _texture_declarations: &str,
         field_registry: &FieldRegistry,
+        sub_emitters: &[crate::sub_emitter::SubEmitter],
+        particle_wgsl_struct: &str,
         #[cfg(feature = "egui")] egui_enabled: bool,
     ) -> Self {
         let size = window.inner_size();
@@ -620,56 +626,70 @@ impl GpuState {
             (None, None, None)
         };
 
-        // Build compute pipeline layout with optional inbox and field bind groups
+        // Create sub-emitter system early so we can use its bind group layout
+        let sub_emitter = if !sub_emitters.is_empty() {
+            Some(SubEmitterGpu::new(
+                &device,
+                &particle_buffer,
+                num_particles,
+                sub_emitters,
+                particle_wgsl_struct,
+            ))
+        } else {
+            None
+        };
+
+        // Build compute pipeline layout with optional inbox, field, and sub-emitter bind groups
         // Group 0: particles/uniforms/spatial
         // Group 1: inbox (if enabled)
         // Group 2: fields (if enabled)
-        let (compute_pipeline_layout, empty_bind_group) = match (&inbox_bind_group_layout, &field_bind_group_layout) {
-            (Some(inbox_layout), Some(field_layout)) => {
-                // Both inbox and fields enabled
-                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Compute Pipeline Layout"),
-                    bind_group_layouts: &[&compute_bind_group_layout, inbox_layout, field_layout],
-                    push_constant_ranges: &[],
-                });
-                (layout, None)
+        // Group 3: sub-emitter death buffers (if enabled)
+        let (compute_pipeline_layout, empty_bind_group) = {
+            // Create empty layout/bind group for gaps
+            let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Empty Bind Group Layout"),
+                entries: &[],
+            });
+            let empty_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Empty Bind Group"),
+                layout: &empty_layout,
+                entries: &[],
+            });
+
+            // Build layouts vec dynamically
+            let mut layouts: Vec<&wgpu::BindGroupLayout> = vec![&compute_bind_group_layout];
+
+            // Group 1: inbox or empty
+            if let Some(ref inbox_layout) = inbox_bind_group_layout {
+                layouts.push(inbox_layout);
+            } else if field_bind_group_layout.is_some() || sub_emitter.is_some() {
+                // Need placeholder at group 1 if we have group 2 or 3
+                layouts.push(&empty_layout);
             }
-            (Some(inbox_layout), None) => {
-                // Only inbox enabled
-                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Compute Pipeline Layout"),
-                    bind_group_layouts: &[&compute_bind_group_layout, inbox_layout],
-                    push_constant_ranges: &[],
-                });
-                (layout, None)
+
+            // Group 2: fields or empty
+            if let Some(ref field_layout) = field_bind_group_layout {
+                layouts.push(field_layout);
+            } else if sub_emitter.is_some() {
+                // Need placeholder at group 2 if we have group 3
+                layouts.push(&empty_layout);
             }
-            (None, Some(field_layout)) => {
-                // Only fields enabled - need empty layout at group 1 since fields use group 2
-                let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Empty Bind Group Layout"),
-                    entries: &[],
-                });
-                let empty_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Empty Bind Group"),
-                    layout: &empty_layout,
-                    entries: &[],
-                });
-                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Compute Pipeline Layout"),
-                    bind_group_layouts: &[&compute_bind_group_layout, &empty_layout, field_layout],
-                    push_constant_ranges: &[],
-                });
-                (layout, Some(empty_bg))
+
+            // Group 3: sub-emitter death buffers
+            if let Some(ref se) = sub_emitter {
+                layouts.push(&se.death_bind_group_layout);
             }
-            (None, None) => {
-                // Neither enabled
-                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Compute Pipeline Layout"),
-                    bind_group_layouts: &[&compute_bind_group_layout],
-                    push_constant_ranges: &[],
-                });
-                (layout, None)
-            }
+
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Compute Pipeline Layout"),
+                bind_group_layouts: &layouts,
+                push_constant_ranges: &[],
+            });
+
+            // Only keep empty_bg if we need it
+            let keep_empty = (inbox_bind_group_layout.is_none() && (field_bind_group_layout.is_some() || sub_emitter.is_some()))
+                || (field_bind_group_layout.is_none() && sub_emitter.is_some());
+            (layout, if keep_empty { Some(empty_bg) } else { None })
         };
 
         let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -690,6 +710,7 @@ impl GpuState {
                 num_particles,
                 trail_length,
                 particle_stride,
+                color_offset,
                 particle_size,
                 blend_mode,
                 config.format,
@@ -868,6 +889,7 @@ impl GpuState {
             egui,
             #[cfg(feature = "egui")]
             window,
+            sub_emitter,
         }
     }
 
@@ -1019,6 +1041,11 @@ impl GpuState {
             self.queue.write_buffer(inbox_buf, 0, &zeros);
         }
 
+        // Clear sub-emitter death buffers before compute pass
+        if let Some(ref se) = self.sub_emitter {
+            se.clear_buffers(&self.queue);
+        }
+
         // Recreate field bind group each frame (buffers may have been swapped during blur)
         let field_bind_group = if let (Some(ref field_sys), Some(ref layout)) =
             (&self.field_system, &self.field_bind_group_layout)
@@ -1038,21 +1065,38 @@ impl GpuState {
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
 
-            // Set inbox bind group if enabled
+            // Set inbox bind group if enabled (group 1)
             if let Some(ref inbox_bg) = self.inbox_bind_group {
                 compute_pass.set_bind_group(1, inbox_bg, &[]);
-            } else if let Some(ref empty_bg) = self.empty_bind_group {
-                // When fields are enabled but inbox is not, bind empty group at index 1
-                compute_pass.set_bind_group(1, empty_bg, &[]);
+            } else if self.field_system.is_some() || self.sub_emitter.is_some() {
+                // Need placeholder at group 1 if we have group 2 or 3
+                if let Some(ref empty_bg) = self.empty_bind_group {
+                    compute_pass.set_bind_group(1, empty_bg, &[]);
+                }
             }
 
-            // Set field bind group if enabled (always at group 2)
+            // Set field bind group if enabled (group 2)
             if let Some(ref field_bg) = field_bind_group {
                 compute_pass.set_bind_group(2, field_bg, &[]);
+            } else if self.sub_emitter.is_some() {
+                // Need placeholder at group 2 if we have group 3
+                if let Some(ref empty_bg) = self.empty_bind_group {
+                    compute_pass.set_bind_group(2, empty_bg, &[]);
+                }
+            }
+
+            // Set sub-emitter death buffer bind group if enabled (group 3)
+            if let Some(ref se) = self.sub_emitter {
+                compute_pass.set_bind_group(3, &se.death_bind_group, &[]);
             }
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Sub-emitter spawn pass (spawn children from death events)
+        if let Some(ref se) = self.sub_emitter {
+            se.spawn_children(&mut encoder);
         }
 
         // Field processing pass (merge deposits, blur/decay, clear write buffer)
@@ -1246,6 +1290,11 @@ impl GpuState {
             self.queue.write_buffer(inbox_buf, 0, &zeros);
         }
 
+        // Clear sub-emitter death buffers before compute pass
+        if let Some(ref se) = self.sub_emitter {
+            se.clear_buffers(&self.queue);
+        }
+
         // Recreate field bind group each frame (buffers may have been swapped during blur)
         let field_bind_group = if let (Some(ref field_sys), Some(ref layout)) =
             (&self.field_system, &self.field_bind_group_layout)
@@ -1265,21 +1314,38 @@ impl GpuState {
             compute_pass.set_pipeline(&self.compute_pipeline);
             compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
 
-            // Set inbox bind group if enabled
+            // Set inbox bind group if enabled (group 1)
             if let Some(ref inbox_bg) = self.inbox_bind_group {
                 compute_pass.set_bind_group(1, inbox_bg, &[]);
-            } else if let Some(ref empty_bg) = self.empty_bind_group {
-                // When fields are enabled but inbox is not, bind empty group at index 1
-                compute_pass.set_bind_group(1, empty_bg, &[]);
+            } else if self.field_system.is_some() || self.sub_emitter.is_some() {
+                // Need placeholder at group 1 if we have group 2 or 3
+                if let Some(ref empty_bg) = self.empty_bind_group {
+                    compute_pass.set_bind_group(1, empty_bg, &[]);
+                }
             }
 
-            // Set field bind group if enabled (always at group 2)
+            // Set field bind group if enabled (group 2)
             if let Some(ref field_bg) = field_bind_group {
                 compute_pass.set_bind_group(2, field_bg, &[]);
+            } else if self.sub_emitter.is_some() {
+                // Need placeholder at group 2 if we have group 3
+                if let Some(ref empty_bg) = self.empty_bind_group {
+                    compute_pass.set_bind_group(2, empty_bg, &[]);
+                }
+            }
+
+            // Set sub-emitter death buffer bind group if enabled (group 3)
+            if let Some(ref se) = self.sub_emitter {
+                compute_pass.set_bind_group(3, &se.death_bind_group, &[]);
             }
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Sub-emitter spawn pass (spawn children from death events)
+        if let Some(ref se) = self.sub_emitter {
+            se.spawn_children(&mut encoder);
         }
 
         // Field processing pass (merge deposits, blur/decay, clear write buffer)

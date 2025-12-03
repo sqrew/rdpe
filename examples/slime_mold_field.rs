@@ -1,8 +1,49 @@
 //! # Slime Mold with 3D Field System
 //!
-//! Physarum-inspired particle simulation using the new field system.
-//! Agents deposit pheromones into a 3D spatial field and follow gradients.
-//! The field handles diffusion and decay automatically.
+//! Physarum-inspired particle simulation using the 3D spatial field system.
+//! Agents deposit pheromones into a volumetric field and follow gradients.
+//! The field handles diffusion and decay automatically on the GPU.
+//!
+//! ## What This Demonstrates
+//!
+//! - `.with_field(name, config)` - add 3D spatial fields
+//! - `FieldConfig::new(resolution)` - configure field grid
+//! - `field_write(id, pos, value)` - deposit to field
+//! - `field_read(id, pos)` - sample from field
+//! - Built-in decay and blur for pheromone dynamics
+//! - egui integration for real-time tuning
+//!
+//! ## Field System vs Inbox
+//!
+//! **Field system** (this example):
+//! - Data stored in 3D volumetric grid
+//! - Automatic diffusion via blur kernel
+//! - Automatic decay over time
+//! - Better for continuous pheromone trails
+//! - GPU memory cost scales with resolution³
+//!
+//! **Inbox system** (`slime_mold.rs`):
+//! - Data stored per-particle
+//! - Requires explicit neighbor interactions
+//! - More control over diffusion logic
+//! - Better for discrete particle-to-particle messages
+//!
+//! ## Field Configuration
+//!
+//! ```rust
+//! FieldConfig::new(64)          // 64³ voxel grid
+//!     .with_extent(1.2)         // covers -1.2 to +1.2 world space
+//!     .with_decay(0.98)         // multiply values by 0.98 each frame
+//!     .with_blur(0.1)           // diffusion strength
+//!     .with_blur_iterations(1)  // blur passes per frame
+//! ```
+//!
+//! ## Try This
+//!
+//! - Lower resolution (32) for performance, higher (128) for detail
+//! - Increase blur for faster diffusion
+//! - Set decay to 0.90 for quickly fading trails
+//! - Add a second field for competing species (see `multi_field.rs`)
 //!
 //! Run with: `cargo run --example slime_mold_field --features egui`
 

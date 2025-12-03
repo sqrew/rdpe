@@ -141,6 +141,8 @@ pub struct Simulation<P: ParticleTrait> {
     rules: Vec<Rule>,
     /// Particle emitters for runtime spawning.
     emitters: Vec<Emitter>,
+    /// Sub-emitters for spawning particles on death.
+    sub_emitters: Vec<crate::sub_emitter::SubEmitter>,
     /// Interaction matrix for type-based forces.
     interaction_matrix: Option<InteractionMatrix>,
     /// Custom uniforms for user-defined shader data.
@@ -157,6 +159,8 @@ pub struct Simulation<P: ParticleTrait> {
     visual_config: VisualConfig,
     /// Whether particle communication inbox is enabled.
     inbox_enabled: bool,
+    /// Whether particles should start dead (for emitter-only spawning).
+    start_dead: bool,
     /// Registry of 3D spatial fields for particle-environment interaction.
     field_registry: FieldRegistry,
     /// Custom fragment shader code (replaces default fragment body).
@@ -194,6 +198,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             spawner: None,
             rules: Vec::new(),
             emitters: Vec::new(),
+            sub_emitters: Vec::new(),
             interaction_matrix: None,
             custom_uniforms: CustomUniforms::new(),
             texture_registry: TextureRegistry::new(),
@@ -202,6 +207,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             spatial_config: SpatialConfig::default(),
             visual_config: VisualConfig::default(),
             inbox_enabled: false,
+            start_dead: false,
             field_registry: FieldRegistry::new(),
             custom_fragment_shader: None,
             #[cfg(feature = "egui")]
@@ -588,6 +594,147 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Configure particle lifecycle with a builder.
+    ///
+    /// Lifecycle configuration handles aging, death, visual effects (fade, shrink),
+    /// and respawning via emitters. This is the ergonomic way to set up particle
+    /// systems with birth/death cycles.
+    ///
+    /// # Hidden Lifecycle Fields
+    ///
+    /// Every particle automatically has these fields (injected by derive macro):
+    /// - `age: f32` - time since spawn (seconds)
+    /// - `alive: u32` - 0 = dead, 1 = alive
+    /// - `scale: f32` - visual size multiplier
+    ///
+    /// # Example: Custom Configuration
+    ///
+    /// ```ignore
+    /// .with_lifecycle(|l| {
+    ///     l.lifetime(2.0)
+    ///      .fade_out()
+    ///      .shrink_out()
+    ///      .emitter(Emitter::Cone {
+    ///          position: Vec3::ZERO,
+    ///          direction: Vec3::Y,
+    ///          speed: 2.0,
+    ///          spread: 0.3,
+    ///          rate: 500.0,
+    ///      })
+    /// })
+    /// ```
+    ///
+    /// # Example: Using Presets
+    ///
+    /// ```ignore
+    /// .with_lifecycle(Lifecycle::fire(Vec3::ZERO, 1000.0))
+    /// .with_lifecycle(Lifecycle::fountain(Vec3::new(0.0, -0.5, 0.0), 800.0))
+    /// .with_lifecycle(Lifecycle::explosion(Vec3::ZERO, 500))
+    /// ```
+    ///
+    /// # What This Does
+    ///
+    /// The lifecycle builder automatically adds:
+    /// - `Rule::Age` - increment particle age each frame
+    /// - `Rule::Lifetime(duration)` - kill particles after duration
+    /// - `Rule::FadeOut(duration)` - dim color over lifetime (if enabled)
+    /// - `Rule::ShrinkOut(duration)` - shrink scale over lifetime (if enabled)
+    /// - `Rule::ColorOverLife { ... }` - color gradient (if enabled)
+    /// - Emitters for respawning dead particles
+    pub fn with_lifecycle<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(crate::lifecycle::Lifecycle) -> crate::lifecycle::Lifecycle,
+    {
+        let lifecycle = configure(crate::lifecycle::Lifecycle::new());
+        let (rules, emitters, start_dead) = lifecycle.build();
+
+        // Add lifecycle rules
+        for rule in rules {
+            self.rules.push(rule);
+        }
+
+        // Add emitters
+        for emitter in emitters {
+            self.emitters.push(emitter);
+        }
+
+        // Set start_dead flag
+        if start_dead {
+            self.start_dead = true;
+        }
+
+        self
+    }
+
+    /// Configure particle lifecycle using a preset.
+    ///
+    /// Convenience method for using lifecycle presets directly.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_lifecycle_preset(Lifecycle::fire(Vec3::ZERO, 1000.0))
+    /// ```
+    pub fn with_lifecycle_preset(mut self, lifecycle: crate::lifecycle::Lifecycle) -> Self {
+        let (rules, emitters, start_dead) = lifecycle.build();
+
+        for rule in rules {
+            self.rules.push(rule);
+        }
+
+        for emitter in emitters {
+            self.emitters.push(emitter);
+        }
+
+        // Set start_dead flag
+        if start_dead {
+            self.start_dead = true;
+        }
+
+        self
+    }
+
+    /// Add a sub-emitter that spawns child particles when parents die.
+    ///
+    /// Sub-emitters enable chain reactions, fireworks, explosions with debris,
+    /// and biological reproduction effects.
+    ///
+    /// # How It Works
+    ///
+    /// 1. When a particle of `parent_type` dies (via `Rule::Lifetime` or `kill_particle()`)
+    /// 2. The death event is recorded with position, velocity, and color
+    /// 3. A secondary compute pass spawns `count` children at the death location
+    /// 4. Children inherit some parent velocity and spread outward
+    ///
+    /// # Example: Fireworks
+    ///
+    /// ```ignore
+    /// #[derive(ParticleType)]
+    /// enum Firework { Rocket, Spark }
+    ///
+    /// Simulation::<Particle>::new()
+    ///     .with_lifecycle(|l| l.lifetime(2.0))
+    ///     .with_sub_emitter(
+    ///         SubEmitter::new(Firework::Rocket.into(), Firework::Spark.into())
+    ///             .count(50)
+    ///             .speed(1.0..3.0)
+    ///             .spread(std::f32::consts::PI)
+    ///     )
+    ///     .run();
+    /// ```
+    ///
+    /// # Chaining Sub-Emitters
+    ///
+    /// ```ignore
+    /// // Rockets → Sparks → Embers
+    /// .with_sub_emitter(SubEmitter::new(Rocket, Spark).count(30))
+    /// .with_sub_emitter(SubEmitter::new(Spark, Ember).count(5))
+    /// ```
+    pub fn with_sub_emitter(mut self, sub_emitter: crate::sub_emitter::SubEmitter) -> Self {
+        self.sub_emitters.push(sub_emitter);
+        self
+    }
+
     /// Set up type-based interactions using an interaction matrix.
     ///
     /// The interaction matrix defines attraction and repulsion forces between
@@ -875,6 +1022,8 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     fn generate_compute_shader(&self) -> String {
         let particle_struct = P::WGSL_STRUCT;
         let has_neighbors = self.has_neighbor_rules();
+        let has_sub_emitters = !self.sub_emitters.is_empty();
+
 
         // Generate non-neighbor rules
         let simple_rules_code: String = self
@@ -964,6 +1113,23 @@ fn inbox_receive_at(my_idx: u32, channel: u32) -> f32 {
             String::new()
         };
 
+        // Generate sub-emitter death buffer bindings and recording code
+        let (sub_emitter_bindings, sub_emitter_death_recording) = if has_sub_emitters {
+            (
+                crate::gpu::sub_emitter_gpu::death_buffer_bindings_wgsl().to_string(),
+                crate::gpu::sub_emitter_gpu::death_recording_wgsl(&self.sub_emitters),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+
+        // Track was_alive if we need death recording
+        let was_alive_tracking = if has_sub_emitters {
+            "    let was_alive = p.alive;\n"
+        } else {
+            ""
+        };
+
         let shader = if !has_neighbors {
             // Simple shader without neighbor queries
             format!(
@@ -982,6 +1148,7 @@ var<storage, read_write> particles: array<Particle>;
 var<uniform> uniforms: Uniforms;
 {inbox_binding}
 {field_wgsl}
+{sub_emitter_bindings}
 {inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
@@ -994,7 +1161,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     }}
 
     var p = particles[index];
-
+{was_alive_tracking}
 {emitter_code}
 
     // Skip dead particles
@@ -1006,7 +1173,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     // Integrate velocity
     p.position += p.velocity * uniforms.delta_time;
-
+{sub_emitter_death_recording}
     particles[index] = p;
 }}
 "#
@@ -1148,6 +1315,7 @@ var<storage, read> cell_end: array<u32>;
 var<uniform> spatial: SpatialParams;
 {inbox_binding}
 {field_wgsl}
+{sub_emitter_bindings}
 {inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
@@ -1160,7 +1328,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     }}
 
     var p = particles[index];
-
+{was_alive_tracking}
 {emitter_code}
 
     // Skip dead particles
@@ -1217,7 +1385,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     // Integrate velocity
     p.position += p.velocity * uniforms.delta_time;
-
+{sub_emitter_death_recording}
     particles[index] = p;
 }}
 "#
@@ -1477,11 +1645,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             custom_uniform_fields,
             particle_size: self.particle_size,
             inbox_enabled: self.inbox_enabled,
+            start_dead: self.start_dead,
             #[cfg(feature = "egui")]
             egui_enabled: self.egui_enabled,
             texture_declarations: self.texture_registry.to_wgsl_declarations(0),
             texture_registry: self.texture_registry,
             field_registry: self.field_registry,
+            sub_emitters: self.sub_emitters,
+            particle_wgsl_struct: P::WGSL_STRUCT.to_string(),
         };
 
         let event_loop = EventLoop::new().unwrap();
@@ -1545,6 +1716,8 @@ pub(crate) struct SimConfig {
     pub particle_size: f32,
     /// Whether particle inbox communication is enabled.
     pub inbox_enabled: bool,
+    /// Whether particles should start dead (for emitter-only spawning).
+    pub start_dead: bool,
     /// Whether egui is enabled.
     #[cfg(feature = "egui")]
     pub egui_enabled: bool,
@@ -1554,6 +1727,10 @@ pub(crate) struct SimConfig {
     pub texture_declarations: String,
     /// 3D spatial fields for particle-environment interaction.
     pub field_registry: FieldRegistry,
+    /// Sub-emitters for spawning particles on death.
+    pub sub_emitters: Vec<crate::sub_emitter::SubEmitter>,
+    /// WGSL struct definition for particles (needed for spawn shader).
+    pub particle_wgsl_struct: String,
 }
 
 struct App<P: ParticleTrait> {
@@ -1582,7 +1759,22 @@ impl<P: ParticleTrait + 'static> App<P> {
         #[cfg(feature = "egui")] ui_callback: Option<UiCallback>,
     ) -> Self {
         // Convert user particles to GPU format
-        let gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
+        let mut gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
+
+        // If start_dead is set, set all particles' alive field to 0
+        if config.start_dead {
+            let particle_size = std::mem::size_of::<P::Gpu>();
+            let alive_offset = config.alive_offset as usize;
+
+            // Cast to bytes and set alive = 0 for each particle
+            let bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut gpu_particles);
+            for i in 0..particles.len() {
+                let particle_start = i * particle_size;
+                // alive is a u32, so write 4 bytes of zeros
+                bytes[particle_start + alive_offset..particle_start + alive_offset + 4]
+                    .copy_from_slice(&0u32.to_ne_bytes());
+            }
+        }
 
         Self {
             window: None,
@@ -1636,6 +1828,8 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 &self.config.texture_registry,
                 &self.config.texture_declarations,
                 &self.config.field_registry,
+                &self.config.sub_emitters,
+                &self.config.particle_wgsl_struct,
                 #[cfg(feature = "egui")]
                 self.config.egui_enabled,
             )));

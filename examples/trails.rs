@@ -1,6 +1,42 @@
-//! Particle trails demonstration.
+//! # Particle Trails Example
 //!
-//! Shows particles leaving trails behind them as they move.
+//! Shows particles leaving trails behind them as they move,
+//! like comets streaking across space.
+//!
+//! ## What This Demonstrates
+//!
+//! - `.with_visuals(|v| v.trails(frames))` - enable motion trails
+//! - Trail length controlled by frame count
+//! - Trails combined with `BlendMode::Additive` for glow effect
+//! - Trails fade from current color to transparent
+//!
+//! ## How Trails Work
+//!
+//! The renderer stores the last N positions of each particle.
+//! Each frame, lines are drawn connecting historical positions,
+//! creating a "tail" effect. The trail fades from full opacity
+//! at the particle to transparent at the oldest position.
+//!
+//! **Performance note**: Trails multiply vertex count by trail length.
+//! Use shorter trails (10-20) for many particles, longer trails (50+)
+//! for fewer particles.
+//!
+//! ## Visual Considerations
+//!
+//! - `BlendMode::Additive` makes trails glow and accumulate brightness
+//! - `BlendMode::Alpha` gives solid trails that occlude
+//! - Faster particles have more stretched trails
+//! - Slow particles show as dots with short tails
+//!
+//! ## Try This
+//!
+//! - Increase trail length to 50 for long comet tails
+//! - Switch to `BlendMode::Alpha` for solid ribbon trails
+//! - Add `Rule::Turbulence` for chaotic, winding paths
+//! - Add `Rule::ColorBySpeed` so faster particles have different trails
+//! - Reduce particle count but increase trail length for ribbon effect
+//!
+//! Run with: `cargo run --example trails`
 
 use rand::Rng;
 use rdpe::prelude::*;
