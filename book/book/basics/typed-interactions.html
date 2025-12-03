@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Architecture Overview - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Typed Interactions - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -12,34 +12,34 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "";
+            const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex.js";
+            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="../toc.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -106,7 +106,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
             </noscript>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -141,7 +141,7 @@
                     <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -175,114 +175,168 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h1>
-<p>RDPE consists of several layers that work together to run particle simulations on the GPU.</p>
-<h2 id="high-level-flow"><a class="header" href="#high-level-flow">High-Level Flow</a></h2>
-<pre><code>┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  User's Rust    │────▶│  RDPE Compile    │────▶│   GPU Runtime   │
-│  Particle +     │     │  Time (Derive    │     │   (wgpu +       │
-│  Rules          │     │  Macro + Shader  │     │   Compute       │
-│                 │     │  Generation)     │     │   Shaders)      │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-</code></pre>
-<h2 id="components"><a class="header" href="#components">Components</a></h2>
-<h3 id="1-particle-derive-macro-rdpe-derive"><a class="header" href="#1-particle-derive-macro-rdpe-derive">1. Particle Derive Macro (<code>rdpe-derive</code>)</a></h3>
-<p>The <code>#[derive(Particle)]</code> macro transforms your Rust struct into GPU-compatible form:</p>
+                        <h1 id="typed-interactions"><a class="header" href="#typed-interactions">Typed Interactions</a></h1>
+<p>Typed interactions let different particle types behave differently toward each other. This enables predator-prey dynamics, team-based systems, and state machines.</p>
+<h2 id="defining-particle-types"><a class="header" href="#defining-particle-types">Defining Particle Types</a></h2>
+<p>Use <code>#[derive(ParticleType)]</code> to create a type-safe enum:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
+enum Species {
+    Prey,      // = 0
+    Predator,  // = 1
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The derive macro automatically:</p>
+<ul>
+<li>Implements <code>Into&lt;u32&gt;</code> (variants get sequential IDs: 0, 1, 2...)</li>
+<li>Implements <code>From&lt;u32&gt;</code> (convert back from runtime values)</li>
+<li>Adds a <code>count()</code> method</li>
+</ul>
+<p>Every particle has a <code>particle_type: u32</code> field. If you don't add it, it's auto-added with value 0.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>#[derive(Particle, Clone)]
-struct Boid {
+struct Creature {
     position: Vec3,
     velocity: Vec3,
-    #[color]
-    tint: Vec3,
     particle_type: u32,
 }
 <span class="boring">}</span></code></pre></pre>
-<p>The macro generates:</p>
-<ul>
-<li>A <code>BoidGpu</code> struct with correct memory alignment (16-byte for GPU arrays)</li>
-<li>WGSL struct definition for shaders</li>
-<li><code>to_gpu()</code> conversion method</li>
-<li>Tracking of color field offset for rendering</li>
-</ul>
-<h3 id="2-simulation-builder-simulationrs"><a class="header" href="#2-simulation-builder-simulationrs">2. Simulation Builder (<code>simulation.rs</code>)</a></h3>
-<p>The builder pattern configures everything before running:</p>
+<p>Set types in the spawner:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Simulation::&lt;MyParticle&gt;::new()
-    .with_particle_count(10_000)
-    .with_bounds(1.0)
-    .with_spatial_config(0.1, 32)  // For neighbor rules
-    .with_spawner(|i, count| { ... })
-    .with_rule(Rule::Gravity(9.8))
-    .with_rule(Rule::Separate { radius: 0.1, strength: 1.0 })
-    .run();
+</span>.with_spawner(|i, count| {
+    let species = if i &lt; 50 { Species::Predator } else { Species::Prey };
+    Creature {
+        position: random_pos(),
+        velocity: Vec3::ZERO,
+        particle_type: species.into(),
+    }
+})
 <span class="boring">}</span></code></pre></pre>
-<p>At <code>.run()</code> time, the simulation:</p>
-<ol>
-<li>Detects if any rules need neighbor queries</li>
-<li>Generates appropriate WGSL compute shaders</li>
-<li>Generates render shaders</li>
-<li>Spawns particles using your spawner function</li>
-<li>Initializes GPU state and runs the event loop</li>
-</ol>
-<h3 id="3-shader-generation"><a class="header" href="#3-shader-generation">3. Shader Generation</a></h3>
-<p>Rules are translated to WGSL code:</p>
-<div class="table-wrapper"><table><thead><tr><th>Rule</th><th>Generated Code Location</th></tr></thead><tbody>
-<tr><td><code>Gravity</code>, <code>Drag</code>, <code>BounceWalls</code></td><td>Main compute shader body</td></tr>
-<tr><td><code>Separate</code>, <code>Cohere</code>, <code>Collide</code></td><td>Inside neighbor iteration loop</td></tr>
-<tr><td><code>Typed { ... }</code></td><td>Wraps inner rule with type checks</td></tr>
-<tr><td><code>Convert { ... }</code></td><td>Inside neighbor loop with probability</td></tr>
-<tr><td><code>Custom(code)</code></td><td>Inserted directly</td></tr>
+<h2 id="chase--evade"><a class="header" href="#chase--evade">Chase &amp; Evade</a></h2>
+<p>For predator-prey dynamics, use the dedicated rules:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Predators chase nearest prey
+.with_rule(Rule::Chase {
+    self_type: Species::Predator.into(),
+    target_type: Species::Prey.into(),
+    radius: 0.4,
+    strength: 4.0,
+})
+
+// Prey evades nearest predator
+.with_rule(Rule::Evade {
+    self_type: Species::Prey.into(),
+    threat_type: Species::Predator.into(),
+    radius: 0.25,
+    strength: 6.0,
+})
+<span class="boring">}</span></code></pre></pre>
+<p>These find the <strong>nearest</strong> target/threat and steer directly toward/away from it.</p>
+<h2 id="the-typed-wrapper"><a class="header" href="#the-typed-wrapper">The Typed Wrapper</a></h2>
+<p><code>Rule::Typed</code> wraps any neighbor rule with type filters:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Rule::Typed {
+    self_type: u32,           // Which particles this rule affects
+    other_type: Option&lt;u32&gt;,  // Which neighbors to consider
+    rule: Box&lt;Rule&gt;,          // The wrapped rule
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="example-prey-flocking"><a class="header" href="#example-prey-flocking">Example: Prey Flocking</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Prey flocks with other prey
+.with_rule(Rule::Typed {
+    self_type: Species::Prey.into(),
+    other_type: Some(Species::Prey.into()),
+    rule: Box::new(Rule::Cohere { radius: 0.15, strength: 1.0 }),
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="interacting-with-all-types"><a class="header" href="#interacting-with-all-types">Interacting with All Types</a></h3>
+<p>Use <code>other_type: None</code> to interact with everyone:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Everyone avoids collisions with everyone
+.with_rule(Rule::Typed {
+    self_type: Species::Prey.into(),
+    other_type: None,  // All types
+    rule: Box::new(Rule::Collide { radius: 0.05, response: 0.5 }),
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="type-conversion"><a class="header" href="#type-conversion">Type Conversion</a></h2>
+<p><code>Rule::Convert</code> changes particle types at runtime:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
+enum Health {
+    Healthy,
+    Infected,
+    Recovered,
+}
+
+// Healthy can become infected
+.with_rule(Rule::Convert {
+    from_type: Health::Healthy.into(),
+    trigger_type: Health::Infected.into(),
+    to_type: Health::Infected.into(),
+    radius: 0.08,
+    probability: 0.15,
+})
+
+// Infected eventually recover
+.with_rule(Rule::Convert {
+    from_type: Health::Infected.into(),
+    trigger_type: Health::Infected.into(),  // Self-trigger
+    to_type: Health::Recovered.into(),
+    radius: 0.01,
+    probability: 0.002,
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="updating-visuals"><a class="header" href="#updating-visuals">Updating Visuals</a></h2>
+<p>When types change, you'll want colors to update. Use <code>Rule::Custom</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    if p.particle_type == 0u {
+        p.color = vec3&lt;f32&gt;(0.1, 0.9, 0.2); // Green
+    } else if p.particle_type == 1u {
+        p.color = vec3&lt;f32&gt;(1.0, 0.1, 0.1); // Red
+    } else {
+        p.color = vec3&lt;f32&gt;(0.2, 0.4, 1.0); // Blue
+    }
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Types</th><th>Interactions</th></tr></thead><tbody>
+<tr><td>Predator-Prey</td><td>Predator, Prey</td><td>Chase/Evade rules</td></tr>
+<tr><td>Infection</td><td>Healthy, Infected, Recovered</td><td>Convert rules for spread</td></tr>
+<tr><td>Charged Particles</td><td>Positive, Negative</td><td>Opposites attract, same repels</td></tr>
+<tr><td>Food Chain</td><td>Plant, Herbivore, Carnivore</td><td>Each level hunts the one below</td></tr>
+<tr><td>Teams</td><td>Team A, Team B</td><td>Same team coheres, enemies separate</td></tr>
+<tr><td>Life Stages</td><td>Young, Adult, Elder</td><td>Convert based on age</td></tr>
 </tbody></table>
 </div>
-<h3 id="4-gpu-state-gpumodrs"><a class="header" href="#4-gpu-state-gpumodrs">4. GPU State (<code>gpu/mod.rs</code>)</a></h3>
-<p>Manages all GPU resources:</p>
+<h2 id="performance-note"><a class="header" href="#performance-note">Performance Note</a></h2>
+<p>Typed rules add conditional checks inside the neighbor loop. For best performance:</p>
 <ul>
-<li><strong>Particle buffer</strong> - Storage buffer with all particle data</li>
-<li><strong>Uniform buffer</strong> - View/projection matrix, time, delta_time</li>
-<li><strong>Compute pipeline</strong> - Runs the physics simulation</li>
-<li><strong>Render pipeline</strong> - Draws particles as billboarded quads</li>
-<li><strong>Spatial hashing</strong> (optional) - For neighbor queries</li>
+<li>Use fewer distinct types when possible</li>
+<li>Group related type interactions</li>
+<li>Consider if untyped rules with Custom code might be simpler</li>
 </ul>
-<h3 id="5-spatial-hashing-gpuspatial_gpurs"><a class="header" href="#5-spatial-hashing-gpuspatial_gpurs">5. Spatial Hashing (<code>gpu/spatial_gpu.rs</code>)</a></h3>
-<p>When rules need neighbor queries, RDPE builds a spatial hash:</p>
-<ol>
-<li><strong>Morton encoding</strong> - Convert 3D position to 1D cell index</li>
-<li><strong>Radix sort</strong> - Sort particles by cell (8 passes, 4 bits each)</li>
-<li><strong>Cell table</strong> - Build start/end indices for each cell</li>
-</ol>
-<p>This accelerates neighbor queries from O(n²) to O(n × average_neighbors).</p>
-<h2 id="render-loop"><a class="header" href="#render-loop">Render Loop</a></h2>
-<p>Each frame:</p>
-<pre><code>1. Update uniforms (time, camera)
-2. [If spatial] Run spatial hashing passes
-3. Run compute shader (apply all rules, integrate velocity)
-4. Run render pass (draw particles as quads)
-5. Present frame
-</code></pre>
-<h2 id="memory-layout"><a class="header" href="#memory-layout">Memory Layout</a></h2>
-<p>The derive macro ensures GPU-compatible alignment:</p>
-<pre><code>Particle in Rust          GPU Memory (16-byte aligned)
-┌──────────────┐          ┌──────────────────────────────┐
-│ position: Vec3│    ──▶   │ position: vec3&lt;f32&gt; (12 bytes)│
-│ velocity: Vec3│          │ _pad0: f32 (4 bytes)          │
-└──────────────┘          │ velocity: vec3&lt;f32&gt; (12 bytes)│
-                          │ particle_type: u32 (4 bytes)  │
-                          └──────────────────────────────┘
-</code></pre>
-<p>The <code>particle_type</code> field is auto-added if not present.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../basics/emitters.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="particles.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../basics/time.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -292,11 +346,11 @@ struct Boid {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../basics/emitters.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="particles.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../basics/time.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -311,13 +365,13 @@ struct Boid {
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

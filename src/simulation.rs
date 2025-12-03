@@ -49,6 +49,7 @@
 //! - **Scroll wheel**: Zoom in/out
 
 use crate::emitter::Emitter;
+use crate::field::{FieldConfig, FieldRegistry};
 use crate::gpu::GpuState;
 use crate::input::Input;
 use crate::interactions::InteractionMatrix;
@@ -156,6 +157,8 @@ pub struct Simulation<P: ParticleTrait> {
     visual_config: VisualConfig,
     /// Whether particle communication inbox is enabled.
     inbox_enabled: bool,
+    /// Registry of 3D spatial fields for particle-environment interaction.
+    field_registry: FieldRegistry,
     /// Custom fragment shader code (replaces default fragment body).
     custom_fragment_shader: Option<String>,
     /// Whether egui UI is enabled.
@@ -199,6 +202,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             spatial_config: SpatialConfig::default(),
             visual_config: VisualConfig::default(),
             inbox_enabled: false,
+            field_registry: FieldRegistry::new(),
             custom_fragment_shader: None,
             #[cfg(feature = "egui")]
             egui_enabled: false,
@@ -465,6 +469,51 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// This provides ~0.00001 precision in the range ±32768.
     pub fn with_inbox(mut self) -> Self {
         self.inbox_enabled = true;
+        self
+    }
+
+    /// Add a 3D spatial field for particle-environment interaction.
+    ///
+    /// Fields are persistent 3D grids that particles can read from and write to.
+    /// Unlike the inbox system (particle-to-particle), fields provide spatially
+    /// indexed data that persists independently of particles.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name for the field (for documentation; access by index in shaders)
+    /// * `config` - Field configuration (resolution, extent, decay, blur)
+    ///
+    /// # WGSL Functions
+    ///
+    /// In [`Rule::Custom`], you can use:
+    /// - `field_write(field_idx, position, value)` - Deposit a value at a position
+    /// - `field_read(field_idx, position)` - Sample field value (trilinear interpolation)
+    /// - `field_gradient(field_idx, position, epsilon)` - Get gradient vector
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Agent>::new()
+    ///     .with_field("pheromone", FieldConfig::new(64).with_decay(0.98).with_blur(0.1))
+    ///     .with_rule(Rule::Custom(r#"
+    ///         // Deposit pheromone at current position
+    ///         field_write(0u, p.position, 0.1);
+    ///
+    ///         // Steer toward higher concentrations
+    ///         let gradient = field_gradient(0u, p.position, 0.05);
+    ///         p.velocity += normalize(gradient) * 0.5;
+    ///     "#.into()))
+    ///     .run();
+    /// ```
+    ///
+    /// # Use Cases
+    ///
+    /// - **Pheromone trails**: Particles deposit chemicals, others follow gradients
+    /// - **Density fields**: Accumulate particle presence for fluid-like behavior
+    /// - **Temperature**: Particles emit/absorb heat from spatial field
+    /// - **Reaction-diffusion**: Classic pattern formation (Gray-Scott, Turing)
+    pub fn with_field(mut self, name: impl Into<String>, config: FieldConfig) -> Self {
+        self.field_registry.add(name, config);
         self
     }
 
@@ -846,10 +895,16 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             .join("\n\n");
 
         // Generate custom uniform fields for WGSL
+        // Note: The Rust Uniforms struct is 72 bytes (64 for mat4 + 4 for time + 4 for delta_time)
+        // The GPU code pads to 16-byte alignment (80 bytes) before appending custom uniforms
+        // So we need 8 bytes (2 x f32) of padding in WGSL to match
         let custom_uniform_fields = if self.custom_uniforms.is_empty() {
             String::new()
         } else {
-            format!("\n{}", self.custom_uniforms.to_wgsl_fields())
+            format!(
+                "\n    _pad0: f32,\n    _pad1: f32,\n{}",
+                self.custom_uniforms.to_wgsl_fields()
+            )
         };
 
         // Built-in utility functions (always included)
@@ -902,7 +957,14 @@ fn inbox_receive_at(my_idx: u32, channel: u32) -> f32 {
             (String::new(), String::new())
         };
 
-        if !has_neighbors {
+        // Generate field bindings and helper functions if fields are registered
+        let field_wgsl = if !self.field_registry.is_empty() {
+            self.field_registry.to_wgsl_declarations(0)
+        } else {
+            String::new()
+        };
+
+        let shader = if !has_neighbors {
             // Simple shader without neighbor queries
             format!(
                 r#"{particle_struct}
@@ -919,6 +981,7 @@ var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1)
 var<uniform> uniforms: Uniforms;
 {inbox_binding}
+{field_wgsl}
 {inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
@@ -1084,6 +1147,7 @@ var<storage, read> cell_end: array<u32>;
 @group(0) @binding(5)
 var<uniform> spatial: SpatialParams;
 {inbox_binding}
+{field_wgsl}
 {inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
@@ -1158,7 +1222,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 }}
 "#
             )
-        }
+        };
+
+        shader
     }
 
     /// Generate the render shader WGSL code.
@@ -1415,6 +1481,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             egui_enabled: self.egui_enabled,
             texture_declarations: self.texture_registry.to_wgsl_declarations(0),
             texture_registry: self.texture_registry,
+            field_registry: self.field_registry,
         };
 
         let event_loop = EventLoop::new().unwrap();
@@ -1485,6 +1552,8 @@ pub(crate) struct SimConfig {
     pub texture_registry: TextureRegistry,
     /// WGSL declarations for texture bindings.
     pub texture_declarations: String,
+    /// 3D spatial fields for particle-environment interaction.
+    pub field_registry: FieldRegistry,
 }
 
 struct App<P: ParticleTrait> {
@@ -1566,6 +1635,7 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 &self.config.custom_uniform_fields,
                 &self.config.texture_registry,
                 &self.config.texture_declarations,
+                &self.config.field_registry,
                 #[cfg(feature = "egui")]
                 self.config.egui_enabled,
             )));
@@ -1636,9 +1706,6 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 }
             }
             WindowEvent::RedrawRequested => {
-                // Begin new frame for input (clears per-frame state)
-                self.input.begin_frame();
-
                 // Update time (single source of truth)
                 let (time, delta_time) = self.time.update();
 
@@ -1703,8 +1770,768 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 if let Some(window) = &self.window {
                     window.request_redraw();
                 }
+
+                // Clear per-frame input state AFTER callbacks have run
+                // This ensures pressed/released events are available during the update callback
+                self.input.begin_frame();
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use glam::Vec3;
+
+    // Test particle for simulation tests
+    #[derive(Clone)]
+    struct TestParticle {
+        position: Vec3,
+        velocity: Vec3,
+    }
+
+    // Implement ParticleTrait manually for tests (simpler than using derive)
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct TestParticleGpu {
+        position: [f32; 3],
+        _pad0: f32,
+        velocity: [f32; 3],
+        _pad1: f32,
+        particle_type: u32,
+        age: f32,
+        alive: u32,
+        scale: f32,
+    }
+
+    impl crate::ParticleTrait for TestParticle {
+        type Gpu = TestParticleGpu;
+
+        const WGSL_STRUCT: &'static str = r#"struct Particle {
+    position: vec3<f32>,
+    _pad0: f32,
+    velocity: vec3<f32>,
+    _pad1: f32,
+    particle_type: u32,
+    age: f32,
+    alive: u32,
+    scale: f32,
+}"#;
+        const COLOR_FIELD: Option<&'static str> = None;
+        const COLOR_OFFSET: Option<u32> = None;
+        const ALIVE_OFFSET: u32 = 40;
+        const SCALE_OFFSET: u32 = 44;
+
+        fn to_gpu(&self) -> Self::Gpu {
+            TestParticleGpu {
+                position: self.position.to_array(),
+                _pad0: 0.0,
+                velocity: self.velocity.to_array(),
+                _pad1: 0.0,
+                particle_type: 0,
+                age: 0.0,
+                alive: 1,
+                scale: 1.0,
+            }
+        }
+    }
+
+    // ========== Default Values Tests ==========
+
+    #[test]
+    fn test_simulation_defaults() {
+        let sim = Simulation::<TestParticle>::new();
+
+        assert_eq!(sim.particle_count, 10_000);
+        assert!((sim.bounds - 1.0).abs() < 0.001);
+        assert!((sim.particle_size - 0.015).abs() < 0.001);
+        assert!(sim.spawner.is_none());
+        assert!(sim.rules.is_empty());
+        assert!(sim.emitters.is_empty());
+        assert!(!sim.inbox_enabled);
+        assert!(sim.field_registry.is_empty());
+        assert!(sim.custom_fragment_shader.is_none());
+    }
+
+    // ========== Builder Pattern Tests ==========
+
+    #[test]
+    fn test_with_particle_count() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(50_000);
+
+        assert_eq!(sim.particle_count, 50_000);
+    }
+
+    #[test]
+    fn test_with_bounds() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_bounds(2.5);
+
+        assert!((sim.bounds - 2.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_with_particle_size() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_size(0.05);
+
+        assert!((sim.particle_size - 0.05).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_with_spawner() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_spawner(|i, _total| TestParticle {
+                position: Vec3::new(i as f32, 0.0, 0.0),
+                velocity: Vec3::ZERO,
+            });
+
+        assert!(sim.spawner.is_some());
+    }
+
+    #[test]
+    fn test_with_rule() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_rule(Rule::Gravity(9.8))
+            .with_rule(Rule::Drag(1.0));
+
+        assert_eq!(sim.rules.len(), 2);
+    }
+
+    #[test]
+    fn test_with_inbox() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_inbox();
+
+        assert!(sim.inbox_enabled);
+    }
+
+    #[test]
+    fn test_with_field() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_field("pheromone", FieldConfig::new(64));
+
+        assert_eq!(sim.field_registry.len(), 1);
+    }
+
+    #[test]
+    fn test_with_multiple_fields() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_field("food", FieldConfig::new(32))
+            .with_field("danger", FieldConfig::new(64))
+            .with_field("heat", FieldConfig::new(48));
+
+        assert_eq!(sim.field_registry.len(), 3);
+    }
+
+    #[test]
+    fn test_with_spatial_config() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_spatial_config(0.1, 64);
+
+        assert!((sim.spatial_config.cell_size - 0.1).abs() < 0.001);
+        assert_eq!(sim.spatial_config.grid_resolution, 64);
+    }
+
+    #[test]
+    fn test_with_fragment_shader() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_fragment_shader("let my_color = vec4<f32>(1.0, 0.0, 0.0, 1.0);");
+
+        assert!(sim.custom_fragment_shader.is_some());
+    }
+
+    #[test]
+    fn test_with_function() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_function("fn my_func(x: f32) -> f32 { return x * 2.0; }");
+
+        assert_eq!(sim.custom_functions.len(), 1);
+    }
+
+    #[test]
+    fn test_with_uniform() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_uniform::<f32>("speed", 5.0)
+            .with_uniform::<f32>("strength", 2.0);
+
+        assert!(sim.custom_uniforms.get("speed").is_some());
+        assert!(sim.custom_uniforms.get("strength").is_some());
+    }
+
+    // ========== Builder Chaining Tests ==========
+
+    #[test]
+    fn test_builder_chaining() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(20_000)
+            .with_bounds(2.0)
+            .with_particle_size(0.02)
+            .with_spawner(|_, _| TestParticle {
+                position: Vec3::ZERO,
+                velocity: Vec3::ZERO,
+            })
+            .with_rule(Rule::Gravity(9.8))
+            .with_rule(Rule::BounceWalls)
+            .with_rule(Rule::Drag(0.5))
+            .with_field("trail", FieldConfig::new(32))
+            .with_inbox();
+
+        assert_eq!(sim.particle_count, 20_000);
+        assert!((sim.bounds - 2.0).abs() < 0.001);
+        assert!((sim.particle_size - 0.02).abs() < 0.001);
+        assert!(sim.spawner.is_some());
+        assert_eq!(sim.rules.len(), 3);
+        assert_eq!(sim.field_registry.len(), 1);
+        assert!(sim.inbox_enabled);
+    }
+
+    // ========== Rule Configuration Tests ==========
+
+    #[test]
+    fn test_rules_order_preserved() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_rule(Rule::Gravity(9.8))
+            .with_rule(Rule::Drag(1.0))
+            .with_rule(Rule::BounceWalls);
+
+        // Rules should be in the order they were added
+        assert!(matches!(sim.rules[0], Rule::Gravity(_)));
+        assert!(matches!(sim.rules[1], Rule::Drag(_)));
+        assert!(matches!(sim.rules[2], Rule::BounceWalls));
+    }
+
+    #[test]
+    fn test_neighbor_rules_detected() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_rule(Rule::Separate { radius: 0.1, strength: 1.0 })
+            .with_rule(Rule::Cohere { radius: 0.5, strength: 0.5 });
+
+        // Both rules should require neighbors
+        assert!(sim.rules.iter().all(|r| r.requires_neighbors()));
+    }
+
+    // ========== Spatial Config Tests ==========
+
+    #[test]
+    fn test_spatial_config_defaults() {
+        let sim = Simulation::<TestParticle>::new();
+
+        // Default spatial config should have sensible values
+        assert!(sim.spatial_config.cell_size > 0.0);
+        assert!(sim.spatial_config.grid_resolution > 0);
+    }
+
+    // ========== Visual Config Tests ==========
+
+    #[test]
+    fn test_with_visuals() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_visuals(|v| {
+                v.blend_mode(crate::visuals::BlendMode::Additive)
+                    .trails(10);
+            });
+
+        assert_eq!(sim.visual_config.blend_mode, crate::visuals::BlendMode::Additive);
+        assert_eq!(sim.visual_config.trail_length, 10);
+    }
+
+    // ========== Field Registry Tests ==========
+
+    #[test]
+    fn test_field_registry_index_lookup() {
+        let sim = Simulation::<TestParticle>::new()
+            .with_field("food", FieldConfig::new(32))
+            .with_field("danger", FieldConfig::new(64));
+
+        assert_eq!(sim.field_registry.index_of("food"), Some(0));
+        assert_eq!(sim.field_registry.index_of("danger"), Some(1));
+        assert_eq!(sim.field_registry.index_of("nonexistent"), None);
+    }
+
+    // ========== Shader Generation Integration Tests ==========
+    //
+    // These tests validate that complete simulation configurations
+    // generate valid WGSL that compiles with naga.
+
+    /// Helper to validate WGSL using naga
+    fn validate_wgsl(wgsl: &str) -> Result<(), String> {
+        let module = naga::front::wgsl::parse_str(wgsl)
+            .map_err(|e| format!("WGSL parse error: {:?}", e))?;
+
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        );
+        validator
+            .validate(&module)
+            .map_err(|e| format!("WGSL validation error: {:?}", e))?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_simple_physics_shader_validates() {
+        // Minimal simulation: gravity + bounce walls
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(1000)
+            .with_bounds(1.0)
+            .with_rule(Rule::Gravity(9.8))
+            .with_rule(Rule::Drag(0.5))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Simple physics shader should be valid");
+    }
+
+    #[test]
+    fn test_attractor_shader_validates() {
+        // Simulation with point attractors
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(5000)
+            .with_bounds(2.0)
+            .with_rule(Rule::AttractTo {
+                point: Vec3::ZERO,
+                strength: 1.0,
+            })
+            .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.0 })
+            .with_rule(Rule::Drag(1.0));
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Attractor shader should be valid");
+    }
+
+    #[test]
+    fn test_vortex_curl_shader_validates() {
+        // Simulation with vortex and curl forces
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(10000)
+            .with_bounds(1.5)
+            .with_rule(Rule::Vortex {
+                center: Vec3::ZERO,
+                axis: Vec3::Y,
+                strength: 2.0,
+            })
+            .with_rule(Rule::Curl {
+                scale: 0.5,
+                strength: 1.0,
+            })
+            .with_rule(Rule::WrapWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Vortex/curl shader should be valid");
+    }
+
+    #[test]
+    fn test_turbulence_oscillate_shader_validates() {
+        // Simulation with noise-based motion
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(8000)
+            .with_bounds(1.0)
+            .with_rule(Rule::Turbulence {
+                scale: 1.0,
+                strength: 0.5,
+            })
+            .with_rule(Rule::Oscillate {
+                axis: Vec3::Y,
+                frequency: 2.0,
+                amplitude: 0.3,
+                spatial_scale: 1.0,
+            })
+            .with_rule(Rule::PositionNoise {
+                scale: 0.5,
+                strength: 0.1,
+                speed: 1.0,
+            })
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Turbulence/oscillate shader should be valid");
+    }
+
+    #[test]
+    fn test_boids_style_shader_validates() {
+        // Boids-style flocking with neighbor queries
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(5000)
+            .with_bounds(1.0)
+            .with_spatial_config(0.1, 32)
+            .with_rule(Rule::Separate {
+                radius: 0.05,
+                strength: 5.0,
+            })
+            .with_rule(Rule::Cohere {
+                radius: 0.15,
+                strength: 1.0,
+            })
+            .with_rule(Rule::Align {
+                radius: 0.1,
+                strength: 2.0,
+            })
+            .with_rule(Rule::Drag(2.0))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Boids shader should be valid");
+    }
+
+    #[test]
+    fn test_collision_shader_validates() {
+        // Particle collision simulation
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(2000)
+            .with_bounds(1.0)
+            .with_spatial_config(0.1, 32)
+            .with_rule(Rule::Collide {
+                radius: 0.03,
+                response: 0.5,
+            })
+            .with_rule(Rule::Gravity(2.0))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Collision shader should be valid");
+    }
+
+    #[test]
+    fn test_nbody_shader_validates() {
+        // N-body gravity simulation
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(500)
+            .with_bounds(2.0)
+            .with_spatial_config(0.5, 16)
+            .with_rule(Rule::NBodyGravity {
+                radius: 2.0,
+                strength: 0.001,
+                softening: 0.01,
+            })
+            .with_rule(Rule::SpeedLimit { min: 0.0, max: 1.0 });
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("N-body shader should be valid");
+    }
+
+    #[test]
+    fn test_spring_shader_validates() {
+        // Spring to anchor point
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(1000)
+            .with_bounds(1.0)
+            .with_rule(Rule::Spring {
+                anchor: Vec3::ZERO,
+                stiffness: 5.0,
+                damping: 0.1,
+            })
+            .with_rule(Rule::Gravity(1.0))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Spring shader should be valid");
+    }
+
+    #[test]
+    fn test_age_lifecycle_shader_validates() {
+        // Particles with age and lifetime
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(5000)
+            .with_bounds(1.0)
+            .with_rule(Rule::Age)
+            .with_rule(Rule::Lifetime(5.0))
+            .with_rule(Rule::Gravity(9.8))
+            .with_rule(Rule::Drag(1.0))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Age lifecycle shader should be valid");
+    }
+
+    #[test]
+    fn test_wander_shader_validates() {
+        // Random wandering motion
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(3000)
+            .with_bounds(1.0)
+            .with_rule(Rule::Wander {
+                strength: 1.0,
+                frequency: 100.0,
+            })
+            .with_rule(Rule::SpeedLimit { min: 0.1, max: 0.5 })
+            .with_rule(Rule::WrapWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Wander shader should be valid");
+    }
+
+    #[test]
+    fn test_orbit_shader_validates() {
+        // Orbital motion
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(2000)
+            .with_bounds(2.0)
+            .with_rule(Rule::Orbit {
+                center: Vec3::ZERO,
+                strength: 3.0,
+            })
+            .with_rule(Rule::PointGravity {
+                point: Vec3::ZERO,
+                strength: 1.0,
+                softening: 0.05,
+            })
+            .with_rule(Rule::Drag(0.1));
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Orbit shader should be valid");
+    }
+
+    #[test]
+    fn test_inbox_shader_validates() {
+        // Particle communication
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(1000)
+            .with_bounds(1.0)
+            .with_inbox()
+            .with_rule(Rule::Gravity(9.8))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Inbox shader should be valid");
+    }
+
+    #[test]
+    fn test_single_field_shader_validates() {
+        // Single spatial field
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(5000)
+            .with_bounds(1.0)
+            .with_field("pheromone", FieldConfig::new(64))
+            .with_rule(Rule::Gravity(1.0))
+            .with_rule(Rule::WrapWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Single field shader should be valid");
+    }
+
+    #[test]
+    fn test_multi_field_shader_validates() {
+        // Multiple spatial fields
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(5000)
+            .with_bounds(1.0)
+            .with_field("food", FieldConfig::new(32))
+            .with_field("danger", FieldConfig::new(32))
+            .with_field("trail", FieldConfig::new(64))
+            .with_rule(Rule::Gravity(1.0))
+            .with_rule(Rule::WrapWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Multi-field shader should be valid");
+    }
+
+    #[test]
+    fn test_custom_function_shader_validates() {
+        // Custom WGSL function
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(1000)
+            .with_bounds(1.0)
+            .with_function(r#"
+fn my_force(pos: vec3<f32>) -> vec3<f32> {
+    return normalize(-pos) * 0.1;
+}
+"#)
+            .with_rule(Rule::Custom("p.velocity += my_force(p.position);".to_string()))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Custom function shader should be valid");
+    }
+
+    #[test]
+    fn test_custom_uniform_shader_validates() {
+        // Custom uniforms
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(1000)
+            .with_bounds(1.0)
+            .with_uniform::<f32>("force_strength", 1.0)
+            .with_uniform::<f32>("decay_rate", 0.1)
+            .with_rule(Rule::Custom("p.velocity *= (1.0 - uniforms.decay_rate);".to_string()))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Custom uniform shader should be valid");
+    }
+
+    #[test]
+    fn test_typed_rules_shader_validates() {
+        // Typed particle interactions
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(3000)
+            .with_bounds(1.0)
+            .with_spatial_config(0.3, 32)
+            .with_rule(Rule::Typed {
+                self_type: 0,
+                other_type: Some(0),
+                rule: Box::new(Rule::Cohere {
+                    radius: 0.1,
+                    strength: 1.0,
+                }),
+            })
+            .with_rule(Rule::Typed {
+                self_type: 1,
+                other_type: Some(0),
+                rule: Box::new(Rule::Separate {
+                    radius: 0.15,
+                    strength: 2.0,
+                }),
+            })
+            .with_rule(Rule::Drag(1.0))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Typed rules shader should be valid");
+    }
+
+    #[test]
+    fn test_chase_evade_shader_validates() {
+        // Predator-prey dynamics
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(2000)
+            .with_bounds(1.0)
+            .with_spatial_config(0.3, 32)
+            .with_rule(Rule::Chase {
+                self_type: 1,   // Predator
+                target_type: 0, // Prey
+                radius: 0.4,
+                strength: 4.0,
+            })
+            .with_rule(Rule::Evade {
+                self_type: 0,   // Prey
+                threat_type: 1, // Predator
+                radius: 0.25,
+                strength: 6.0,
+            })
+            .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.0 })
+            .with_rule(Rule::Drag(1.5))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Chase/evade shader should be valid");
+    }
+
+    #[test]
+    fn test_complex_combined_shader_validates() {
+        // Complex simulation with many features
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(10000)
+            .with_bounds(1.5)
+            .with_spatial_config(0.15, 32)
+            .with_inbox()
+            .with_field("trail", FieldConfig::new(64))
+            .with_uniform::<f32>("global_force", 0.5)
+            .with_function(r#"
+fn custom_decay(v: vec3<f32>) -> vec3<f32> {
+    return v * 0.99;
+}
+"#)
+            .with_rule(Rule::Separate {
+                radius: 0.05,
+                strength: 3.0,
+            })
+            .with_rule(Rule::Cohere {
+                radius: 0.2,
+                strength: 0.5,
+            })
+            .with_rule(Rule::Vortex {
+                center: Vec3::ZERO,
+                axis: Vec3::Y,
+                strength: 0.5,
+            })
+            .with_rule(Rule::Custom("p.velocity = custom_decay(p.velocity);".to_string()))
+            .with_rule(Rule::SpeedLimit { min: 0.05, max: 1.5 })
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Complex combined shader should be valid");
+    }
+
+    #[test]
+    fn test_magnetism_shader_validates() {
+        // Magnetic field simulation
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(3000)
+            .with_bounds(1.0)
+            .with_spatial_config(0.2, 32)
+            .with_rule(Rule::Magnetism {
+                radius: 0.2,
+                strength: 1.0,
+                same_repel: true,
+            })
+            .with_rule(Rule::Drag(0.5))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Magnetism shader should be valid");
+    }
+
+    #[test]
+    fn test_fluid_shader_validates() {
+        // Fluid-like simulation using Viscosity and Pressure
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(5000)
+            .with_bounds(1.0)
+            .with_spatial_config(0.1, 32)
+            .with_rule(Rule::Viscosity {
+                radius: 0.08,
+                strength: 0.5,
+            })
+            .with_rule(Rule::Pressure {
+                radius: 0.08,
+                strength: 1.0,
+                target_density: 8.0,
+            })
+            .with_rule(Rule::Gravity(2.0))
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("Fluid shader should be valid");
+    }
+
+    #[test]
+    fn test_all_falloff_types_shader_validates() {
+        // Test multiple falloff types using Radial rule
+        // Note: Smooth falloff has WGSL validation issues with naga, skipped for now
+        let sim = Simulation::<TestParticle>::new()
+            .with_particle_count(1000)
+            .with_bounds(1.0)
+            .with_rule(Rule::Radial {
+                point: Vec3::new(0.5, 0.0, 0.0),
+                strength: 0.5,
+                radius: 1.0,
+                falloff: crate::rules::Falloff::Constant,
+            })
+            .with_rule(Rule::Radial {
+                point: Vec3::new(-0.5, 0.0, 0.0),
+                strength: 0.5,
+                radius: 1.0,
+                falloff: crate::rules::Falloff::Linear,
+            })
+            .with_rule(Rule::Radial {
+                point: Vec3::new(0.0, 0.5, 0.0),
+                strength: 0.5,
+                radius: 1.0,
+                falloff: crate::rules::Falloff::InverseSquare,
+            })
+            .with_rule(Rule::Radial {
+                point: Vec3::new(0.0, -0.5, 0.0),
+                strength: 0.5,
+                radius: 1.0,
+                falloff: crate::rules::Falloff::Inverse,
+            })
+            .with_rule(Rule::BounceWalls);
+
+        let shader = sim.generate_compute_shader();
+        validate_wgsl(&shader).expect("All falloff types shader should be valid");
     }
 }

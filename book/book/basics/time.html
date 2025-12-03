@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Typed Interactions - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Time - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -12,34 +12,34 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "";
+            const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex.js";
+            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="../toc.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -106,7 +106,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
             </noscript>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -141,7 +141,7 @@
                     <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -175,168 +175,140 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="typed-interactions"><a class="header" href="#typed-interactions">Typed Interactions</a></h1>
-<p>Typed interactions let different particle types behave differently toward each other. This enables predator-prey dynamics, team-based systems, and state machines.</p>
-<h2 id="defining-particle-types"><a class="header" href="#defining-particle-types">Defining Particle Types</a></h2>
-<p>Use <code>#[derive(ParticleType)]</code> to create a type-safe enum:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
-enum Species {
-    Prey,      // = 0
-    Predator,  // = 1
-}
-<span class="boring">}</span></code></pre></pre>
-<p>The derive macro automatically:</p>
+                        <h1 id="time"><a class="header" href="#time">Time</a></h1>
+<p>RDPE provides a <code>Time</code> module as the universal source of truth for all timing-related values in the simulation. It uses <code>std::time</code> internally with no external dependencies.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The <code>Time</code> struct tracks:</p>
 <ul>
-<li>Implements <code>Into&lt;u32&gt;</code> (variants get sequential IDs: 0, 1, 2...)</li>
-<li>Implements <code>From&lt;u32&gt;</code> (convert back from runtime values)</li>
-<li>Adds a <code>count()</code> method</li>
+<li><strong>Elapsed time</strong> - total time since the simulation started</li>
+<li><strong>Delta time</strong> - time since the last frame (for frame-rate independent movement)</li>
+<li><strong>Frame count</strong> - total frames rendered</li>
+<li><strong>FPS</strong> - calculated frames per second</li>
 </ul>
-<p>Every particle has a <code>particle_type: u32</code> field. If you don't add it, it's auto-added with value 0.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[derive(Particle, Clone)]
-struct Creature {
-    position: Vec3,
-    velocity: Vec3,
-    particle_type: u32,
+</span>use rdpe::time::Time;
+
+let mut time = Time::new();
+
+// In your game/simulation loop:
+loop {
+    let (elapsed, delta) = time.update();
+
+    // Use elapsed for time-based effects
+    let wave = (elapsed * 2.0).sin();
+
+    // Use delta for frame-rate independent movement
+    position += velocity * delta;
 }
 <span class="boring">}</span></code></pre></pre>
-<p>Set types in the spawner:</p>
+<h2 id="accessing-time-values"><a class="header" href="#accessing-time-values">Accessing Time Values</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_spawner(|i, count| {
-    let species = if i &lt; 50 { Species::Predator } else { Species::Prey };
-    Creature {
-        position: random_pos(),
-        velocity: Vec3::ZERO,
-        particle_type: species.into(),
-    }
-})
-<span class="boring">}</span></code></pre></pre>
-<h2 id="chase--evade"><a class="header" href="#chase--evade">Chase &amp; Evade</a></h2>
-<p>For predator-prey dynamics, use the dedicated rules:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Predators chase nearest prey
-.with_rule(Rule::Chase {
-    self_type: Species::Predator.into(),
-    target_type: Species::Prey.into(),
-    radius: 0.4,
-    strength: 4.0,
-})
+</span>time.update();  // Call once per frame
 
-// Prey evades nearest predator
-.with_rule(Rule::Evade {
-    self_type: Species::Prey.into(),
-    threat_type: Species::Predator.into(),
-    radius: 0.25,
-    strength: 6.0,
-})
+// Get individual values
+let elapsed = time.elapsed();     // Total seconds since start
+let delta = time.delta();         // Seconds since last frame
+let frame = time.frame();         // Frame count (u64)
+let fps = time.fps();             // Calculated FPS
 <span class="boring">}</span></code></pre></pre>
-<p>These find the <strong>nearest</strong> target/threat and steer directly toward/away from it.</p>
-<h2 id="the-typed-wrapper"><a class="header" href="#the-typed-wrapper">The Typed Wrapper</a></h2>
-<p><code>Rule::Typed</code> wraps any neighbor rule with type filters:</p>
+<h2 id="time-control"><a class="header" href="#time-control">Time Control</a></h2>
+<h3 id="pausing"><a class="header" href="#pausing">Pausing</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>Rule::Typed {
-    self_type: u32,           // Which particles this rule affects
-    other_type: Option&lt;u32&gt;,  // Which neighbors to consider
-    rule: Box&lt;Rule&gt;,          // The wrapped rule
+</span>time.pause();           // Pause - delta becomes 0, elapsed stops
+time.resume();          // Resume from where it left off
+time.toggle_pause();    // Toggle pause state
+
+if time.is_paused() {
+    // Handle paused state
 }
 <span class="boring">}</span></code></pre></pre>
-<h3 id="example-prey-flocking"><a class="header" href="#example-prey-flocking">Example: Prey Flocking</a></h3>
+<h3 id="time-scale"><a class="header" href="#time-scale">Time Scale</a></h3>
+<p>Slow motion or fast-forward effects:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Prey flocks with other prey
-.with_rule(Rule::Typed {
-    self_type: Species::Prey.into(),
-    other_type: Some(Species::Prey.into()),
-    rule: Box::new(Rule::Cohere { radius: 0.15, strength: 1.0 }),
-})
-<span class="boring">}</span></code></pre></pre>
-<h3 id="interacting-with-all-types"><a class="header" href="#interacting-with-all-types">Interacting with All Types</a></h3>
-<p>Use <code>other_type: None</code> to interact with everyone:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Everyone avoids collisions with everyone
-.with_rule(Rule::Typed {
-    self_type: Species::Prey.into(),
-    other_type: None,  // All types
-    rule: Box::new(Rule::Collide { radius: 0.05, response: 0.5 }),
-})
-<span class="boring">}</span></code></pre></pre>
-<h2 id="type-conversion"><a class="header" href="#type-conversion">Type Conversion</a></h2>
-<p><code>Rule::Convert</code> changes particle types at runtime:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[derive(ParticleType, Clone, Copy, PartialEq)]
-enum Health {
-    Healthy,
-    Infected,
-    Recovered,
-}
+</span>time.set_time_scale(0.5);  // Half speed (slow motion)
+time.set_time_scale(1.0);  // Normal speed
+time.set_time_scale(2.0);  // Double speed
 
-// Healthy can become infected
-.with_rule(Rule::Convert {
-    from_type: Health::Healthy.into(),
-    trigger_type: Health::Infected.into(),
-    to_type: Health::Infected.into(),
-    radius: 0.08,
-    probability: 0.15,
-})
-
-// Infected eventually recover
-.with_rule(Rule::Convert {
-    from_type: Health::Infected.into(),
-    trigger_type: Health::Infected.into(),  // Self-trigger
-    to_type: Health::Recovered.into(),
-    radius: 0.01,
-    probability: 0.002,
-})
+let scale = time.time_scale();  // Get current scale
 <span class="boring">}</span></code></pre></pre>
-<h2 id="updating-visuals"><a class="header" href="#updating-visuals">Updating Visuals</a></h2>
-<p>When types change, you'll want colors to update. Use <code>Rule::Custom</code>:</p>
+<h3 id="fixed-timestep"><a class="header" href="#fixed-timestep">Fixed Timestep</a></h3>
+<p>For deterministic physics simulations:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_rule(Rule::Custom(r#"
-    if p.particle_type == 0u {
-        p.color = vec3&lt;f32&gt;(0.1, 0.9, 0.2); // Green
-    } else if p.particle_type == 1u {
-        p.color = vec3&lt;f32&gt;(1.0, 0.1, 0.1); // Red
-    } else {
-        p.color = vec3&lt;f32&gt;(0.2, 0.4, 1.0); // Blue
-    }
-"#.to_string()))
+</span>// Use fixed 60 FPS timestep regardless of actual frame rate
+time.set_fixed_delta(Some(1.0 / 60.0));
+
+// Return to real frame timing
+time.set_fixed_delta(None);
 <span class="boring">}</span></code></pre></pre>
-<h2 id="use-cases"><a class="header" href="#use-cases">Use Cases</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Types</th><th>Interactions</th></tr></thead><tbody>
-<tr><td>Predator-Prey</td><td>Predator, Prey</td><td>Chase/Evade rules</td></tr>
-<tr><td>Infection</td><td>Healthy, Infected, Recovered</td><td>Convert rules for spread</td></tr>
-<tr><td>Charged Particles</td><td>Positive, Negative</td><td>Opposites attract, same repels</td></tr>
-<tr><td>Food Chain</td><td>Plant, Herbivore, Carnivore</td><td>Each level hunts the one below</td></tr>
-<tr><td>Teams</td><td>Team A, Team B</td><td>Same team coheres, enemies separate</td></tr>
-<tr><td>Life Stages</td><td>Young, Adult, Elder</td><td>Convert based on age</td></tr>
+<h3 id="reset"><a class="header" href="#reset">Reset</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>time.reset();  // Reset to initial state (elapsed = 0, frame = 0, etc.)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="duration-access"><a class="header" href="#duration-access">Duration Access</a></h2>
+<p>For cases where you need <code>std::time::Duration</code> instead of <code>f32</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let elapsed_duration = time.elapsed_duration();  // Duration
+let delta_duration = time.delta_duration();      // Duration
+let start = time.start_instant();                // Instant
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-with-simulation"><a class="header" href="#integration-with-simulation">Integration with Simulation</a></h2>
+<p>The <code>Time</code> module is automatically used internally by <code>Simulation</code>. The values are passed to:</p>
+<ul>
+<li>Your update callback via <code>UpdateContext</code></li>
+<li>GPU uniforms as <code>uniforms.time</code> and <code>uniforms.delta_time</code></li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_update(|ctx| {
+        // ctx.time and ctx.delta_time come from the Time module
+        println!("Time: {:.2}s, Delta: {:.4}s", ctx.time, ctx.delta_time);
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>In your WGSL rules, access time via uniforms:</p>
+<pre><code class="language-wgsl">// In custom rules or shaders
+let t = uniforms.time;
+let dt = uniforms.delta_time;
+
+// Time-based oscillation
+p.position.y += sin(t * 2.0) * 0.1 * dt;
+</code></pre>
+<h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>new()</code></td><td><code>Time</code></td><td>Create a new time tracker</td></tr>
+<tr><td><code>update()</code></td><td><code>(f32, f32)</code></td><td>Update and return (elapsed, delta)</td></tr>
+<tr><td><code>elapsed()</code></td><td><code>f32</code></td><td>Total elapsed seconds</td></tr>
+<tr><td><code>delta()</code></td><td><code>f32</code></td><td>Seconds since last frame</td></tr>
+<tr><td><code>frame()</code></td><td><code>u64</code></td><td>Total frame count</td></tr>
+<tr><td><code>fps()</code></td><td><code>f32</code></td><td>Calculated FPS</td></tr>
+<tr><td><code>is_paused()</code></td><td><code>bool</code></td><td>Whether time is paused</td></tr>
+<tr><td><code>time_scale()</code></td><td><code>f32</code></td><td>Current time scale multiplier</td></tr>
+<tr><td><code>pause()</code></td><td><code>()</code></td><td>Pause time progression</td></tr>
+<tr><td><code>resume()</code></td><td><code>()</code></td><td>Resume time progression</td></tr>
+<tr><td><code>toggle_pause()</code></td><td><code>()</code></td><td>Toggle pause state</td></tr>
+<tr><td><code>set_time_scale(f32)</code></td><td><code>()</code></td><td>Set time scale (0.0+)</td></tr>
+<tr><td><code>set_fixed_delta(Option&lt;f32&gt;)</code></td><td><code>()</code></td><td>Set fixed timestep</td></tr>
+<tr><td><code>reset()</code></td><td><code>()</code></td><td>Reset to initial state</td></tr>
 </tbody></table>
 </div>
-<h2 id="performance-note"><a class="header" href="#performance-note">Performance Note</a></h2>
-<p>Typed rules add conditional checks inside the neighbor loop. For best performance:</p>
-<ul>
-<li>Use fewer distinct types when possible</li>
-<li>Group related type interactions</li>
-<li>Consider if untyped rules with Custom code might be simpler</li>
-</ul>
-
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="emitters.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../basics/typed-interactions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="spatial-hashing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -346,11 +318,11 @@ enum Health {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="emitters.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../basics/typed-interactions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="spatial-hashing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -365,13 +337,13 @@ enum Health {
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

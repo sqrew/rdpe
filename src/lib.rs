@@ -101,6 +101,7 @@
 //! | Custom | [`Rule::Custom`] for raw WGSL |
 
 mod emitter;
+pub mod field;
 mod gpu;
 pub mod input;
 mod interactions;
@@ -115,6 +116,7 @@ pub mod visuals;
 
 pub use bytemuck;
 pub use emitter::Emitter;
+pub use field::{FieldConfig, FieldRegistry};
 pub use glam::{Vec2, Vec3, Vec4};
 pub use interactions::InteractionMatrix;
 pub use rdpe_derive::{Particle, ParticleType};
@@ -209,6 +211,7 @@ pub trait ParticleTrait: Clone + Send + Sync {
 /// - [`ParticleTrait`] - the particle trait (rarely needed directly)
 pub mod prelude {
     pub use crate::emitter::Emitter;
+    pub use crate::field::{FieldConfig, FieldRegistry};
     pub use crate::input::{Input, KeyCode, MouseButton};
     pub use crate::interactions::InteractionMatrix;
     pub use crate::rules::{Falloff, Rule};

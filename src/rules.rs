@@ -1754,7 +1754,7 @@ impl Rule {
     {{
         let speed = length(p.velocity);
         if speed > 0.0001 {{
-            let clamped_speed = clamp(speed, {min}, {max});
+            let clamped_speed = clamp(speed, {min:.6}, {max:.6});
             p.velocity = normalize(p.velocity) * clamped_speed;
         }}
     }}"#
@@ -2260,5 +2260,428 @@ impl Rule {
 
             _ => String::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Wraps rule WGSL code in a minimal valid compute shader for validation.
+    fn wrap_in_shader(rule_code: &str) -> String {
+        format!(
+            r#"
+struct Particle {{
+    position: vec3<f32>,
+    velocity: vec3<f32>,
+    color: vec3<f32>,
+    particle_type: u32,
+    alive: u32,
+    age: f32,
+    lifetime: f32,
+    size: f32,
+    _pad: f32,
+}};
+
+struct Uniforms {{
+    delta_time: f32,
+    time: f32,
+    bounds: f32,
+}};
+
+@group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
+@group(0) @binding(1) var<uniform> uniforms: Uniforms;
+
+// Minimal noise function for rules that use it
+fn noise3(p: vec3<f32>) -> f32 {{
+    return fract(sin(dot(p, vec3<f32>(12.9898, 78.233, 45.164))) * 43758.5453);
+}}
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
+    let index = global_id.x;
+    var p = particles[index];
+
+{rule_code}
+
+    particles[index] = p;
+}}
+"#,
+            rule_code = rule_code
+        )
+    }
+
+    /// Validates WGSL code using naga.
+    fn validate_wgsl(code: &str) -> Result<(), String> {
+        let module = naga::front::wgsl::parse_str(code)
+            .map_err(|e| format!("WGSL parse error: {:?}", e))?;
+
+        let mut validator = naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        );
+        validator
+            .validate(&module)
+            .map_err(|e| format!("WGSL validation error: {:?}", e))?;
+
+        Ok(())
+    }
+
+    // ========== Basic Physics Rules ==========
+
+    #[test]
+    fn test_gravity_wgsl() {
+        let rule = Rule::Gravity(9.8);
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Gravity"));
+        assert!(wgsl.contains("velocity.y"));
+        assert!(wgsl.contains("9.8"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Gravity WGSL should be valid");
+    }
+
+    #[test]
+    fn test_drag_wgsl() {
+        let rule = Rule::Drag(1.5);
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Drag"));
+        assert!(wgsl.contains("1.5"));
+        assert!(wgsl.contains("velocity *="));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Drag WGSL should be valid");
+    }
+
+    #[test]
+    fn test_acceleration_wgsl() {
+        let rule = Rule::Acceleration(Vec3::new(1.0, 2.0, 3.0));
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Acceleration"));
+        assert!(wgsl.contains("1"));
+        assert!(wgsl.contains("2"));
+        assert!(wgsl.contains("3"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Acceleration WGSL should be valid");
+    }
+
+    #[test]
+    fn test_speed_limit_wgsl() {
+        let rule = Rule::SpeedLimit { min: 0.5, max: 5.0 };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Speed limit"));
+        assert!(wgsl.contains("0.5"));
+        assert!(wgsl.contains("5"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("SpeedLimit WGSL should be valid");
+    }
+
+    #[test]
+    fn test_wander_wgsl() {
+        let rule = Rule::Wander {
+            strength: 2.0,
+            frequency: 10.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Wander"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Wander WGSL should be valid");
+    }
+
+    // ========== Boundary Rules ==========
+
+    #[test]
+    fn test_bounce_walls_wgsl() {
+        let rule = Rule::BounceWalls;
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Bounce"));
+        assert!(wgsl.contains("position.x"));
+        assert!(wgsl.contains("position.y"));
+        assert!(wgsl.contains("position.z"));
+        assert!(wgsl.contains("abs(p.velocity"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("BounceWalls WGSL should be valid");
+    }
+
+    #[test]
+    fn test_wrap_walls_wgsl() {
+        let rule = Rule::WrapWalls;
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Wrap"));
+        assert!(wgsl.contains("toroidal"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("WrapWalls WGSL should be valid");
+    }
+
+    // ========== Point Force Rules ==========
+
+    #[test]
+    fn test_attract_to_wgsl() {
+        let rule = Rule::AttractTo {
+            point: Vec3::new(0.0, 0.0, 0.0),
+            strength: 5.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Attract"));
+        assert!(wgsl.contains("normalize"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("AttractTo WGSL should be valid");
+    }
+
+    #[test]
+    fn test_repel_from_wgsl() {
+        let rule = Rule::RepelFrom {
+            point: Vec3::new(0.0, 0.0, 0.0),
+            strength: 5.0,
+            radius: 1.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Repel"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("RepelFrom WGSL should be valid");
+    }
+
+    #[test]
+    fn test_point_gravity_wgsl() {
+        let rule = Rule::PointGravity {
+            point: Vec3::ZERO,
+            strength: 10.0,
+            softening: 0.05,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Point gravity"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("PointGravity WGSL should be valid");
+    }
+
+    #[test]
+    fn test_spring_wgsl() {
+        let rule = Rule::Spring {
+            anchor: Vec3::new(0.0, 1.0, 0.0),
+            stiffness: 10.0,
+            damping: 0.5,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Spring"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Spring WGSL should be valid");
+    }
+
+    // ========== Field Effect Rules ==========
+
+    #[test]
+    fn test_vortex_wgsl() {
+        let rule = Rule::Vortex {
+            center: Vec3::ZERO,
+            axis: Vec3::Y,
+            strength: 5.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Vortex"));
+        assert!(wgsl.contains("cross"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Vortex WGSL should be valid");
+    }
+
+    #[test]
+    fn test_turbulence_wgsl() {
+        let rule = Rule::Turbulence {
+            scale: 2.0,
+            strength: 1.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Turbulence"));
+        assert!(wgsl.contains("noise3"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Turbulence WGSL should be valid");
+    }
+
+    #[test]
+    fn test_orbit_wgsl() {
+        let rule = Rule::Orbit {
+            center: Vec3::ZERO,
+            strength: 5.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Orbit"));
+        assert!(wgsl.contains("centripetal"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Orbit WGSL should be valid");
+    }
+
+    #[test]
+    fn test_curl_wgsl() {
+        let rule = Rule::Curl {
+            scale: 3.0,
+            strength: 1.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Curl"));
+        assert!(wgsl.contains("divergence-free"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Curl WGSL should be valid");
+    }
+
+    // ========== Wave/Modulation Rules ==========
+
+    #[test]
+    fn test_oscillate_wgsl() {
+        let rule = Rule::Oscillate {
+            axis: Vec3::Y,
+            amplitude: 0.5,
+            frequency: 2.0,
+            spatial_scale: 0.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Oscillate"));
+        assert!(wgsl.contains("sin"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Oscillate WGSL should be valid");
+    }
+
+    #[test]
+    fn test_position_noise_wgsl() {
+        let rule = Rule::PositionNoise {
+            scale: 5.0,
+            strength: 0.1,
+            speed: 2.0,
+        };
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Position noise"));
+        assert!(wgsl.contains("noise3"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("PositionNoise WGSL should be valid");
+    }
+
+    // ========== Lifecycle Rules ==========
+
+    #[test]
+    fn test_age_wgsl() {
+        let rule = Rule::Age;
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("Age"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Age WGSL should be valid");
+    }
+
+    // ========== Custom Rules ==========
+
+    #[test]
+    fn test_custom_wgsl() {
+        let rule = Rule::Custom("p.velocity.x += 1.0;".into());
+        let wgsl = rule.to_wgsl(1.0);
+
+        assert!(wgsl.contains("velocity.x += 1.0"));
+
+        let shader = wrap_in_shader(&wgsl);
+        validate_wgsl(&shader).expect("Custom WGSL should be valid");
+    }
+
+    // ========== Falloff ==========
+
+    #[test]
+    fn test_falloff_expressions() {
+        // Test all falloff types generate valid WGSL expressions
+        let falloffs = [
+            Falloff::Constant,
+            Falloff::Linear,
+            Falloff::Inverse,
+            Falloff::InverseSquare,
+            Falloff::Smooth,
+        ];
+
+        for falloff in falloffs {
+            let expr = falloff.to_wgsl_expr();
+            assert!(!expr.is_empty(), "Falloff {:?} should have expression", falloff);
+        }
+    }
+
+    // ========== Rule Properties ==========
+
+    #[test]
+    fn test_requires_neighbors() {
+        // Rules that should need neighbors
+        let neighbor_rules = [
+            Rule::Separate { radius: 0.1, strength: 1.0 },
+            Rule::Cohere { radius: 0.5, strength: 1.0 },
+            Rule::Align { radius: 0.3, strength: 1.0 },
+            Rule::Collide { radius: 0.1, response: 0.5 },
+            Rule::NBodyGravity { radius: 1.0, strength: 1.0, softening: 0.01 },
+        ];
+
+        for rule in &neighbor_rules {
+            assert!(
+                rule.requires_neighbors(),
+                "Rule {:?} should need neighbors",
+                std::mem::discriminant(rule)
+            );
+        }
+
+        // Rules that should NOT need neighbors
+        let solo_rules = [
+            Rule::Gravity(9.8),
+            Rule::Drag(1.0),
+            Rule::BounceWalls,
+            Rule::WrapWalls,
+        ];
+
+        for rule in &solo_rules {
+            assert!(
+                !rule.requires_neighbors(),
+                "Rule {:?} should not need neighbors",
+                std::mem::discriminant(rule)
+            );
+        }
+    }
+
+    // ========== Bounds Substitution ==========
+
+    #[test]
+    fn test_bounds_substitution() {
+        let rule = Rule::BounceWalls;
+
+        // Test with bounds = 1.0
+        let wgsl_1 = rule.to_wgsl(1.0);
+        assert!(wgsl_1.contains("-1"));
+        assert!(wgsl_1.contains("1")); // positive bound
+
+        // Test with bounds = 2.5
+        let wgsl_2 = rule.to_wgsl(2.5);
+        assert!(wgsl_2.contains("-2.5"));
+        assert!(wgsl_2.contains("2.5"));
     }
 }

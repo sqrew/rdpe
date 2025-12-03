@@ -726,7 +726,7 @@ v.blend_mode(BlendMode::Alpha);     // Standard transparency (default)
     return color;
 "#);
 <span class="boring">}</span></code></pre></pre>
-<p>See <a href="./advanced/post-processing.html">Post-Processing</a> for details.</p>
+<p>See <a href="basics/./advanced/post-processing.html">Post-Processing</a> for details.</p>
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -757,8 +757,8 @@ v.blend_mode(BlendMode::Alpha);     // Standard transparency (default)
 <span class="boring">}</span></code></pre></pre>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./advanced/fragment-shaders.html">Fragment Shaders</a> - Customize particle appearance</li>
-<li><a href="./advanced/post-processing.html">Post-Processing</a> - Screen-space effects</li>
+<li><a href="basics/./advanced/fragment-shaders.html">Fragment Shaders</a> - Customize particle appearance</li>
+<li><a href="basics/./advanced/post-processing.html">Post-Processing</a> - Screen-space effects</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="emitters"><a class="header" href="#emitters">Emitters</a></h1>
 <p>Emitters continuously spawn new particles into the simulation, replacing dead particles. They enable effects like fountains, explosions, rain, and any other continuous particle generation.</p>
@@ -1053,7 +1053,131 @@ enum Health {
 <li>Group related type interactions</li>
 <li>Consider if untyped rules with Custom code might be simpler</li>
 </ul>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="spatial-hashing"><a class="header" href="#spatial-hashing">Spatial Hashing</a></h1>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="time"><a class="header" href="#time">Time</a></h1>
+<p>RDPE provides a <code>Time</code> module as the universal source of truth for all timing-related values in the simulation. It uses <code>std::time</code> internally with no external dependencies.</p>
+<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
+<p>The <code>Time</code> struct tracks:</p>
+<ul>
+<li><strong>Elapsed time</strong> - total time since the simulation started</li>
+<li><strong>Delta time</strong> - time since the last frame (for frame-rate independent movement)</li>
+<li><strong>Frame count</strong> - total frames rendered</li>
+<li><strong>FPS</strong> - calculated frames per second</li>
+</ul>
+<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use rdpe::time::Time;
+
+let mut time = Time::new();
+
+// In your game/simulation loop:
+loop {
+    let (elapsed, delta) = time.update();
+
+    // Use elapsed for time-based effects
+    let wave = (elapsed * 2.0).sin();
+
+    // Use delta for frame-rate independent movement
+    position += velocity * delta;
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="accessing-time-values"><a class="header" href="#accessing-time-values">Accessing Time Values</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>time.update();  // Call once per frame
+
+// Get individual values
+let elapsed = time.elapsed();     // Total seconds since start
+let delta = time.delta();         // Seconds since last frame
+let frame = time.frame();         // Frame count (u64)
+let fps = time.fps();             // Calculated FPS
+<span class="boring">}</span></code></pre></pre>
+<h2 id="time-control"><a class="header" href="#time-control">Time Control</a></h2>
+<h3 id="pausing"><a class="header" href="#pausing">Pausing</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>time.pause();           // Pause - delta becomes 0, elapsed stops
+time.resume();          // Resume from where it left off
+time.toggle_pause();    // Toggle pause state
+
+if time.is_paused() {
+    // Handle paused state
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="time-scale"><a class="header" href="#time-scale">Time Scale</a></h3>
+<p>Slow motion or fast-forward effects:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>time.set_time_scale(0.5);  // Half speed (slow motion)
+time.set_time_scale(1.0);  // Normal speed
+time.set_time_scale(2.0);  // Double speed
+
+let scale = time.time_scale();  // Get current scale
+<span class="boring">}</span></code></pre></pre>
+<h3 id="fixed-timestep"><a class="header" href="#fixed-timestep">Fixed Timestep</a></h3>
+<p>For deterministic physics simulations:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Use fixed 60 FPS timestep regardless of actual frame rate
+time.set_fixed_delta(Some(1.0 / 60.0));
+
+// Return to real frame timing
+time.set_fixed_delta(None);
+<span class="boring">}</span></code></pre></pre>
+<h3 id="reset"><a class="header" href="#reset">Reset</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>time.reset();  // Reset to initial state (elapsed = 0, frame = 0, etc.)
+<span class="boring">}</span></code></pre></pre>
+<h2 id="duration-access"><a class="header" href="#duration-access">Duration Access</a></h2>
+<p>For cases where you need <code>std::time::Duration</code> instead of <code>f32</code>:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let elapsed_duration = time.elapsed_duration();  // Duration
+let delta_duration = time.delta_duration();      // Duration
+let start = time.start_instant();                // Instant
+<span class="boring">}</span></code></pre></pre>
+<h2 id="integration-with-simulation"><a class="header" href="#integration-with-simulation">Integration with Simulation</a></h2>
+<p>The <code>Time</code> module is automatically used internally by <code>Simulation</code>. The values are passed to:</p>
+<ul>
+<li>Your update callback via <code>UpdateContext</code></li>
+<li>GPU uniforms as <code>uniforms.time</code> and <code>uniforms.delta_time</code></li>
+</ul>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_update(|ctx| {
+        // ctx.time and ctx.delta_time come from the Time module
+        println!("Time: {:.2}s, Delta: {:.4}s", ctx.time, ctx.delta_time);
+    })
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<p>In your WGSL rules, access time via uniforms:</p>
+<pre><code class="language-wgsl">// In custom rules or shaders
+let t = uniforms.time;
+let dt = uniforms.delta_time;
+
+// Time-based oscillation
+p.position.y += sin(t * 2.0) * 0.1 * dt;
+</code></pre>
+<h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>new()</code></td><td><code>Time</code></td><td>Create a new time tracker</td></tr>
+<tr><td><code>update()</code></td><td><code>(f32, f32)</code></td><td>Update and return (elapsed, delta)</td></tr>
+<tr><td><code>elapsed()</code></td><td><code>f32</code></td><td>Total elapsed seconds</td></tr>
+<tr><td><code>delta()</code></td><td><code>f32</code></td><td>Seconds since last frame</td></tr>
+<tr><td><code>frame()</code></td><td><code>u64</code></td><td>Total frame count</td></tr>
+<tr><td><code>fps()</code></td><td><code>f32</code></td><td>Calculated FPS</td></tr>
+<tr><td><code>is_paused()</code></td><td><code>bool</code></td><td>Whether time is paused</td></tr>
+<tr><td><code>time_scale()</code></td><td><code>f32</code></td><td>Current time scale multiplier</td></tr>
+<tr><td><code>pause()</code></td><td><code>()</code></td><td>Pause time progression</td></tr>
+<tr><td><code>resume()</code></td><td><code>()</code></td><td>Resume time progression</td></tr>
+<tr><td><code>toggle_pause()</code></td><td><code>()</code></td><td>Toggle pause state</td></tr>
+<tr><td><code>set_time_scale(f32)</code></td><td><code>()</code></td><td>Set time scale (0.0+)</td></tr>
+<tr><td><code>set_fixed_delta(Option&lt;f32&gt;)</code></td><td><code>()</code></td><td>Set fixed timestep</td></tr>
+<tr><td><code>reset()</code></td><td><code>()</code></td><td>Reset to initial state</td></tr>
+</tbody></table>
+</div><div style="break-before: page; page-break-before: always;"></div><h1 id="spatial-hashing"><a class="header" href="#spatial-hashing">Spatial Hashing</a></h1>
 <p>Spatial hashing accelerates neighbor queries from O(n²) to approximately O(n). It's automatically enabled when you use neighbor-based rules.</p>
 <h2 id="why-its-needed"><a class="header" href="#why-its-needed">Why It's Needed</a></h2>
 <p>Without spatial hashing, checking every particle against every other particle is prohibitively slow:</p>
@@ -1164,9 +1288,205 @@ cell_end[morton_code] = one past last particle index
 <p><strong>Combine interaction radii</strong> - If possible, use similar radii for all neighbor rules to optimize cell size.</p>
 </li>
 </ol>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="3d-spatial-fields"><a class="header" href="#3d-spatial-fields">3D Spatial Fields</a></h1>
+<p>Fields are persistent 3D grids that particles can read from and write to. Unlike particle-to-particle interactions, fields provide a shared spatial medium for indirect communication and environmental effects.</p>
+<h2 id="use-cases-1"><a class="header" href="#use-cases-1">Use Cases</a></h2>
+<ul>
+<li><strong>Pheromone trails</strong>: Particles deposit chemicals, others follow gradients (slime mold)</li>
+<li><strong>Density fields</strong>: Accumulate particle presence for fluid-like behavior</li>
+<li><strong>Temperature/heat</strong>: Particles emit or absorb heat from the environment</li>
+<li><strong>Flow fields</strong>: Pre-computed or dynamic velocity guidance</li>
+</ul>
+<h2 id="basic-usage-2"><a class="header" href="#basic-usage-2">Basic Usage</a></h2>
+<p>Add a field with <code>.with_field()</code> and access it in custom rules:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Agent&gt;::new()
+    .with_field(
+        "pheromone",
+        FieldConfig::new(64)      // 64³ grid resolution
+            .with_extent(1.0)     // World space: -1 to +1
+            .with_decay(0.98)     // Fade each frame
+            .with_blur(0.1)       // Diffusion strength
+    )
+    .with_rule(Rule::Custom(r#"
+        // Deposit pheromone at current position
+        field_write(0u, p.position, 0.1);
+
+        // Read pheromone concentration
+        let concentration = field_read(0u, p.position);
+
+        // Color based on local concentration
+        p.color = vec3&lt;f32&gt;(0.0, concentration, 0.5);
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="field-configuration"><a class="header" href="#field-configuration">Field Configuration</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>FieldConfig::new(resolution)
+    .with_extent(extent)           // World bounds (-extent to +extent)
+    .with_decay(decay)             // Per-frame multiplier (0.0-1.0)
+    .with_blur(blur)               // Diffusion strength (0.0-1.0)
+    .with_blur_iterations(n)       // Blur passes per frame (1-3 typical)
+<span class="boring">}</span></code></pre></pre>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Range</th><th>Effect</th></tr></thead><tbody>
+<tr><td><code>resolution</code></td><td>8-256</td><td>Grid cells per axis (memory = resolution³ × 4 bytes)</td></tr>
+<tr><td><code>extent</code></td><td>&gt; 0</td><td>World space coverage (should match simulation bounds)</td></tr>
+<tr><td><code>decay</code></td><td>0.0-1.0</td><td>0.99 = slow fade, 0.5 = fast fade, 1.0 = permanent</td></tr>
+<tr><td><code>blur</code></td><td>0.0-1.0</td><td>0.0 = no spread, 0.5 = heavy diffusion</td></tr>
+</tbody></table>
+</div>
+<h3 id="memory-usage-1"><a class="header" href="#memory-usage-1">Memory Usage</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Resolution</th><th>Total Cells</th><th>Memory</th></tr></thead><tbody>
+<tr><td>32³</td><td>32,768</td><td>~128 KB</td></tr>
+<tr><td>64³</td><td>262,144</td><td>~1 MB</td></tr>
+<tr><td>128³</td><td>2,097,152</td><td>~8 MB</td></tr>
+</tbody></table>
+</div>
+<h2 id="shader-functions"><a class="header" href="#shader-functions">Shader Functions</a></h2>
+<p>Fields are accessed by index (0, 1, 2...) in the order they were registered.</p>
+<h3 id="field_writefield_idx-position-value"><a class="header" href="#field_writefield_idx-position-value"><code>field_write(field_idx, position, value)</code></a></h3>
+<p>Atomically adds a value to the field at the given world position. Multiple particles writing to the same cell accumulate their values.</p>
+<pre><code class="language-wgsl">// Deposit pheromone
+field_write(0u, p.position, 0.1);
+
+// Deposit more in high-velocity areas
+field_write(0u, p.position, length(p.velocity) * 0.05);
+</code></pre>
+<h3 id="field_readfield_idx-position"><a class="header" href="#field_readfield_idx-position"><code>field_read(field_idx, position)</code></a></h3>
+<p>Samples the field at a world position using trilinear interpolation for smooth values between grid cells.</p>
+<pre><code class="language-wgsl">// Read at current position
+let here = field_read(0u, p.position);
+
+// Read ahead (for steering)
+let ahead = field_read(0u, p.position + normalize(p.velocity) * 0.1);
+</code></pre>
+<h3 id="field_gradientfield_idx-position-epsilon"><a class="header" href="#field_gradientfield_idx-position-epsilon"><code>field_gradient(field_idx, position, epsilon)</code></a></h3>
+<p>Computes the gradient (direction of steepest increase) at a position. Useful for steering toward higher concentrations.</p>
+<pre><code class="language-wgsl">// Get gradient direction
+let grad = field_gradient(0u, p.position, 0.05);
+
+// Steer toward higher values
+p.velocity += normalize(grad) * 0.5 * uniforms.delta_time;
+</code></pre>
+<h2 id="example-slime-mold"><a class="header" href="#example-slime-mold">Example: Slime Mold</a></h2>
+<p>Classic Physarum simulation where agents deposit pheromones and follow gradients:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct SlimeAgent {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+    heading: f32,  // Direction angle in XZ plane
+}
+
+Simulation::&lt;SlimeAgent&gt;::new()
+    .with_particle_count(30_000)
+    .with_field(
+        "pheromone",
+        FieldConfig::new(64)
+            .with_extent(1.2)
+            .with_decay(0.98)
+            .with_blur(0.1)
+    )
+    .with_uniform::&lt;f32&gt;("sense_dist", 0.1)
+    .with_uniform::&lt;f32&gt;("sense_angle", 0.4)
+    .with_uniform::&lt;f32&gt;("turn_speed", 4.0)
+    .with_rule(Rule::Custom(r#"
+        let dt = uniforms.delta_time;
+
+        // Deposit pheromone trail
+        field_write(0u, p.position, 0.2);
+
+        // Sense in three directions
+        let fwd = vec3&lt;f32&gt;(cos(p.heading), 0.0, sin(p.heading));
+        let left_ang = p.heading + uniforms.sense_angle;
+        let right_ang = p.heading - uniforms.sense_angle;
+
+        let sense_fwd = p.position + fwd * uniforms.sense_dist;
+        let sense_left = p.position + vec3&lt;f32&gt;(cos(left_ang), 0.0, sin(left_ang)) * uniforms.sense_dist;
+        let sense_right = p.position + vec3&lt;f32&gt;(cos(right_ang), 0.0, sin(right_ang)) * uniforms.sense_dist;
+
+        let val_fwd = field_read(0u, sense_fwd);
+        let val_left = field_read(0u, sense_left);
+        let val_right = field_read(0u, sense_right);
+
+        // Turn toward highest concentration
+        if val_left &gt; val_fwd &amp;&amp; val_left &gt; val_right {
+            p.heading += uniforms.turn_speed * dt;
+        } else if val_right &gt; val_fwd {
+            p.heading -= uniforms.turn_speed * dt;
+        }
+
+        // Move forward
+        p.position += vec3&lt;f32&gt;(cos(p.heading), 0.0, sin(p.heading)) * 0.5 * dt;
+        p.position.y = 0.0;
+
+        // Color by local pheromone
+        let pheromone = field_read(0u, p.position);
+        p.color = vec3&lt;f32&gt;(0.1, 0.3 + pheromone * 0.5, 0.2);
+
+        p.velocity = vec3&lt;f32&gt;(0.0);  // We handle movement directly
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="example-heat-diffusion"><a class="header" href="#example-heat-diffusion">Example: Heat Diffusion</a></h2>
+<p>Particles emit heat that spreads through the field:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Particle&gt;::new()
+    .with_field(
+        "temperature",
+        FieldConfig::new(32)
+            .with_decay(0.995)    // Slow cooling
+            .with_blur(0.3)       // Fast heat spread
+            .with_blur_iterations(2)
+    )
+    .with_rule(Rule::Custom(r#"
+        // Hot particles emit heat
+        if p.color.r &gt; 0.5 {
+            field_write(0u, p.position, 0.1);
+        }
+
+        // All particles absorb ambient temperature
+        let temp = field_read(0u, p.position);
+        p.color = vec3&lt;f32&gt;(temp, 0.2, 1.0 - temp);
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="multiple-fields"><a class="header" href="#multiple-fields">Multiple Fields</a></h2>
+<p>Register multiple fields for complex simulations:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;Agent&gt;::new()
+    .with_field("food", FieldConfig::new(64).with_decay(0.99))
+    .with_field("danger", FieldConfig::new(32).with_decay(0.9).with_blur(0.2))
+    .with_rule(Rule::Custom(r#"
+        let food = field_read(0u, p.position);      // Field 0
+        let danger = field_read(1u, p.position);    // Field 1
+
+        // Seek food, avoid danger
+        let food_grad = field_gradient(0u, p.position, 0.05);
+        let danger_grad = field_gradient(1u, p.position, 0.05);
+
+        p.velocity += food_grad * 2.0 - danger_grad * 5.0;
+    "#.into()))
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
+<ul>
+<li><strong>Match extents</strong>: Set field extent to match or exceed your simulation bounds</li>
+<li><strong>Resolution tradeoffs</strong>: Higher resolution = more detail but more memory and slower blur</li>
+<li><strong>Decay vs blur</strong>: High decay + low blur = sharp trails; low decay + high blur = ambient clouds</li>
+<li><strong>2D simulations</strong>: For XZ-plane simulations, the Y axis still exists but particles sample from y=0</li>
+<li><strong>Performance</strong>: Field processing adds GPU overhead; start with 32³ or 64³ resolution</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="custom-rules-1"><a class="header" href="#custom-rules-1">Custom Rules</a></h1>
 <p>When built-in rules aren't enough, <code>Rule::Custom</code> lets you write raw WGSL shader code.</p>
-<h2 id="basic-usage-1"><a class="header" href="#basic-usage-1">Basic Usage</a></h2>
+<h2 id="basic-usage-3"><a class="header" href="#basic-usage-3">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_rule(Rule::Custom(r#"
@@ -1329,7 +1649,7 @@ Rule::Custom(r#"
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="fragment-shaders"><a class="header" href="#fragment-shaders">Fragment Shaders</a></h1>
 <p>Fragment shaders control how each particle looks - its shape, glow, color effects, and more.</p>
-<h2 id="basic-usage-2"><a class="header" href="#basic-usage-2">Basic Usage</a></h2>
+<h2 id="basic-usage-4"><a class="header" href="#basic-usage-4">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Simulation::&lt;MyParticle&gt;::new()
@@ -1455,7 +1775,7 @@ Rule::Custom(r#"
     return vec4&lt;f32&gt;(in.color * intensity, alpha);
 "#)
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
+<h2 id="tips-2"><a class="header" href="#tips-2">Tips</a></h2>
 <h3 id="coordinate-system"><a class="header" href="#coordinate-system">Coordinate System</a></h3>
 <ul>
 <li><code>in.uv</code> ranges from -1 to 1</li>
@@ -1715,7 +2035,7 @@ fn main() {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="post-processing-1"><a class="header" href="#post-processing-1">Post-Processing</a></h1>
 <p>Post-processing applies screen-space effects to the rendered scene - things like bloom, vignette, chromatic aberration, and CRT scanlines.</p>
-<h2 id="basic-usage-3"><a class="header" href="#basic-usage-3">Basic Usage</a></h2>
+<h2 id="basic-usage-5"><a class="header" href="#basic-usage-5">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_visuals(|v| {
@@ -1930,7 +2250,7 @@ v.post_process(r#"
 <li><strong>Fragment shaders</strong> (<code>.with_fragment_shader()</code>) - for per-particle visuals</li>
 <li><strong>Post-process shaders</strong> (<code>.post_process()</code>) - for screen-space effects</li>
 </ul>
-<h2 id="basic-usage-4"><a class="header" href="#basic-usage-4">Basic Usage</a></h2>
+<h2 id="basic-usage-6"><a class="header" href="#basic-usage-6">Basic Usage</a></h2>
 <p>Define uniforms with <code>.with_uniform()</code> and access them in any shader:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2044,7 +2364,7 @@ v.post_process(r#"
     ctx.set("strength", strength);
 })
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-2"><a class="header" href="#tips-2">Tips</a></h2>
+<h2 id="tips-3"><a class="header" href="#tips-3">Tips</a></h2>
 <ul>
 <li><strong>Initialize all uniforms</strong>: Always set initial values with <code>.with_uniform()</code> before using <code>.with_update()</code>.</li>
 <li><strong>Type suffixes</strong>: Use <code>1.0f32</code> not <code>1.0</code> to ensure correct type inference.</li>
@@ -2144,7 +2464,7 @@ v.post_process(r#"
     p.velocity += turbulence(p.position, uniforms.time, 1.5) * uniforms.delta_time;
 "#.into()))
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-3"><a class="header" href="#tips-3">Tips</a></h2>
+<h2 id="tips-4"><a class="header" href="#tips-4">Tips</a></h2>
 <ul>
 <li><strong>Parameter passing</strong>: Pass uniforms as function parameters rather than accessing them directly.</li>
 <li><strong>Return types</strong>: Always specify return types for WGSL functions.</li>
@@ -2278,7 +2598,7 @@ rdpe = { version = "0.1", features = ["egui"] }
 <p>Or run examples with:</p>
 <pre><code class="language-bash">cargo run --example egui_interactive --features egui
 </code></pre>
-<h2 id="basic-usage-5"><a class="header" href="#basic-usage-5">Basic Usage</a></h2>
+<h2 id="basic-usage-7"><a class="header" href="#basic-usage-7">Basic Usage</a></h2>
 <p>Use <code>.with_ui()</code> to add an egui callback:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2464,7 +2784,7 @@ fn main() {
         .with_rule(Rule::BounceWalls)
         .run();
 }</code></pre></pre>
-<h2 id="tips-4"><a class="header" href="#tips-4">Tips</a></h2>
+<h2 id="tips-5"><a class="header" href="#tips-5">Tips</a></h2>
 <h3 id="mutex-performance"><a class="header" href="#mutex-performance">Mutex Performance</a></h3>
 <p>Don't worry about <code>Mutex</code> overhead - both callbacks run on the main thread, so there's no contention. Lock/unlock is ~20ns, negligible at 60fps.</p>
 <h3 id="initial-values-must-match"><a class="header" href="#initial-values-must-match">Initial Values Must Match</a></h3>
@@ -2546,7 +2866,7 @@ cargo run --example murmuration --features egui
 <tr><td>1,000,000+</td><td>Depends on GPU</td></tr>
 </tbody></table>
 </div>
-<h3 id="tips-5"><a class="header" href="#tips-5">Tips</a></h3>
+<h3 id="tips-6"><a class="header" href="#tips-6">Tips</a></h3>
 <ul>
 <li>Start with fewer particles, increase until performance drops</li>
 <li>Integrated GPUs handle fewer particles than discrete GPUs</li>

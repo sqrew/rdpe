@@ -15,6 +15,7 @@
 # Advanced
 
 - [Spatial Hashing](./advanced/spatial-hashing.md)
+- [3D Spatial Fields](./advanced/fields.md)
 - [Custom Rules](./advanced/custom-rules.md)
 - [Fragment Shaders](./advanced/fragment-shaders.md)
 - [Textures](./advanced/textures.md)

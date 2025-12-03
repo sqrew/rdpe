@@ -2024,6 +2024,7 @@ dependencies = [
  "egui-winit",
  "glam",
  "image",
+ "naga",
  "pollster",
  "rand",
  "rdpe-derive",

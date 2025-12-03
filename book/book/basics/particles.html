@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Introduction - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Particles - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -12,34 +12,34 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "";
+            const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex.js";
+            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="../toc.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -106,7 +106,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
             </noscript>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -141,7 +141,7 @@
                     <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -175,68 +175,127 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><strong>RDPE</strong> (Reaction Diffusion Particle Engine) is a GPU-accelerated particle simulation library for Rust. It lets you create complex, interactive particle systems with minimal code by combining simple, composable rules.</p>
-<h2 id="what-can-you-build"><a class="header" href="#what-can-you-build">What Can You Build?</a></h2>
-<p>With RDPE, you can simulate:</p>
-<ul>
-<li><strong>Flocking behaviors</strong> - Birds, fish, or any swarming entities</li>
-<li><strong>Predator-prey ecosystems</strong> - Multiple species with different interactions</li>
-<li><strong>Disease spread</strong> - SIR models and infection dynamics</li>
-<li><strong>Physics simulations</strong> - Bouncing particles, gravity, collisions</li>
-<li><strong>Chemical reactions</strong> - Particles that transform on contact</li>
-<li><strong>Crowd dynamics</strong> - Social forces and emergent behavior</li>
-</ul>
-<h2 id="quick-example"><a class="header" href="#quick-example">Quick Example</a></h2>
-<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+                        <h1 id="particles"><a class="header" href="#particles">Particles</a></h1>
+<p>Particles are the core data structure in RDPE. Each particle has properties that the GPU updates every frame based on the rules you define.</p>
+<h2 id="defining-a-particle"><a class="header" href="#defining-a-particle">Defining a Particle</a></h2>
+<p>Use the <code>#[derive(Particle)]</code> macro:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use rdpe::prelude::*;
 
 #[derive(Particle, Clone)]
 struct MyParticle {
+    position: Vec3,  // Required: where the particle is
+    velocity: Vec3,  // Required: how it's moving
+}
+<span class="boring">}</span></code></pre></pre>
+<p>The <code>position</code> and <code>velocity</code> fields are required by convention - rules expect them.</p>
+<h2 id="supported-field-types"><a class="header" href="#supported-field-types">Supported Field Types</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Rust Type</th><th>WGSL Type</th><th>Size</th><th>Alignment</th></tr></thead><tbody>
+<tr><td><code>Vec3</code></td><td><code>vec3&lt;f32&gt;</code></td><td>12 bytes</td><td>16 bytes</td></tr>
+<tr><td><code>Vec2</code></td><td><code>vec2&lt;f32&gt;</code></td><td>8 bytes</td><td>8 bytes</td></tr>
+<tr><td><code>Vec4</code></td><td><code>vec4&lt;f32&gt;</code></td><td>16 bytes</td><td>16 bytes</td></tr>
+<tr><td><code>f32</code></td><td><code>f32</code></td><td>4 bytes</td><td>4 bytes</td></tr>
+<tr><td><code>u32</code></td><td><code>u32</code></td><td>4 bytes</td><td>4 bytes</td></tr>
+<tr><td><code>i32</code></td><td><code>i32</code></td><td>4 bytes</td><td>4 bytes</td></tr>
+</tbody></table>
+</div>
+<p>The macro automatically adds padding for GPU alignment.</p>
+<h2 id="optional-fields"><a class="header" href="#optional-fields">Optional Fields</a></h2>
+<h3 id="color"><a class="header" href="#color">Color</a></h3>
+<p>Mark a <code>Vec3</code> field with <code>#[color]</code> to control particle color:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct ColoredParticle {
     position: Vec3,
     velocity: Vec3,
+    #[color]
+    color: Vec3,  // RGB, 0.0-1.0
 }
+<span class="boring">}</span></code></pre></pre>
+<p>Without a color field, particles are colored based on their position.</p>
+<h3 id="particle-type"><a class="header" href="#particle-type">Particle Type</a></h3>
+<p>Add <code>particle_type: u32</code> for type-based interactions:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct TypedParticle {
+    position: Vec3,
+    velocity: Vec3,
+    particle_type: u32,  // 0, 1, 2, etc.
+}
+<span class="boring">}</span></code></pre></pre>
+<p>If you don't add this field, it's auto-added with a default value of 0.</p>
+<h2 id="spawning-particles"><a class="header" href="#spawning-particles">Spawning Particles</a></h2>
+<p>The spawner function is called once per particle at initialization:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spawner(|index, total_count| {
+    MyParticle {
+        position: Vec3::new(
+            rand::random::&lt;f32&gt;() - 0.5,
+            rand::random::&lt;f32&gt;() - 0.5,
+            rand::random::&lt;f32&gt;() - 0.5,
+        ),
+        velocity: Vec3::ZERO,
+    }
+})
+<span class="boring">}</span></code></pre></pre>
+<p>Parameters:</p>
+<ul>
+<li><code>index</code> - Particle index (0 to count-1)</li>
+<li><code>total_count</code> - Total number of particles</li>
+</ul>
+<p>Since the spawner must be <code>Send + Sync</code>, pre-generate random values:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut rng = rand::thread_rng();
+let positions: Vec&lt;Vec3&gt; = (0..count)
+    .map(|_| Vec3::new(rng.gen_range(-1.0..1.0), ...))
+    .collect();
 
-fn main() {
-    Simulation::&lt;MyParticle&gt;::new()
-        .with_particle_count(10_000)
-        .with_bounds(1.0)
-        .with_spawner(|i, count| MyParticle {
-            position: random_position(),
-            velocity: random_velocity(),
-        })
-        .with_rule(Rule::Gravity(9.8))
-        .with_rule(Rule::BounceWalls)
-        .run();
-}</code></pre></pre>
-<h2 id="design-philosophy"><a class="header" href="#design-philosophy">Design Philosophy</a></h2>
-<p>RDPE is built around three core ideas:</p>
-<ol>
-<li>
-<p><strong>Declarative Rules</strong> - Describe <em>what</em> should happen, not <em>how</em>. Rules like <code>Gravity</code>, <code>Separate</code>, and <code>Cohere</code> express intent clearly.</p>
-</li>
-<li>
-<p><strong>Composability</strong> - Rules combine freely. Wrap any rule with <code>Typed</code> for type-specific interactions. Use <code>Custom</code> for anything not built-in.</p>
-</li>
-<li>
-<p><strong>GPU-First</strong> - Everything runs on the GPU. The derive macro handles memory layout. Spatial hashing accelerates neighbor queries. You write Rust; RDPE generates WGSL shaders.</p>
-</li>
-</ol>
-<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
-<ol>
-<li>You define a particle struct with <code>#[derive(Particle)]</code></li>
-<li>You configure a simulation with rules</li>
-<li>RDPE generates GPU shaders from your rules</li>
-<li>The simulation runs entirely on the GPU</li>
-<li>A window displays the particles in real-time</li>
-</ol>
-<p>The next chapters explain each component in detail.</p>
+.with_spawner(move |i, _| MyParticle {
+    position: positions[i as usize],
+    velocity: Vec3::ZERO,
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="custom-fields"><a class="header" href="#custom-fields">Custom Fields</a></h2>
+<p>You can add any supported fields for custom logic:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct GameParticle {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+    particle_type: u32,
+    health: f32,      // Custom field
+    age: f32,         // Custom field
+    team_id: u32,     // Custom field
+}
+<span class="boring">}</span></code></pre></pre>
+<p>Access these in <code>Rule::Custom</code> WGSL code:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    p.age += uniforms.delta_time;
+    if p.health &lt; 0.0 {
+        p.particle_type = 2u; // Dead
+    }
+"#.to_string()))
+<span class="boring">}</span></code></pre></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../basics/architecture.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
 
-                            <a rel="next prefetch" href="basics/architecture.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../basics/rules.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -246,8 +305,11 @@ fn main() {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../basics/architecture.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
 
-                    <a rel="next prefetch" href="basics/architecture.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../basics/rules.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -262,13 +324,13 @@ fn main() {
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Spatial Hashing - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Visual Configuration - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -12,34 +12,34 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
 
         <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
 
         <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" id="highlight-css" href="highlight.css">
-        <link rel="stylesheet" id="tomorrow-night-css" href="tomorrow-night.css">
-        <link rel="stylesheet" id="ayu-highlight-css" href="ayu-highlight.css">
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
-            const path_to_root = "";
+            const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex.js";
+            window.path_to_searchindex_js = "../searchindex.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
+        <script src="../toc.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -106,7 +106,7 @@
             <!-- populated by js -->
             <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
             <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
             </noscript>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -141,7 +141,7 @@
                     <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
 
@@ -175,127 +175,130 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="spatial-hashing"><a class="header" href="#spatial-hashing">Spatial Hashing</a></h1>
-<p>Spatial hashing accelerates neighbor queries from O(n²) to approximately O(n). It's automatically enabled when you use neighbor-based rules.</p>
-<h2 id="why-its-needed"><a class="header" href="#why-its-needed">Why It's Needed</a></h2>
-<p>Without spatial hashing, checking every particle against every other particle is prohibitively slow:</p>
-<div class="table-wrapper"><table><thead><tr><th>Particles</th><th>Naive Comparisons</th><th>With Spatial Hash</th></tr></thead><tbody>
-<tr><td>1,000</td><td>1,000,000</td><td>~50,000</td></tr>
-<tr><td>10,000</td><td>100,000,000</td><td>~500,000</td></tr>
-<tr><td>100,000</td><td>10,000,000,000</td><td>~5,000,000</td></tr>
-</tbody></table>
-</div>
-<h2 id="how-it-works"><a class="header" href="#how-it-works">How It Works</a></h2>
-<h3 id="1-morton-encoding-z-order-curve"><a class="header" href="#1-morton-encoding-z-order-curve">1. Morton Encoding (Z-Order Curve)</a></h3>
-<p>3D space is divided into a grid of cells. Each cell gets a unique ID using Morton encoding:</p>
-<pre><code>3D Position → Cell Coordinates → Morton Code (single u32)
-</code></pre>
-<p>Morton codes preserve spatial locality - nearby cells have similar codes.</p>
-<h3 id="2-radix-sort"><a class="header" href="#2-radix-sort">2. Radix Sort</a></h3>
-<p>Particles are sorted by their Morton code using GPU radix sort:</p>
-<ul>
-<li>8 passes (4 bits per pass for 32-bit keys)</li>
-<li>Each pass: histogram → prefix sum → scatter</li>
-<li>Result: particles ordered by spatial cell</li>
-</ul>
-<h3 id="3-cell-table"><a class="header" href="#3-cell-table">3. Cell Table</a></h3>
-<p>After sorting, we build a lookup table:</p>
-<pre><code>cell_start[morton_code] = first particle index in this cell
-cell_end[morton_code] = one past last particle index
-</code></pre>
-<h3 id="4-neighbor-iteration"><a class="header" href="#4-neighbor-iteration">4. Neighbor Iteration</a></h3>
-<p>To find neighbors, check the 27 adjacent cells (3×3×3 cube):</p>
-<pre><code class="language-wgsl">for offset in 0..27 {
-    let neighbor_cell = get_neighbor_cell(my_cell, offset);
-    for particle in cell_start[neighbor_cell]..cell_end[neighbor_cell] {
-        // Check distance, apply rule
-    }
-}
-</code></pre>
-<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
-<p>Configure spatial hashing with:</p>
+                        <h1 id="visual-configuration"><a class="header" href="#visual-configuration">Visual Configuration</a></h1>
+<p>RDPE provides extensive control over how particles are rendered. The <code>with_visuals</code> method configures the rendering pipeline.</p>
+<h2 id="basic-usage"><a class="header" href="#basic-usage">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>.with_spatial_config(cell_size, grid_resolution)
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_visuals(|v| {
+        v.background(Vec3::new(0.0, 0.0, 0.02));  // Dark blue
+        v.blend_mode(BlendMode::Additive);
+        v.trails(8);
+        v.connections(0.1);
+    })
+    .run();
 <span class="boring">}</span></code></pre></pre>
-<h3 id="cell-size"><a class="header" href="#cell-size">Cell Size</a></h3>
-<p>Should be <strong>at least as large as your largest interaction radius</strong>:</p>
+<h2 id="options"><a class="header" href="#options">Options</a></h2>
+<h3 id="background-color"><a class="header" href="#background-color">Background Color</a></h3>
+<p>Set the scene backdrop:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// If your largest rule has radius 0.15:
-.with_spatial_config(0.15, 32)
+</span>v.background(Vec3::new(0.0, 0.0, 0.0));  // Black
+v.background(Vec3::new(0.02, 0.02, 0.04));  // Dark blue
+v.background(Vec3::new(1.0, 1.0, 1.0));  // White
+<span class="boring">}</span></code></pre></pre>
+<h3 id="blend-modes"><a class="header" href="#blend-modes">Blend Modes</a></h3>
+<p>Control how overlapping particles combine:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.blend_mode(BlendMode::Additive);  // Bright areas add up (glows, fire)
+v.blend_mode(BlendMode::Alpha);     // Standard transparency (default)
+<span class="boring">}</span></code></pre></pre>
+<p><strong>Additive</strong> is ideal for:</p>
+<ul>
+<li>Glowing particles</li>
+<li>Fire, sparks, energy effects</li>
+<li>Light trails</li>
+<li>Anything where overlap should brighten</li>
+</ul>
+<p><strong>Alpha</strong> is ideal for:</p>
+<ul>
+<li>Solid particles</li>
+<li>Smoke, dust</li>
+<li>Anything where overlap should occlude</li>
+</ul>
+<h3 id="particle-trails"><a class="header" href="#particle-trails">Particle Trails</a></h3>
+<p>Leave a fading trail behind each particle:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.trails(8);  // 8 frames of history
+<span class="boring">}</span></code></pre></pre>
+<p>The number is how many previous positions to render. More = longer trails, but more GPU memory.</p>
+<p>Trails work best with:</p>
+<ul>
+<li>Additive blending (trails glow)</li>
+<li>Fast-moving particles</li>
+<li>Dark backgrounds</li>
+</ul>
+<h3 id="connections"><a class="header" href="#connections">Connections</a></h3>
+<p>Draw lines between nearby particles:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.connections(0.1);  // Max distance for connection
+<span class="boring">}</span></code></pre></pre>
+<p>Creates a web/network effect. Particles within the specified distance get connected by lines.</p>
+<p>Great for:</p>
+<ul>
+<li>Neural network visualizations</li>
+<li>Constellation effects</li>
+<li>Organic webs</li>
+<li>Network graphs</li>
+</ul>
+<h3 id="post-processing"><a class="header" href="#post-processing">Post-Processing</a></h3>
+<p>Apply screen-space effects to the final image:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.post_process(r#"
+    // Your WGSL code here
+    let color = textureSample(scene, scene_sampler, in.uv);
+    return color;
+"#);
+<span class="boring">}</span></code></pre></pre>
+<p>See <a href="./advanced/post-processing.html">Post-Processing</a> for details.</p>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>Simulation::&lt;MyParticle&gt;::new()
+    .with_particle_count(5000)
+    .with_visuals(|v| {
+        // Dark background for contrast
+        v.background(Vec3::new(0.01, 0.01, 0.02));
 
-// Or slightly larger for safety:
-.with_spatial_config(0.2, 32)
+        // Additive blending for glow effect
+        v.blend_mode(BlendMode::Additive);
+
+        // Motion trails
+        v.trails(6);
+
+        // Connect nearby particles
+        v.connections(0.08);
+
+        // Add vignette post-processing
+        v.post_process(r#"
+            let color = textureSample(scene, scene_sampler, in.uv);
+            let dist = length(in.uv - vec2(0.5));
+            let vignette = 1.0 - smoothstep(0.3, 0.9, dist);
+            return vec4(color.rgb * vignette, 1.0);
+        "#);
+    })
+    .run();
 <span class="boring">}</span></code></pre></pre>
-<p>If cell size is smaller than interaction radius, you might miss neighbors in non-adjacent cells.</p>
-<h3 id="grid-resolution"><a class="header" href="#grid-resolution">Grid Resolution</a></h3>
-<p>Must be a <strong>power of 2</strong> (16, 32, 64, 128, etc.):</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>.with_spatial_config(0.1, 32)  // 32³ = 32,768 cells
-.with_spatial_config(0.1, 64)  // 64³ = 262,144 cells
-<span class="boring">}</span></code></pre></pre>
-<p>The grid covers space from <code>-resolution * cell_size / 2</code> to <code>+resolution * cell_size / 2</code>:</p>
-<div class="table-wrapper"><table><thead><tr><th>Resolution</th><th>Cell Size</th><th>Coverage</th></tr></thead><tbody>
-<tr><td>32</td><td>0.1</td><td>-1.6 to +1.6</td></tr>
-<tr><td>64</td><td>0.1</td><td>-3.2 to +3.2</td></tr>
-<tr><td>32</td><td>0.05</td><td>-0.8 to +0.8</td></tr>
-</tbody></table>
-</div>
-<p>Ensure your bounds fit within the grid coverage.</p>
-<h2 id="when-its-used"><a class="header" href="#when-its-used">When It's Used</a></h2>
-<p>Spatial hashing is automatically enabled when you use any of these rules:</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><code>Rule::Separate</code></li>
-<li><code>Rule::Cohere</code></li>
-<li><code>Rule::Align</code></li>
-<li><code>Rule::Collide</code></li>
-<li><code>Rule::Convert</code></li>
-<li><code>Rule::Typed</code> (wrapping a neighbor rule)</li>
+<li><a href="./advanced/fragment-shaders.html">Fragment Shaders</a> - Customize particle appearance</li>
+<li><a href="./advanced/post-processing.html">Post-Processing</a> - Screen-space effects</li>
 </ul>
-<p>Non-neighbor rules (Gravity, Drag, BounceWalls, etc.) don't trigger spatial hashing.</p>
-<h2 id="memory-usage"><a class="header" href="#memory-usage">Memory Usage</a></h2>
-<p>The spatial hash requires additional GPU buffers:</p>
-<div class="table-wrapper"><table><thead><tr><th>Buffer</th><th>Size</th></tr></thead><tbody>
-<tr><td>Morton codes (×2)</td><td>4 bytes × particles × 2</td></tr>
-<tr><td>Particle indices (×2)</td><td>4 bytes × particles × 2</td></tr>
-<tr><td>Cell start</td><td>4 bytes × grid_resolution³</td></tr>
-<tr><td>Cell end</td><td>4 bytes × grid_resolution³</td></tr>
-<tr><td>Histogram</td><td>64 bytes</td></tr>
-</tbody></table>
-</div>
-<p>For 10,000 particles with 32³ grid:</p>
-<ul>
-<li>Morton/indices: 160 KB</li>
-<li>Cell tables: 256 KB</li>
-<li>Total: ~416 KB</li>
-</ul>
-<h2 id="performance-tips"><a class="header" href="#performance-tips">Performance Tips</a></h2>
-<ol>
-<li>
-<p><strong>Match cell size to interaction radius</strong> - Too small wastes work checking empty cells; too large checks too many particles per cell.</p>
-</li>
-<li>
-<p><strong>Don't over-resolve</strong> - 32³ is usually enough. 64³ only helps if particles are very spread out.</p>
-</li>
-<li>
-<p><strong>Spatial hash runs every frame</strong> - It's fast, but the cost is proportional to particle count.</p>
-</li>
-<li>
-<p><strong>Combine interaction radii</strong> - If possible, use similar radii for all neighbor rules to optimize cell size.</p>
-</li>
-</ol>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="typed-interactions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../basics/rules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="advanced/custom-rules.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../basics/emitters.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -305,11 +308,11 @@ cell_end[morton_code] = one past last particle index
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="typed-interactions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../basics/rules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="advanced/custom-rules.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../basics/emitters.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -324,13 +327,13 @@ cell_end[morton_code] = one past last particle index
         </script>
 
 
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
 
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
 
         <!-- Custom JS scripts -->
 

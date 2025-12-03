@@ -1,5 +1,6 @@
 mod camera;
 mod connections;
+mod field_gpu;
 mod post_process;
 mod spatial_gpu;
 mod trails;
@@ -10,8 +11,11 @@ mod egui_integration;
 // Re-export submodule types
 pub use camera::Camera;
 pub use connections::ConnectionState;
+pub use field_gpu::{FieldSystemGpu, create_particle_field_bind_group_layout};
 pub use post_process::PostProcessState;
 pub use trails::TrailState;
+
+use crate::field::FieldRegistry;
 
 #[cfg(feature = "egui")]
 pub use egui_integration::EguiIntegration;
@@ -95,6 +99,12 @@ pub struct GpuState {
     inbox_buffer: Option<wgpu::Buffer>,
     inbox_bind_group: Option<wgpu::BindGroup>,
     inbox_enabled: bool,
+    // 3D spatial fields
+    field_system: Option<FieldSystemGpu>,
+    field_bind_group: Option<wgpu::BindGroup>,
+    field_bind_group_layout: Option<wgpu::BindGroupLayout>,
+    // Empty bind group for when fields are enabled but inbox is not
+    empty_bind_group: Option<wgpu::BindGroup>,
     // Background clear color
     background_color: Vec3,
     // Post-processing
@@ -142,6 +152,7 @@ impl GpuState {
         custom_uniform_fields: &str,
         texture_registry: &crate::textures::TextureRegistry,
         _texture_declarations: &str,
+        field_registry: &FieldRegistry,
         #[cfg(feature = "egui")] egui_enabled: bool,
     ) -> Self {
         let size = window.inner_size();
@@ -216,8 +227,11 @@ impl GpuState {
         };
 
         // Base uniform size + custom uniforms (aligned to 16 bytes for uniform buffer)
+        // Note: We pad base_size to 16-byte alignment before adding custom uniforms
+        // to ensure vec3/vec4 custom uniforms are properly aligned
         let base_size = std::mem::size_of::<Uniforms>();
-        let total_size = ((base_size + custom_uniform_size) + 15) & !15;
+        let padded_base_size = (base_size + 15) & !15;
+        let total_size = ((padded_base_size + custom_uniform_size) + 15) & !15;
 
         // Create buffer with base uniforms + space for custom uniforms
         let mut uniform_data = bytemuck::bytes_of(&uniforms).to_vec();
@@ -596,19 +610,66 @@ impl GpuState {
             (None, None)
         };
 
-        // Build compute pipeline layout with optional inbox bind group
-        let compute_pipeline_layout = if let Some(ref inbox_layout) = inbox_bind_group_layout {
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Compute Pipeline Layout"),
-                bind_group_layouts: &[&compute_bind_group_layout, inbox_layout],
-                push_constant_ranges: &[],
-            })
+        // Create field system if fields are registered
+        let (field_system, field_bind_group_layout, field_bind_group) = if !field_registry.is_empty() {
+            let system = FieldSystemGpu::new(&device, field_registry);
+            let layout = create_particle_field_bind_group_layout(&device, system.field_count);
+            let bind_group = system.create_particle_bind_group(&device, &layout);
+            (Some(system), Some(layout), bind_group)
         } else {
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Compute Pipeline Layout"),
-                bind_group_layouts: &[&compute_bind_group_layout],
-                push_constant_ranges: &[],
-            })
+            (None, None, None)
+        };
+
+        // Build compute pipeline layout with optional inbox and field bind groups
+        // Group 0: particles/uniforms/spatial
+        // Group 1: inbox (if enabled)
+        // Group 2: fields (if enabled)
+        let (compute_pipeline_layout, empty_bind_group) = match (&inbox_bind_group_layout, &field_bind_group_layout) {
+            (Some(inbox_layout), Some(field_layout)) => {
+                // Both inbox and fields enabled
+                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Compute Pipeline Layout"),
+                    bind_group_layouts: &[&compute_bind_group_layout, inbox_layout, field_layout],
+                    push_constant_ranges: &[],
+                });
+                (layout, None)
+            }
+            (Some(inbox_layout), None) => {
+                // Only inbox enabled
+                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Compute Pipeline Layout"),
+                    bind_group_layouts: &[&compute_bind_group_layout, inbox_layout],
+                    push_constant_ranges: &[],
+                });
+                (layout, None)
+            }
+            (None, Some(field_layout)) => {
+                // Only fields enabled - need empty layout at group 1 since fields use group 2
+                let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Empty Bind Group Layout"),
+                    entries: &[],
+                });
+                let empty_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Empty Bind Group"),
+                    layout: &empty_layout,
+                    entries: &[],
+                });
+                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Compute Pipeline Layout"),
+                    bind_group_layouts: &[&compute_bind_group_layout, &empty_layout, field_layout],
+                    push_constant_ranges: &[],
+                });
+                (layout, Some(empty_bg))
+            }
+            (None, None) => {
+                // Neither enabled
+                let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Compute Pipeline Layout"),
+                    bind_group_layouts: &[&compute_bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+                (layout, None)
+            }
         };
 
         let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -792,6 +853,10 @@ impl GpuState {
             inbox_buffer,
             inbox_bind_group,
             inbox_enabled,
+            field_system,
+            field_bind_group,
+            field_bind_group_layout,
+            empty_bind_group,
             background_color,
             post_process,
             custom_textures,
@@ -870,6 +935,11 @@ impl GpuState {
         if let Some(custom_bytes) = custom_uniform_bytes {
             // Combine base and custom uniforms
             let mut combined = base_bytes.to_vec();
+            // Pad to 16-byte alignment before appending custom uniforms
+            // This ensures vec3/vec4 custom uniforms are properly aligned
+            while combined.len() % 16 != 0 {
+                combined.push(0);
+            }
             combined.extend_from_slice(custom_bytes);
             // Pad to buffer size
             combined.resize(self.uniform_buffer_size, 0);
@@ -949,6 +1019,15 @@ impl GpuState {
             self.queue.write_buffer(inbox_buf, 0, &zeros);
         }
 
+        // Recreate field bind group each frame (buffers may have been swapped during blur)
+        let field_bind_group = if let (Some(ref field_sys), Some(ref layout)) =
+            (&self.field_system, &self.field_bind_group_layout)
+        {
+            field_sys.create_particle_bind_group(&self.device, layout)
+        } else {
+            None
+        };
+
         // Compute pass
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -962,10 +1041,23 @@ impl GpuState {
             // Set inbox bind group if enabled
             if let Some(ref inbox_bg) = self.inbox_bind_group {
                 compute_pass.set_bind_group(1, inbox_bg, &[]);
+            } else if let Some(ref empty_bg) = self.empty_bind_group {
+                // When fields are enabled but inbox is not, bind empty group at index 1
+                compute_pass.set_bind_group(1, empty_bg, &[]);
+            }
+
+            // Set field bind group if enabled (always at group 2)
+            if let Some(ref field_bg) = field_bind_group {
+                compute_pass.set_bind_group(2, field_bg, &[]);
             }
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Field processing pass (merge deposits, blur/decay, clear write buffer)
+        if let Some(ref mut field_sys) = self.field_system {
+            field_sys.process(&self.device, &mut encoder, &self.queue);
         }
 
         // Trail compute pass (after particles are updated)
@@ -1154,6 +1246,15 @@ impl GpuState {
             self.queue.write_buffer(inbox_buf, 0, &zeros);
         }
 
+        // Recreate field bind group each frame (buffers may have been swapped during blur)
+        let field_bind_group = if let (Some(ref field_sys), Some(ref layout)) =
+            (&self.field_system, &self.field_bind_group_layout)
+        {
+            field_sys.create_particle_bind_group(&self.device, layout)
+        } else {
+            None
+        };
+
         // Compute pass
         {
             let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -1167,10 +1268,23 @@ impl GpuState {
             // Set inbox bind group if enabled
             if let Some(ref inbox_bg) = self.inbox_bind_group {
                 compute_pass.set_bind_group(1, inbox_bg, &[]);
+            } else if let Some(ref empty_bg) = self.empty_bind_group {
+                // When fields are enabled but inbox is not, bind empty group at index 1
+                compute_pass.set_bind_group(1, empty_bg, &[]);
+            }
+
+            // Set field bind group if enabled (always at group 2)
+            if let Some(ref field_bg) = field_bind_group {
+                compute_pass.set_bind_group(2, field_bg, &[]);
             }
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Field processing pass (merge deposits, blur/decay, clear write buffer)
+        if let Some(ref mut field_sys) = self.field_system {
+            field_sys.process(&self.device, &mut encoder, &self.queue);
         }
 
         // Trail compute pass (after particles are updated)

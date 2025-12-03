@@ -29,6 +29,7 @@ egui-winit = { version = "0.31", optional = true }
 [dev-dependencies]
 rand = "0.8"
 criterion = "0.5"
+naga = { version = "24.0", features = ["wgsl-in"] }
 
 [[bench]]
 name = "shader_gen"
@@ -181,3 +182,12 @@ path = "examples/post_process.rs"
 [[example]]
 name = "texture_example"
 path = "examples/texture_example.rs"
+
+[[example]]
+name = "slime_mold_field"
+path = "examples/slime_mold_field.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "multi_field"
+path = "examples/multi_field.rs"
