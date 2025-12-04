@@ -119,6 +119,11 @@ name = "slime_mold"
 path = "examples/slime_mold.rs"
 required-features = ["egui"]
 
+[[example]]
+name = "particle_life_interactive"
+path = "examples/particle_life_interactive.rs"
+required-features = ["egui"]
+
 # Experimental/creative examples in experimental/ subdirectory
 [[example]]
 name = "firefly_grove"
@@ -160,6 +165,11 @@ name = "lorenz_attractor_interactive"
 path = "examples/experimental/lorenz_attractor_interactive.rs"
 required-features = ["egui"]
 
+[[example]]
+name = "reaction_diffusion_interactive"
+path = "examples/experimental/reaction_diffusion_interactive.rs"
+required-features = ["egui"]
+
 # Egui examples (require --features egui)
 [[example]]
 name = "egui_controls"
@@ -191,3 +201,12 @@ required-features = ["egui"]
 [[example]]
 name = "multi_field"
 path = "examples/multi_field.rs"
+
+[[example]]
+name = "sand"
+path = "examples/sand.rs"
+
+[[example]]
+name = "aurora"
+path = "examples/experimental/aurora.rs"
+required-features = ["egui"]

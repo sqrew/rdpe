@@ -1,0 +1,609 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Particles as Agents - RDPE - Reaction Diffusion Particle Engine</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="highlight-css" href="../highlight.css">
+        <link rel="stylesheet" id="tomorrow-night-css" href="../tomorrow-night.css">
+        <link rel="stylesheet" id="ayu-highlight-css" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">RDPE - Reaction Diffusion Particle Engine</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <i class="fa fa-spinner fa-spin"></i>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="particles-as-agents"><a class="header" href="#particles-as-agents">Particles as Agents</a></h1>
+<p>RDPE particles aren't just physics objects—they can be autonomous <strong>agents</strong> with memory, perception, relationships, and decision-making. This page explains how existing primitives map to agent concepts.</p>
+<h2 id="the-agent-model"><a class="header" href="#the-agent-model">The Agent Model</a></h2>
+<p>Traditional agent-based systems have:</p>
+<div class="table-wrapper"><table><thead><tr><th>Agent Concept</th><th>Description</th></tr></thead><tbody>
+<tr><td><strong>Memory</strong></td><td>State that persists across frames</td></tr>
+<tr><td><strong>Perception</strong></td><td>What the agent can sense</td></tr>
+<tr><td><strong>Relationships</strong></td><td>Connections to other agents</td></tr>
+<tr><td><strong>Behaviors</strong></td><td>Decision-making and actions</td></tr>
+<tr><td><strong>Communication</strong></td><td>Information exchange</td></tr>
+</tbody></table>
+</div>
+<p>RDPE provides all of these through its existing primitives.</p>
+<h2 id="memory-particle-fields"><a class="header" href="#memory-particle-fields">Memory: Particle Fields</a></h2>
+<p>Any custom field on your particle struct is persistent memory:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct Creature {
+    position: Vec3,
+    velocity: Vec3,
+
+    // Memory fields
+    hunger: f32,           // Internal state
+    fear_level: f32,       // Emotional state
+    age: f32,              // Lifetime tracking
+    last_seen_food: Vec3,  // Remembered location
+    state: u32,            // State machine state
+}
+<span class="boring">}</span></code></pre></pre>
+<p>These persist frame-to-frame and can be read/written in rules:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    // Update internal state
+    p.hunger += uniforms.delta_time * 0.1;
+    p.age += uniforms.delta_time;
+
+    // Decay fear over time
+    p.fear_level *= 0.99;
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="perception-sensing-the-world"><a class="header" href="#perception-sensing-the-world">Perception: Sensing the World</a></h2>
+<h3 id="neighbors-local-perception"><a class="header" href="#neighbors-local-perception">Neighbors (Local Perception)</a></h3>
+<p>Spatial hashing lets agents sense nearby entities:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_spatial_config(0.3, 32)
+.with_rule(Rule::NeighborCustom(r#"
+    // Can I see food nearby?
+    if other.particle_type == 1u &amp;&amp; neighbor_dist &lt; 0.2 {
+        // Remember where food is
+        p.last_seen_food = other.position;
+        p.hunger -= 0.01;  // Eat!
+    }
+
+    // Is there a predator nearby?
+    if other.particle_type == 2u &amp;&amp; neighbor_dist &lt; 0.3 {
+        p.fear_level = 1.0;  // Panic!
+    }
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h3 id="fields-environmental-perception"><a class="header" href="#fields-environmental-perception">Fields (Environmental Perception)</a></h3>
+<p>3D fields provide environmental information:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_field("temperature", 32, |x, y, z| {
+    // Warmer at center
+    1.0 - (x*x + y*y + z*z).sqrt()
+})
+
+.with_rule(Rule::Custom(r#"
+    let temp = field_temperature(p.position);
+    if temp &lt; 0.3 {
+        // Too cold - seek warmth
+        p.velocity.y += 0.1 * uniforms.delta_time;
+    }
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h3 id="direct-access-specific-knowledge"><a class="header" href="#direct-access-specific-knowledge">Direct Access (Specific Knowledge)</a></h3>
+<p>Particles can read any other particle directly:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    // Check on my leader (stored index)
+    if p.leader_id != 4294967295u {
+        let leader = particles[p.leader_id];
+        let to_leader = leader.position - p.position;
+        p.velocity += normalize(to_leader) * 0.5 * uniforms.delta_time;
+    }
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="relationships-persistent-connections"><a class="header" href="#relationships-persistent-connections">Relationships: Persistent Connections</a></h2>
+<h3 id="bond-indices"><a class="header" href="#bond-indices">Bond Indices</a></h3>
+<p>Store indices of related particles:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct SocialCreature {
+    position: Vec3,
+    velocity: Vec3,
+
+    // Relationships
+    parent_id: u32,        // Who spawned me
+    friend_ids: [u32; 4],  // Social connections
+    enemy_id: u32,         // Current rival
+    leader_id: u32,        // Pack leader
+}
+<span class="boring">}</span></code></pre></pre>
+<h3 id="using-rulebondsprings"><a class="header" href="#using-rulebondsprings">Using <code>Rule::BondSprings</code></a></h3>
+<p>For physical connections (cloth, ropes, molecules):</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::BondSprings {
+    bonds: vec!["bond_left", "bond_right", "bond_up", "bond_down"],
+    stiffness: 800.0,
+    damping: 15.0,
+    rest_length: 0.05,
+    max_stretch: Some(1.3),
+})
+<span class="boring">}</span></code></pre></pre>
+<h3 id="interaction-matrix"><a class="header" href="#interaction-matrix">Interaction Matrix</a></h3>
+<p>Type-based relationships:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_interactions(|m| {
+    m.attract(Prey, Prey, 0.3, 0.2);      // Prey flocks
+    m.repel(Prey, Predator, 1.0, 0.4);    // Prey flees predators
+    m.attract(Predator, Prey, 0.8, 0.5);  // Predators hunt prey
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="behaviors-decision-making"><a class="header" href="#behaviors-decision-making">Behaviors: Decision Making</a></h2>
+<h3 id="state-machines"><a class="header" href="#state-machines">State Machines</a></h3>
+<p>Use a <code>state</code> field for behavioral modes:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>const STATE_IDLE: u32 = 0;
+const STATE_SEEKING: u32 = 1;
+const STATE_FLEEING: u32 = 2;
+const STATE_EATING: u32 = 3;
+
+.with_rule(Rule::Custom(r#"
+    // State transitions
+    if p.state == 0u {  // IDLE
+        if p.hunger &gt; 0.7 {
+            p.state = 1u;  // -&gt; SEEKING
+        }
+        if p.fear_level &gt; 0.5 {
+            p.state = 2u;  // -&gt; FLEEING
+        }
+    }
+    else if p.state == 1u {  // SEEKING
+        // Move toward remembered food location
+        let to_food = p.last_seen_food - p.position;
+        if length(to_food) &gt; 0.01 {
+            p.velocity += normalize(to_food) * 0.3 * uniforms.delta_time;
+        }
+
+        if p.hunger &lt; 0.3 {
+            p.state = 0u;  // -&gt; IDLE (full)
+        }
+        if p.fear_level &gt; 0.5 {
+            p.state = 2u;  // -&gt; FLEEING (danger!)
+        }
+    }
+    else if p.state == 2u {  // FLEEING
+        // Run away from threat (handled in neighbor rule)
+        p.velocity *= 1.5;  // Sprint!
+
+        if p.fear_level &lt; 0.1 {
+            p.state = 0u;  // -&gt; IDLE (safe)
+        }
+    }
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h3 id="conditional-behaviors"><a class="header" href="#conditional-behaviors">Conditional Behaviors</a></h3>
+<p>Simple if/else logic:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    let speed = length(p.velocity);
+
+    // Tired? Slow down
+    if p.energy &lt; 0.2 {
+        p.velocity *= 0.95;
+    }
+
+    // Old? Change color
+    if p.age &gt; 10.0 {
+        p.color = mix(p.color, vec3&lt;f32&gt;(0.5, 0.5, 0.5), 0.01);
+    }
+
+    // Hungry and near food? Eat
+    // (food detection happens in neighbor rule)
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="communication-information-exchange"><a class="header" href="#communication-information-exchange">Communication: Information Exchange</a></h2>
+<h3 id="inboxes-direct-messages"><a class="header" href="#inboxes-direct-messages">Inboxes (Direct Messages)</a></h3>
+<p>Particles can send targeted messages:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct Messenger {
+    position: Vec3,
+    velocity: Vec3,
+    inbox: u32,  // Receives messages here
+}
+
+.with_inbox("inbox")
+.with_rule(Rule::NeighborCustom(r#"
+    // Send alert to nearby friends
+    if p.fear_level &gt; 0.8 &amp;&amp; other.particle_type == p.particle_type {
+        send_inbox(other_idx, 1u);  // "Danger!"
+    }
+"#.into()))
+
+.with_rule(Rule::Custom(r#"
+    // React to received messages
+    if p.inbox == 1u {
+        p.fear_level = max(p.fear_level, 0.5);
+        p.inbox = 0u;  // Clear inbox
+    }
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h3 id="fields-broadcast"><a class="header" href="#fields-broadcast">Fields (Broadcast)</a></h3>
+<p>Write to fields for area-of-effect communication:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_field_writable("pheromone", 32, |_, _, _| 0.0)
+
+// Leave pheromone trail
+.with_rule(Rule::Custom(r#"
+    if p.found_food &gt; 0.0 {
+        field_pheromone_add(p.position, 1.0);
+    }
+"#.into()))
+
+// Follow pheromone gradient
+.with_rule(Rule::Custom(r#"
+    let gradient = field_pheromone_gradient(p.position);
+    p.velocity += gradient * 0.2 * uniforms.delta_time;
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<h2 id="complete-example-ecosystem"><a class="header" href="#complete-example-ecosystem">Complete Example: Ecosystem</a></h2>
+<p>Here's a full agent-based ecosystem:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct Creature {
+    position: Vec3,
+    velocity: Vec3,
+    #[color]
+    color: Vec3,
+    particle_type: u32,  // 0=plant, 1=herbivore, 2=predator
+    energy: f32,
+    age: f32,
+    state: u32,
+}
+
+Simulation::&lt;Creature&gt;::new()
+    .with_particle_count(2000)
+    .with_spawner(|i, _| {
+        let creature_type = (i % 10) as u32;  // Mix of types
+        Creature {
+            position: random_position(),
+            velocity: Vec3::ZERO,
+            color: match creature_type {
+                0 =&gt; Vec3::new(0.2, 0.8, 0.2),  // Plants: green
+                1 =&gt; Vec3::new(0.2, 0.5, 0.9),  // Herbivores: blue
+                _ =&gt; Vec3::new(0.9, 0.2, 0.2),  // Predators: red
+            },
+            particle_type: creature_type.min(2),
+            energy: 1.0,
+            age: 0.0,
+            state: 0,
+        }
+    })
+    .with_spatial_config(0.3, 32)
+
+    // Type-based interactions
+    .with_interactions(|m| {
+        // Herbivores eat plants, flock together
+        m.attract(1, 0, 0.5, 0.2);   // Herbivore -&gt; Plant
+        m.attract(1, 1, 0.2, 0.15);  // Herbivore -&gt; Herbivore
+        m.repel(1, 2, 0.8, 0.3);     // Herbivore &lt;- Predator
+
+        // Predators hunt herbivores
+        m.attract(2, 1, 0.7, 0.4);   // Predator -&gt; Herbivore
+        m.repel(2, 2, 0.3, 0.2);     // Predators spread out
+    })
+
+    // Energy and aging
+    .with_rule(Rule::Custom(r#"
+        p.age += uniforms.delta_time;
+
+        // Plants don't move, slowly regenerate
+        if p.particle_type == 0u {
+            p.velocity = vec3&lt;f32&gt;(0.0);
+            p.energy = min(p.energy + uniforms.delta_time * 0.1, 1.0);
+        } else {
+            // Animals burn energy moving
+            p.energy -= length(p.velocity) * uniforms.delta_time * 0.01;
+        }
+
+        // Color reflects energy
+        let energy_color = mix(vec3&lt;f32&gt;(0.3), p.color, p.energy);
+        p.color = energy_color;
+    "#.into()))
+
+    // Eating (in neighbor loop)
+    .with_rule(Rule::NeighborCustom(r#"
+        // Herbivores eat plants
+        if p.particle_type == 1u &amp;&amp; other.particle_type == 0u &amp;&amp; neighbor_dist &lt; 0.05 {
+            p.energy = min(p.energy + 0.1, 1.0);
+        }
+
+        // Predators eat herbivores
+        if p.particle_type == 2u &amp;&amp; other.particle_type == 1u &amp;&amp; neighbor_dist &lt; 0.05 {
+            p.energy = min(p.energy + 0.2, 1.0);
+        }
+    "#.into()))
+
+    .with_rule(Rule::Drag(1.0))
+    .with_rule(Rule::WrapWalls)
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h2 id="design-patterns"><a class="header" href="#design-patterns">Design Patterns</a></h2>
+<h3 id="pattern-finite-state-machine"><a class="header" href="#pattern-finite-state-machine">Pattern: Finite State Machine</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// States as constants
+const WANDER: u32 = 0;
+const CHASE: u32 = 1;
+const FLEE: u32 = 2;
+const REST: u32 = 3;
+
+// State transitions based on conditions
+// Actions based on current state
+<span class="boring">}</span></code></pre></pre>
+<h3 id="pattern-blackboard-shared-memory-via-fields"><a class="header" href="#pattern-blackboard-shared-memory-via-fields">Pattern: Blackboard (Shared Memory via Fields)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Global information in fields
+.with_field_writable("danger_zone", 16, |_,_,_| 0.0)
+
+// Agents write when they spot danger
+// Other agents read and react
+<span class="boring">}</span></code></pre></pre>
+<h3 id="pattern-stigmergy-indirect-communication"><a class="header" href="#pattern-stigmergy-indirect-communication">Pattern: Stigmergy (Indirect Communication)</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Pheromone trails
+// Agents modify environment
+// Other agents sense modifications
+// No direct communication needed
+<span class="boring">}</span></code></pre></pre>
+<h2 id="performance-considerations"><a class="header" href="#performance-considerations">Performance Considerations</a></h2>
+<ol>
+<li><strong>State machines are cheap</strong> - Integer comparisons are fast</li>
+<li><strong>Memory fields add bandwidth</strong> - Each field increases particle size</li>
+<li><strong>Neighbor perception is expensive</strong> - Spatial queries dominate cost</li>
+<li><strong>Direct access is fast</strong> - <code>particles[index]</code> is a single read</li>
+<li><strong>Fields are moderate</strong> - 3D texture lookups have some cost</li>
+</ol>
+<h2 id="summary"><a class="header" href="#summary">Summary</a></h2>
+<p>RDPE particles are agents when you use them as agents:</p>
+<div class="table-wrapper"><table><thead><tr><th>Agent Need</th><th>RDPE Solution</th></tr></thead><tbody>
+<tr><td>Memory</td><td>Particle fields</td></tr>
+<tr><td>Local perception</td><td>Neighbor queries</td></tr>
+<tr><td>Global perception</td><td>Fields</td></tr>
+<tr><td>Specific knowledge</td><td>Direct buffer access</td></tr>
+<tr><td>Physical bonds</td><td><code>Rule::BondSprings</code></td></tr>
+<tr><td>Type relationships</td><td>Interaction matrix</td></tr>
+<tr><td>Decisions</td><td>Custom rules with conditionals</td></tr>
+<tr><td>Direct messages</td><td>Inboxes</td></tr>
+<tr><td>Broadcast</td><td>Writable fields</td></tr>
+</tbody></table>
+</div>
+<p>No special "Agent" API needed—the primitives compose into whatever agent architecture your simulation requires.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../basics/time.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../basics/time.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

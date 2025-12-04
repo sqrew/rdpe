@@ -13,6 +13,10 @@
 - [Input Handling](./basics/input.md)
 - [Time](./basics/time.md)
 
+# Concepts
+
+- [Particles as Agents](./concepts/agents.md)
+
 # Advanced
 
 - [Spatial Hashing](./advanced/spatial-hashing.md)

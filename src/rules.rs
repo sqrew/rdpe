@@ -1069,6 +1069,327 @@ pub enum Rule {
     /// Complex calculations here multiply by neighbor count.
     NeighborCustom(String),
 
+    /// Spring forces between bonded particles.
+    ///
+    /// Applies spring physics to particles connected by stored bond indices.
+    /// Each particle stores indices of bonded neighbors in `u32` fields, and
+    /// this rule applies spring forces (Hooke's law + damping) to maintain
+    /// rest lengths.
+    ///
+    /// This enables cloth, ropes, soft bodies, and molecular simulations
+    /// without requiring special bond infrastructure.
+    ///
+    /// # Fields
+    ///
+    /// - `bonds` - Names of particle fields storing bond indices (e.g., `["bond_left", "bond_right"]`)
+    /// - `stiffness` - Spring constant (higher = stiffer, typical: 50-1000)
+    /// - `damping` - Velocity damping along spring (prevents oscillation, typical: 5-20)
+    /// - `rest_length` - Natural spring length (when stretch = 0)
+    /// - `max_stretch` - Optional maximum stretch ratio before extra-stiff correction (e.g., 1.3 = 130%)
+    ///
+    /// # Example: Cloth
+    ///
+    /// ```ignore
+    /// #[derive(Particle)]
+    /// struct ClothPoint {
+    ///     position: Vec3,
+    ///     velocity: Vec3,
+    ///     bond_left: u32,   // Index of left neighbor (u32::MAX = none)
+    ///     bond_right: u32,
+    ///     bond_up: u32,
+    ///     bond_down: u32,
+    /// }
+    ///
+    /// // In spawner, set up bond indices based on grid position
+    ///
+    /// .with_rule(Rule::BondSprings {
+    ///     bonds: vec!["bond_left", "bond_right", "bond_up", "bond_down"],
+    ///     stiffness: 800.0,
+    ///     damping: 15.0,
+    ///     rest_length: 0.05,
+    ///     max_stretch: Some(1.3),
+    /// })
+    /// ```
+    ///
+    /// # Bond Index Convention
+    ///
+    /// Use `u32::MAX` (4294967295) as a sentinel for "no bond". The rule
+    /// automatically skips these.
+    ///
+    /// # Physics Note
+    ///
+    /// The force applied is:
+    /// - Spring: `F = stiffness * (distance - rest_length)`
+    /// - Damping: `F += damping * relative_velocity_along_spring`
+    /// - Over-stretch: When `distance/rest_length > max_stretch`, additional
+    ///   corrective force kicks in to prevent runaway stretching.
+    BondSprings {
+        /// Particle field names containing bond indices.
+        bonds: Vec<&'static str>,
+        /// Spring stiffness (Hooke's constant).
+        stiffness: f32,
+        /// Damping coefficient.
+        damping: f32,
+        /// Rest length (natural spring length).
+        rest_length: f32,
+        /// Maximum stretch ratio before extra stiffening (e.g., 1.3 = 130%).
+        max_stretch: Option<f32>,
+    },
+
+    /// Spring chain using sequential particle indices.
+    ///
+    /// Automatically bonds particle `i` to particles `i-1` and `i+1`.
+    /// No bond fields needed - just spawn particles in order!
+    ///
+    /// Perfect for ropes, chains, tentacles, snakes, and hair.
+    ///
+    /// # Fields
+    ///
+    /// - `stiffness` - Spring constant (higher = stiffer)
+    /// - `damping` - Velocity damping along spring
+    /// - `rest_length` - Natural length between particles
+    /// - `max_stretch` - Optional maximum stretch ratio
+    ///
+    /// # Example: Rope
+    ///
+    /// ```ignore
+    /// Simulation::<RopePoint>::new()
+    ///     .with_particle_count(50)  // 50-segment rope
+    ///     .with_spawner(|i, _| RopePoint {
+    ///         position: Vec3::new(0.0, 0.5 - i as f32 * 0.02, 0.0),
+    ///         velocity: Vec3::ZERO,
+    ///         pinned: if i == 0 { 1.0 } else { 0.0 },
+    ///     })
+    ///     .with_rule(Rule::ChainSprings {
+    ///         stiffness: 500.0,
+    ///         damping: 10.0,
+    ///         rest_length: 0.02,
+    ///         max_stretch: Some(1.2),
+    ///     })
+    ///     .with_rule(Rule::Gravity(5.0))
+    ///     .run();
+    /// ```
+    ChainSprings {
+        /// Spring stiffness.
+        stiffness: f32,
+        /// Damping coefficient.
+        damping: f32,
+        /// Rest length between particles.
+        rest_length: f32,
+        /// Maximum stretch ratio.
+        max_stretch: Option<f32>,
+    },
+
+    /// Radial spring structure with center hub.
+    ///
+    /// Particle 0 is the center hub. All other particles connect to the center
+    /// AND to their sequential neighbors, forming a wheel/web structure.
+    ///
+    /// Great for spider webs, wheels, radial explosions, and soft body blobs.
+    ///
+    /// # Fields
+    ///
+    /// - `hub_stiffness` - Spring strength to center hub
+    /// - `ring_stiffness` - Spring strength between ring neighbors
+    /// - `damping` - Velocity damping
+    /// - `hub_length` - Rest length to center
+    /// - `ring_length` - Rest length between ring neighbors
+    ///
+    /// # Example: Spider Web
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::RadialSprings {
+    ///     hub_stiffness: 200.0,
+    ///     ring_stiffness: 100.0,
+    ///     damping: 5.0,
+    ///     hub_length: 0.3,
+    ///     ring_length: 0.1,
+    /// })
+    /// ```
+    RadialSprings {
+        /// Spring stiffness to center hub.
+        hub_stiffness: f32,
+        /// Spring stiffness between ring neighbors.
+        ring_stiffness: f32,
+        /// Damping coefficient.
+        damping: f32,
+        /// Rest length to center hub.
+        hub_length: f32,
+        /// Rest length between ring neighbors.
+        ring_length: f32,
+    },
+
+    /// Buoyancy force based on height.
+    ///
+    /// Particles below `surface_y` experience upward force proportional to
+    /// depth. Creates floating/sinking behavior for water simulations.
+    ///
+    /// # Fields
+    ///
+    /// - `surface_y` - Y coordinate of the water surface
+    /// - `density` - Buoyancy strength (1.0 = neutral, >1 = floats, <1 = sinks)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::Gravity(9.8))
+    /// .with_rule(Rule::Buoyancy {
+    ///     surface_y: 0.0,
+    ///     density: 1.2,  // Slightly buoyant - floats up
+    /// })
+    /// ```
+    Buoyancy {
+        /// Y coordinate of the surface.
+        surface_y: f32,
+        /// Buoyancy factor (>1 floats, <1 sinks).
+        density: f32,
+    },
+
+    /// Ground friction that slows particles near a surface.
+    ///
+    /// Particles below `ground_y` experience velocity damping, simulating
+    /// friction with the ground. Useful for particles that roll/slide.
+    ///
+    /// # Fields
+    ///
+    /// - `ground_y` - Y coordinate of the ground plane
+    /// - `strength` - Friction coefficient (0-1, higher = more friction)
+    /// - `threshold` - Distance above ground where friction starts
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::Gravity(9.8))
+    /// .with_rule(Rule::Friction {
+    ///     ground_y: -1.0,
+    ///     strength: 0.8,
+    ///     threshold: 0.1,
+    /// })
+    /// ```
+    Friction {
+        /// Y coordinate of the ground.
+        ground_y: f32,
+        /// Friction strength (0-1).
+        strength: f32,
+        /// Distance above ground where friction applies.
+        threshold: f32,
+    },
+
+    /// Directional wind force with optional turbulence.
+    ///
+    /// Applies a constant directional force plus optional noise-based
+    /// turbulence for realistic wind effects.
+    ///
+    /// # Fields
+    ///
+    /// - `direction` - Wind direction (will be normalized)
+    /// - `strength` - Base wind force
+    /// - `turbulence` - Random variation (0 = steady, 1 = very gusty)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Gentle breeze from the left
+    /// Rule::Wind {
+    ///     direction: Vec3::new(1.0, 0.0, 0.0),
+    ///     strength: 2.0,
+    ///     turbulence: 0.3,
+    /// }
+    ///
+    /// // Strong gusty wind
+    /// Rule::Wind {
+    ///     direction: Vec3::new(1.0, 0.2, 0.5),
+    ///     strength: 5.0,
+    ///     turbulence: 0.8,
+    /// }
+    /// ```
+    Wind {
+        /// Wind direction (normalized internally).
+        direction: Vec3,
+        /// Wind strength.
+        strength: f32,
+        /// Turbulence factor (0-1).
+        turbulence: f32,
+    },
+
+    /// Follow a 3D field as a flow/current.
+    ///
+    /// Particles are pushed in the direction of the field gradient,
+    /// creating river-like currents or atmospheric flows.
+    ///
+    /// **Requires a field** defined with `.with_field()`.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Name of the field to follow
+    /// - `strength` - Flow strength
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Define a swirling flow field
+    /// .with_field("flow", 32, |x, y, z| {
+    ///     (x * x + z * z).sqrt()  // Distance from Y axis
+    /// })
+    /// .with_rule(Rule::Current {
+    ///     field: "flow",
+    ///     strength: 2.0,
+    /// })
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// The current follows the field's gradient (direction of increasing values).
+    /// For circular flows, use a field based on angle; for streams, use
+    /// directional gradients.
+    Current {
+        /// Name of the field to follow.
+        field: &'static str,
+        /// Current strength.
+        strength: f32,
+    },
+
+    /// Respawn particles that fall below a threshold.
+    ///
+    /// When a particle's Y position drops below `threshold_y`, it gets
+    /// teleported back to `spawn_y` with reset velocity. Perfect for
+    /// fountains, rain, and endless falling effects.
+    ///
+    /// # Fields
+    ///
+    /// - `threshold_y` - Y position that triggers respawn
+    /// - `spawn_y` - Y position to respawn at
+    /// - `reset_velocity` - Whether to zero velocity on respawn
+    ///
+    /// # Example: Rain
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::Gravity(5.0))
+    /// .with_rule(Rule::RespawnBelow {
+    ///     threshold_y: -1.0,
+    ///     spawn_y: 1.0,
+    ///     reset_velocity: true,
+    /// })
+    /// ```
+    ///
+    /// # Example: Fountain (keep momentum)
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::RespawnBelow {
+    ///     threshold_y: -0.5,
+    ///     spawn_y: 0.0,
+    ///     reset_velocity: false,  // Keep horizontal velocity
+    /// })
+    /// ```
+    RespawnBelow {
+        /// Y position that triggers respawn.
+        threshold_y: f32,
+        /// Y position to respawn at.
+        spawn_y: f32,
+        /// Whether to reset velocity on respawn.
+        reset_velocity: bool,
+    },
+
     /// Type-filtered wrapper for neighbor rules.
     ///
     /// Wraps a neighbor-based rule to only apply when particle types match.
@@ -1761,6 +2082,322 @@ impl Rule {
             ),
 
             Rule::Custom(code) => format!("    // Custom rule\n{}", code),
+
+            Rule::BondSprings { bonds, stiffness, damping, rest_length, max_stretch } => {
+                let no_bond = u32::MAX;
+                let max_stretch_code = if let Some(max_s) = max_stretch {
+                    format!(
+                        r#"
+                let stretch_ratio = dist / {rest_length};
+                if stretch_ratio > {max_s} {{
+                    stretch = stretch + (stretch_ratio - {max_s}) * {rest_length} * 10.0;
+                }}"#,
+                        rest_length = rest_length,
+                        max_s = max_s
+                    )
+                } else {
+                    String::new()
+                };
+
+                let mut bond_code = String::new();
+                for bond_field in bonds {
+                    bond_code.push_str(&format!(
+                        r#"
+        // Bond: {bond_field}
+        if p.{bond_field} != {no_bond}u {{
+            let other = particles[p.{bond_field}];
+            let delta = other.position - p.position;
+            let dist = length(delta);
+            if dist > 0.0001 {{
+                let dir = delta / dist;
+                var stretch = dist - {rest_length};{max_stretch_code}
+                bond_force += dir * stretch * {stiffness};
+                let rel_vel = dot(other.velocity - p.velocity, dir);
+                bond_force += dir * rel_vel * {damping};
+            }}
+        }}
+"#,
+                        bond_field = bond_field,
+                        no_bond = no_bond,
+                        rest_length = rest_length,
+                        stiffness = stiffness,
+                        damping = damping,
+                        max_stretch_code = max_stretch_code,
+                    ));
+                }
+
+                format!(
+                    r#"    // Bond springs
+    {{
+        var bond_force = vec3<f32>(0.0);
+        let dt = uniforms.delta_time;
+{bond_code}
+        p.velocity += bond_force * dt;
+    }}"#,
+                    bond_code = bond_code
+                )
+            }
+
+            Rule::ChainSprings { stiffness, damping, rest_length, max_stretch } => {
+                let max_stretch_code = if let Some(max_s) = max_stretch {
+                    format!(
+                        r#"
+                    let stretch_ratio = dist / {rest_length};
+                    if stretch_ratio > {max_s} {{
+                        stretch = stretch + (stretch_ratio - {max_s}) * {rest_length} * 10.0;
+                    }}"#
+                    )
+                } else {
+                    String::new()
+                };
+
+                format!(
+                    r#"    // Chain springs (index-based)
+    {{
+        var chain_force = vec3<f32>(0.0);
+        let dt = uniforms.delta_time;
+        let num_particles = arrayLength(&particles);
+
+        // Bond to previous particle (index - 1)
+        if index > 0u {{
+            let other = particles[index - 1u];
+            let delta = other.position - p.position;
+            let dist = length(delta);
+            if dist > 0.0001 {{
+                let dir = delta / dist;
+                var stretch = dist - {rest_length};{max_stretch_code}
+                chain_force += dir * stretch * {stiffness};
+                let rel_vel = dot(other.velocity - p.velocity, dir);
+                chain_force += dir * rel_vel * {damping};
+            }}
+        }}
+
+        // Bond to next particle (index + 1)
+        if index < num_particles - 1u {{
+            let other = particles[index + 1u];
+            let delta = other.position - p.position;
+            let dist = length(delta);
+            if dist > 0.0001 {{
+                let dir = delta / dist;
+                var stretch = dist - {rest_length};{max_stretch_code}
+                chain_force += dir * stretch * {stiffness};
+                let rel_vel = dot(other.velocity - p.velocity, dir);
+                chain_force += dir * rel_vel * {damping};
+            }}
+        }}
+
+        p.velocity += chain_force * dt;
+    }}"#,
+                    rest_length = rest_length,
+                    stiffness = stiffness,
+                    damping = damping,
+                    max_stretch_code = max_stretch_code,
+                )
+            }
+
+            Rule::RadialSprings { hub_stiffness, ring_stiffness, damping, hub_length, ring_length } => {
+                format!(
+                    r#"    // Radial springs (hub + ring)
+    {{
+        var radial_force = vec3<f32>(0.0);
+        let dt = uniforms.delta_time;
+        let num_particles = arrayLength(&particles);
+
+        if index > 0u {{
+            // Connect to center hub (particle 0)
+            let hub = particles[0u];
+            let delta = hub.position - p.position;
+            let dist = length(delta);
+            if dist > 0.0001 {{
+                let dir = delta / dist;
+                let stretch = dist - {hub_length};
+                radial_force += dir * stretch * {hub_stiffness};
+                let rel_vel = dot(hub.velocity - p.velocity, dir);
+                radial_force += dir * rel_vel * {damping};
+            }}
+
+            // Connect to ring neighbors (wrapping)
+            let ring_size = num_particles - 1u;
+            let ring_idx = index - 1u;  // 0-based ring index
+
+            // Previous in ring
+            let prev_ring = (ring_idx + ring_size - 1u) % ring_size;
+            let prev_idx = prev_ring + 1u;
+            {{
+                let other = particles[prev_idx];
+                let delta = other.position - p.position;
+                let dist = length(delta);
+                if dist > 0.0001 {{
+                    let dir = delta / dist;
+                    let stretch = dist - {ring_length};
+                    radial_force += dir * stretch * {ring_stiffness};
+                    let rel_vel = dot(other.velocity - p.velocity, dir);
+                    radial_force += dir * rel_vel * {damping};
+                }}
+            }}
+
+            // Next in ring
+            let next_ring = (ring_idx + 1u) % ring_size;
+            let next_idx = next_ring + 1u;
+            {{
+                let other = particles[next_idx];
+                let delta = other.position - p.position;
+                let dist = length(delta);
+                if dist > 0.0001 {{
+                    let dir = delta / dist;
+                    let stretch = dist - {ring_length};
+                    radial_force += dir * stretch * {ring_stiffness};
+                    let rel_vel = dot(other.velocity - p.velocity, dir);
+                    radial_force += dir * rel_vel * {damping};
+                }}
+            }}
+        }}
+
+        p.velocity += radial_force * dt;
+    }}"#,
+                    hub_stiffness = hub_stiffness,
+                    ring_stiffness = ring_stiffness,
+                    damping = damping,
+                    hub_length = hub_length,
+                    ring_length = ring_length,
+                )
+            }
+
+            Rule::Buoyancy { surface_y, density } => {
+                format!(
+                    r#"    // Buoyancy
+    {{
+        let depth = {surface_y} - p.position.y;
+        if depth > 0.0 {{
+            // Upward force proportional to depth and density
+            let buoyancy_force = depth * {density} * 10.0;
+            p.velocity.y += buoyancy_force * uniforms.delta_time;
+
+            // Water resistance (drag when submerged)
+            p.velocity *= 1.0 - (0.5 * uniforms.delta_time);
+        }}
+    }}"#,
+                    surface_y = surface_y,
+                    density = density,
+                )
+            }
+
+            Rule::Friction { ground_y, strength, threshold } => {
+                format!(
+                    r#"    // Ground friction
+    {{
+        let height_above_ground = p.position.y - {ground_y};
+        if height_above_ground < {threshold} {{
+            // Friction increases as we get closer to ground
+            let friction_factor = 1.0 - (height_above_ground / {threshold});
+            let friction = {strength} * friction_factor;
+
+            // Apply friction to horizontal velocity
+            p.velocity.x *= 1.0 - (friction * uniforms.delta_time);
+            p.velocity.z *= 1.0 - (friction * uniforms.delta_time);
+
+            // Prevent sinking below ground
+            if p.position.y < {ground_y} {{
+                p.position.y = {ground_y};
+                p.velocity.y = max(p.velocity.y, 0.0);
+            }}
+        }}
+    }}"#,
+                    ground_y = ground_y,
+                    strength = strength,
+                    threshold = threshold,
+                )
+            }
+
+            Rule::Wind { direction, strength, turbulence } => {
+                // Normalize direction
+                let len = (direction.x * direction.x + direction.y * direction.y + direction.z * direction.z).sqrt();
+                let (dx, dy, dz) = if len > 0.0001 {
+                    (direction.x / len, direction.y / len, direction.z / len)
+                } else {
+                    (1.0, 0.0, 0.0)
+                };
+
+                // Generate different code paths based on whether turbulence is enabled
+                if *turbulence > 0.0 {
+                    format!(
+                        r#"    // Wind with turbulence
+    {{
+        let wind_dir = vec3<f32>({dx:.6}, {dy:.6}, {dz:.6});
+        var wind_strength = {strength:.6};
+
+        let turb_pos = p.position * 3.0 + uniforms.time * 2.0;
+        let turb = noise3(turb_pos) * {turbulence:.6};
+        wind_strength = wind_strength * (1.0 + turb);
+
+        // Also vary direction slightly
+        let turb_dir = vec3<f32>(
+            noise3(turb_pos + vec3<f32>(100.0, 0.0, 0.0)),
+            noise3(turb_pos + vec3<f32>(0.0, 100.0, 0.0)),
+            noise3(turb_pos + vec3<f32>(0.0, 0.0, 100.0))
+        ) * {turbulence:.6} * 0.5;
+        p.velocity += (wind_dir + turb_dir) * wind_strength * uniforms.delta_time;
+    }}"#,
+                        dx = dx,
+                        dy = dy,
+                        dz = dz,
+                        strength = strength,
+                        turbulence = turbulence,
+                    )
+                } else {
+                    format!(
+                        r#"    // Wind (steady)
+    {{
+        let wind_dir = vec3<f32>({dx:.6}, {dy:.6}, {dz:.6});
+        p.velocity += wind_dir * {strength:.6} * uniforms.delta_time;
+    }}"#,
+                        dx = dx,
+                        dy = dy,
+                        dz = dz,
+                        strength = strength,
+                    )
+                }
+            }
+
+            Rule::Current { field, strength } => {
+                format!(
+                    r#"    // Current (follow field gradient)
+    {{
+        let gradient = field_{field}_gradient(p.position);
+        p.velocity += gradient * {strength} * uniforms.delta_time;
+    }}"#,
+                    field = field,
+                    strength = strength,
+                )
+            }
+
+            Rule::RespawnBelow { threshold_y, spawn_y, reset_velocity } => {
+                let velocity_reset = if *reset_velocity {
+                    "p.velocity = vec3<f32>(0.0);"
+                } else {
+                    "p.velocity.y = 0.0;"  // Just stop falling
+                };
+
+                format!(
+                    r#"    // Respawn below threshold
+    if p.position.y < {threshold_y} {{
+        // Randomize X and Z position on respawn
+        let seed = index + u32(uniforms.time * 1000.0);
+        let hash1 = (seed * 1103515245u + 12345u);
+        let hash2 = (hash1 * 1103515245u + 12345u);
+        let rx = f32(hash1 % 10000u) / 10000.0 * 2.0 - 1.0;
+        let rz = f32(hash2 % 10000u) / 10000.0 * 2.0 - 1.0;
+
+        p.position.x = rx * 0.8;  // Spread across bounds
+        p.position.y = {spawn_y};
+        p.position.z = rz * 0.8;
+        {velocity_reset}
+    }}"#,
+                    threshold_y = threshold_y,
+                    spawn_y = spawn_y,
+                    velocity_reset = velocity_reset,
+                )
+            }
 
             Rule::Age => "    // Age\n    p.age += uniforms.delta_time;".to_string(),
 
