@@ -3,8 +3,10 @@ mod connections;
 mod field_gpu;
 mod post_process;
 mod spatial_gpu;
+mod spatial_grid_viz;
 pub mod sub_emitter_gpu;
 mod trails;
+mod volume_render;
 
 #[cfg(feature = "egui")]
 mod egui_integration;
@@ -14,8 +16,10 @@ pub use camera::Camera;
 pub use connections::ConnectionState;
 pub use field_gpu::{FieldSystemGpu, create_particle_field_bind_group_layout};
 pub use post_process::PostProcessState;
+pub use spatial_grid_viz::SpatialGridViz;
 pub use sub_emitter_gpu::SubEmitterGpu;
 pub use trails::TrailState;
+pub use volume_render::{VolumeConfig, VolumeRenderState};
 
 use crate::field::FieldRegistry;
 
@@ -107,6 +111,9 @@ pub struct GpuState {
     field_bind_group_layout: Option<wgpu::BindGroupLayout>,
     // Empty bind group for when fields are enabled but inbox is not
     empty_bind_group: Option<wgpu::BindGroup>,
+    // Volume rendering for fields
+    volume_render: Option<VolumeRenderState>,
+    volume_config: Option<VolumeConfig>,
     // Background clear color
     background_color: Vec3,
     // Post-processing
@@ -124,6 +131,8 @@ pub struct GpuState {
     window: Arc<Window>,
     // Sub-emitter system for spawning particles on death
     sub_emitter: Option<SubEmitterGpu>,
+    // Spatial grid visualization
+    spatial_grid_viz: Option<SpatialGridViz>,
 }
 
 impl GpuState {
@@ -157,7 +166,9 @@ impl GpuState {
         texture_registry: &crate::textures::TextureRegistry,
         _texture_declarations: &str,
         field_registry: &FieldRegistry,
+        volume_config: Option<&VolumeConfig>,
         sub_emitters: &[crate::sub_emitter::SubEmitter],
+        spatial_grid_opacity: f32,
         particle_wgsl_struct: &str,
         #[cfg(feature = "egui")] egui_enabled: bool,
     ) -> Self {
@@ -626,6 +637,13 @@ impl GpuState {
             (None, None, None)
         };
 
+        // Create volume render state if configured and fields exist
+        let volume_render = if let (Some(ref config), Some(ref fs)) = (&volume_config, &field_system) {
+            Some(VolumeRenderState::new(&device, fs, config, surface_format))
+        } else {
+            None
+        };
+
         // Create sub-emitter system early so we can use its bind group layout
         let sub_emitter = if !sub_emitters.is_empty() {
             Some(SubEmitterGpu::new(
@@ -853,6 +871,15 @@ impl GpuState {
             None
         };
 
+        // Spatial grid visualization (always created for runtime toggling)
+        let spatial_grid_viz = Some(SpatialGridViz::new(
+            &device,
+            &uniform_buffer,
+            &spatial_config,
+            spatial_grid_opacity,
+            surface_format,
+        ));
+
         Self {
             surface,
             device,
@@ -878,6 +905,8 @@ impl GpuState {
             field_bind_group,
             field_bind_group_layout,
             empty_bind_group,
+            volume_render,
+            volume_config: volume_config.cloned(),
             background_color,
             post_process,
             custom_textures,
@@ -890,6 +919,7 @@ impl GpuState {
             #[cfg(feature = "egui")]
             window,
             sub_emitter,
+            spatial_grid_viz,
         }
     }
 
@@ -910,6 +940,15 @@ impl GpuState {
                     self.config.format,
                 );
             }
+        }
+    }
+
+    /// Set the spatial grid visualization opacity.
+    ///
+    /// Use 0.0 to hide the grid, 1.0 for full visibility.
+    pub fn set_grid_opacity(&mut self, opacity: f32) {
+        if let Some(ref mut grid) = self.spatial_grid_viz {
+            grid.set_opacity(&self.queue, opacity);
         }
     }
 
@@ -1102,6 +1141,32 @@ impl GpuState {
         // Field processing pass (merge deposits, blur/decay, clear write buffer)
         if let Some(ref mut field_sys) = self.field_system {
             field_sys.process(&self.device, &mut encoder, &self.queue);
+
+            // Update volume render bind group after field processing (buffers may have swapped)
+            if let Some(ref mut vol) = self.volume_render {
+                vol.update_bind_group(&self.device, field_sys);
+
+                // Get camera matrices for ray reconstruction
+                let aspect = self.config.width as f32 / self.config.height as f32;
+                let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect, 0.1, 100.0);
+                let view = self.camera.view_matrix();
+                let view_proj = proj * view;
+                let inv_view_proj = view_proj.inverse();
+                let camera_pos = self.camera.position();
+
+                // Get field extent and resolution for the rendered field
+                let field_idx = vol.field_index;
+                let field_extent = field_sys.fields[field_idx].config.world_extent;
+                let field_resolution = field_sys.fields[field_idx].config.resolution;
+
+                vol.update_params_with_field(
+                    &self.queue,
+                    inv_view_proj,
+                    camera_pos,
+                    field_extent,
+                    field_resolution,
+                );
+            }
         }
 
         // Trail compute pass (after particles are updated)
@@ -1183,6 +1248,16 @@ impl GpuState {
                 render_pass.draw(0..6, 0..conn.max_connections);
             }
 
+            // Draw spatial grid (debug visualization) if opacity > 0
+            if let Some(ref grid) = self.spatial_grid_viz {
+                if grid.opacity > 0.0 {
+                    render_pass.set_pipeline(grid.pipeline());
+                    render_pass.set_bind_group(0, grid.bind_group(), &[]);
+                    // Draw all grid lines (6 vertices per line quad)
+                    render_pass.draw(0..6, 0..grid.line_count());
+                }
+            }
+
             // Draw trails (behind particles)
             if let Some(ref trail) = self.trail_state {
                 render_pass.set_pipeline(&trail.render_pipeline);
@@ -1201,6 +1276,28 @@ impl GpuState {
             }
             render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
             render_pass.draw(0..6, 0..self.num_particles);
+        }
+
+        // Volume render pass (if enabled) - renders field as volumetric fog/glow
+        if let Some(ref vol) = self.volume_render {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Volume Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: render_target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Don't clear - blend on top
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None, // No depth for fullscreen volume
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(&vol.pipeline);
+            render_pass.set_bind_group(0, &vol.bind_group, &[]);
+            render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
 
         // Post-processing pass (if enabled)
@@ -1351,6 +1448,32 @@ impl GpuState {
         // Field processing pass (merge deposits, blur/decay, clear write buffer)
         if let Some(ref mut field_sys) = self.field_system {
             field_sys.process(&self.device, &mut encoder, &self.queue);
+
+            // Update volume render bind group after field processing (buffers may have swapped)
+            if let Some(ref mut vol) = self.volume_render {
+                vol.update_bind_group(&self.device, field_sys);
+
+                // Get camera matrices for ray reconstruction
+                let aspect = self.config.width as f32 / self.config.height as f32;
+                let proj = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, aspect, 0.1, 100.0);
+                let view = self.camera.view_matrix();
+                let view_proj = proj * view;
+                let inv_view_proj = view_proj.inverse();
+                let camera_pos = self.camera.position();
+
+                // Get field extent and resolution for the rendered field
+                let field_idx = vol.field_index;
+                let field_extent = field_sys.fields[field_idx].config.world_extent;
+                let field_resolution = field_sys.fields[field_idx].config.resolution;
+
+                vol.update_params_with_field(
+                    &self.queue,
+                    inv_view_proj,
+                    camera_pos,
+                    field_extent,
+                    field_resolution,
+                );
+            }
         }
 
         // Trail compute pass (after particles are updated)
@@ -1432,6 +1555,16 @@ impl GpuState {
                 render_pass.draw(0..6, 0..conn.max_connections);
             }
 
+            // Draw spatial grid (debug visualization) if opacity > 0
+            if let Some(ref grid) = self.spatial_grid_viz {
+                if grid.opacity > 0.0 {
+                    render_pass.set_pipeline(grid.pipeline());
+                    render_pass.set_bind_group(0, grid.bind_group(), &[]);
+                    // Draw all grid lines (6 vertices per line quad)
+                    render_pass.draw(0..6, 0..grid.line_count());
+                }
+            }
+
             // Draw trails (behind particles)
             if let Some(ref trail) = self.trail_state {
                 render_pass.set_pipeline(&trail.render_pipeline);
@@ -1450,6 +1583,28 @@ impl GpuState {
             }
             render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
             render_pass.draw(0..6, 0..self.num_particles);
+        }
+
+        // Volume render pass (if enabled) - renders field as volumetric fog/glow
+        if let Some(ref vol) = self.volume_render {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Volume Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: render_target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Don't clear - blend on top
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None, // No depth for fullscreen volume
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(&vol.pipeline);
+            render_pass.set_bind_group(0, &vol.bind_group, &[]);
+            render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
 
         // Post-processing pass (if enabled)

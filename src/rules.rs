@@ -605,30 +605,34 @@ pub enum Rule {
         speed: f32,
     },
 
-    /// Particle-particle collision response.
+    /// Elastic collision response between particles.
     ///
     /// **Requires spatial hashing.** Particles within `radius` of each other
-    /// are pushed apart. Creates solid, non-overlapping particles.
+    /// exchange velocity along the collision normal, simulating elastic bounces.
+    /// Also separates overlapping particles to prevent interpenetration.
     ///
     /// # Fields
     ///
-    /// - `radius` - Collision distance (particle "size")
-    /// - `response` - Push strength (0.5 = gentle, 1.0+ = bouncy)
+    /// - `radius` - Collision distance (sum of particle radii)
+    /// - `restitution` - Coefficient of restitution:
+    ///   - `0.0` = perfectly inelastic (particles stick together)
+    ///   - `1.0` = perfectly elastic (full energy preserved)
+    ///   - `0.5` = typical bouncy collision
     ///
     /// # Example
     ///
     /// ```ignore
     /// .with_spatial_config(0.1, 32)
     /// .with_rule(Rule::Collide {
-    ///     radius: 0.05,          // Particle diameter
-    ///     response: 0.5,         // Gentle collision
+    ///     radius: 0.05,          // Collision distance
+    ///     restitution: 0.8,      // Bouncy collision
     /// })
     /// ```
     Collide {
-        /// Collision distance.
+        /// Collision distance (triggers when particles are closer than this).
         radius: f32,
-        /// Push strength.
-        response: f32,
+        /// Coefficient of restitution (0.0 = inelastic, 1.0 = elastic).
+        restitution: f32,
     },
 
     /// N-body gravitational attraction between particles.
@@ -1069,6 +1073,83 @@ pub enum Rule {
     /// Complex calculations here multiply by neighbor count.
     NeighborCustom(String),
 
+    /// Custom collision response with user-defined WGSL code.
+    ///
+    /// **Requires spatial hashing.** When particles are within `radius` of each
+    /// other, executes your custom WGSL code. This is the power-user version
+    /// of [`Rule::Collide`] for implementing custom collision physics.
+    ///
+    /// # Fields
+    ///
+    /// - `radius` - Collision distance (code only runs when closer than this)
+    /// - `response` - WGSL code to execute on collision
+    ///
+    /// # Available Variables
+    ///
+    /// Inside your code, these variables are available:
+    ///
+    /// - `p` - Current particle (read/write)
+    /// - `other` - Colliding particle (read-only)
+    /// - `neighbor_dist` - Distance to neighbor (`f32`)
+    /// - `neighbor_dir` - Unit vector from neighbor toward self (`vec3<f32>`)
+    /// - `neighbor_pos` - Neighbor position (`vec3<f32>`)
+    /// - `neighbor_vel` - Neighbor velocity (`vec3<f32>`)
+    /// - `overlap` - Penetration depth: `radius - neighbor_dist` (`f32`)
+    /// - `rel_vel` - Relative velocity along collision normal (`f32`, positive = approaching)
+    /// - `uniforms.delta_time` - Frame delta time (`f32`)
+    ///
+    /// # Example: Sticky collision
+    ///
+    /// ```ignore
+    /// .with_spatial_config(0.1, 32)
+    /// .with_rule(Rule::OnCollision {
+    ///     radius: 0.05,
+    ///     response: r#"
+    ///         // Average velocities on collision (perfectly inelastic)
+    ///         let avg_vel = (p.velocity + neighbor_vel) * 0.5;
+    ///         p.velocity = avg_vel;
+    ///         // Separate overlapping particles
+    ///         p.position += neighbor_dir * overlap * 0.5;
+    ///     "#.into(),
+    /// })
+    /// ```
+    ///
+    /// # Example: Explosive collision
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::OnCollision {
+    ///     radius: 0.05,
+    ///     response: r#"
+    ///         // Explode apart on collision
+    ///         p.velocity += neighbor_dir * 5.0;
+    ///         p.color = vec3<f32>(1.0, 0.5, 0.0); // Flash orange
+    ///     "#.into(),
+    /// })
+    /// ```
+    ///
+    /// # Example: Type-dependent collision
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::OnCollision {
+    ///     radius: 0.04,
+    ///     response: r#"
+    ///         if p.particle_type != other.particle_type {
+    ///             // Different types bounce hard
+    ///             p.velocity += neighbor_dir * rel_vel * 2.0;
+    ///         } else {
+    ///             // Same types stick together
+    ///             p.velocity = mix(p.velocity, neighbor_vel, 0.1);
+    ///         }
+    ///     "#.into(),
+    /// })
+    /// ```
+    OnCollision {
+        /// Collision distance threshold.
+        radius: f32,
+        /// WGSL code to execute when particles collide.
+        response: String,
+    },
+
     /// Spring forces between bonded particles.
     ///
     /// Applies spring physics to particles connected by stored bond indices.
@@ -1415,7 +1496,7 @@ pub enum Rule {
     /// Rule::Typed {
     ///     self_type: Species::Predator.into(),
     ///     other_type: None,  // All types
-    ///     rule: Box::new(Rule::Collide { radius: 0.05, response: 0.5 }),
+    ///     rule: Box::new(Rule::Collide { radius: 0.05, restitution: 0.8 }),
     /// }
     /// ```
     Typed {
@@ -1778,6 +1859,7 @@ impl Rule {
     pub fn requires_neighbors(&self) -> bool {
         match self {
             Rule::Collide { .. }
+            | Rule::OnCollision { .. }
             | Rule::NBodyGravity { .. }
             | Rule::Viscosity { .. }
             | Rule::Pressure { .. }
@@ -2622,6 +2704,7 @@ impl Rule {
 
             // Neighbor rules generate code through to_neighbor_wgsl
             Rule::Collide { .. }
+            | Rule::OnCollision { .. }
             | Rule::NBodyGravity { .. }
             | Rule::Viscosity { .. }
             | Rule::Pressure { .. }
@@ -2642,12 +2725,35 @@ impl Rule {
     /// Generate WGSL code for neighbor-based rules (inside neighbor loop).
     pub fn to_neighbor_wgsl(&self) -> String {
         match self {
-            Rule::Collide { radius, response } => format!(
-                r#"            // Collision
+            Rule::Collide { radius, restitution } => format!(
+                r#"            // Elastic collision
             if neighbor_dist < {radius} && neighbor_dist > 0.0001 {{
+                // Relative velocity along collision normal (positive = approaching)
+                let rel_vel = dot(neighbor_vel - p.velocity, neighbor_dir);
+
+                // Only respond if particles are approaching
+                if rel_vel > 0.0 {{
+                    // Impulse for elastic collision (assumes equal masses)
+                    // For two equal masses: each gets half the momentum exchange
+                    let impulse = (1.0 + {restitution}) * rel_vel * 0.5;
+                    p.velocity += neighbor_dir * impulse;
+                }}
+
+                // Position correction to resolve overlap
                 let overlap = {radius} - neighbor_dist;
-                let push = neighbor_dir * (overlap * {response});
-                p.velocity += push;
+                p.velocity += neighbor_dir * overlap * 2.0;
+            }}"#
+            ),
+
+            Rule::OnCollision { radius, response } => format!(
+                r#"            // Custom collision response
+            if neighbor_dist < {radius} && neighbor_dist > 0.0001 {{
+                // Precompute useful collision variables
+                let overlap = {radius} - neighbor_dist;
+                let rel_vel = dot(neighbor_vel - p.velocity, neighbor_dir);
+
+                // User-defined collision response
+{response}
             }}"#
             ),
 
@@ -3276,7 +3382,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             Rule::Separate { radius: 0.1, strength: 1.0 },
             Rule::Cohere { radius: 0.5, strength: 1.0 },
             Rule::Align { radius: 0.3, strength: 1.0 },
-            Rule::Collide { radius: 0.1, response: 0.5 },
+            Rule::Collide { radius: 0.1, restitution: 0.8 },
             Rule::NBodyGravity { radius: 1.0, strength: 1.0, softening: 0.01 },
         ];
 

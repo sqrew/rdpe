@@ -93,7 +93,7 @@ fn main() {
         // Soft collision to prevent overlap
         .with_rule(Rule::Collide {
             radius: 0.03,
-            response: 0.5,
+            restitution: 0.8,
         })
         .with_rule(Rule::Drag(1.0))
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.0 })

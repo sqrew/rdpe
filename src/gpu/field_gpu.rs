@@ -14,7 +14,9 @@ pub struct FieldParamsGpu {
     pub extent: f32,
     pub decay: f32,
     pub blur: f32,
-    pub _pad: [f32; 3],
+    /// Field type: 0 = scalar, 1 = vector
+    pub field_type: u32,
+    pub _pad: [f32; 2],
 }
 
 /// GPU state for a single 3D field.
@@ -37,11 +39,14 @@ pub struct SingleFieldGpu {
 impl SingleFieldGpu {
     pub fn new(device: &wgpu::Device, config: &FieldConfig, index: usize) -> Self {
         let total_cells = config.total_cells() as usize;
+        // Vector fields need 3x the storage (one f32 per component)
+        let components = config.field_type.components() as usize;
+        let buffer_elements = total_cells * components;
 
         // Write buffer: atomic i32 for parallel particle deposits
         let write_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Field {} Write Buffer", index)),
-            size: (total_cells * 4) as u64,
+            size: (buffer_elements * 4) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -49,14 +54,14 @@ impl SingleFieldGpu {
         // Read buffers: f32 for particle sampling (double-buffered for blur)
         let read_buffer_a = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Field {} Read Buffer A", index)),
-            size: (total_cells * 4) as u64,
+            size: (buffer_elements * 4) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
         let read_buffer_b = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Field {} Read Buffer B", index)),
-            size: (total_cells * 4) as u64,
+            size: (buffer_elements * 4) as u64,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -136,7 +141,8 @@ impl FieldSystemGpu {
                 extent: config.world_extent,
                 decay: config.decay,
                 blur: config.blur,
-                _pad: [0.0; 3],
+                field_type: if config.is_vector() { 1 } else { 0 },
+                _pad: [0.0; 2],
             })
             .collect();
 
@@ -183,7 +189,12 @@ impl FieldSystemGpu {
     ) {
         for field in &mut self.fields {
             let total_cells = field.config.total_cells();
-            let workgroups = (total_cells + 255) / 256;
+            let components = field.config.field_type.components();
+            let buffer_elements = total_cells * components;
+            // Workgroups for merge/clear (process buffer elements)
+            let element_workgroups = (buffer_elements + 255) / 256;
+            // Workgroups for blur (process cells, loop over components internally)
+            let cell_workgroups = (total_cells + 255) / 256;
 
             // Create params for this field
             let params = FieldParamsGpu {
@@ -192,7 +203,8 @@ impl FieldSystemGpu {
                 extent: field.config.world_extent,
                 decay: field.config.decay,
                 blur: field.config.blur,
-                _pad: [0.0; 3],
+                field_type: if field.config.is_vector() { 1 } else { 0 },
+                _pad: [0.0; 2],
             };
             let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Field Process Params"),
@@ -227,7 +239,7 @@ impl FieldSystemGpu {
                 });
                 pass.set_pipeline(&self.merge_pipeline);
                 pass.set_bind_group(0, &merge_bind_group, &[]);
-                pass.dispatch_workgroups(workgroups, 1, 1);
+                pass.dispatch_workgroups(element_workgroups, 1, 1);
             }
 
             // Step 2: Blur and decay (if enabled)
@@ -259,7 +271,7 @@ impl FieldSystemGpu {
                         });
                         pass.set_pipeline(&self.blur_decay_pipeline);
                         pass.set_bind_group(0, &blur_bind_group, &[]);
-                        pass.dispatch_workgroups(workgroups, 1, 1);
+                        pass.dispatch_workgroups(cell_workgroups, 1, 1);
                     }
 
                     field.swap_buffers();
@@ -289,7 +301,7 @@ impl FieldSystemGpu {
                 });
                 pass.set_pipeline(&self.clear_pipeline);
                 pass.set_bind_group(0, &clear_bind_group, &[]);
-                pass.dispatch_workgroups(workgroups, 1, 1);
+                pass.dispatch_workgroups(element_workgroups, 1, 1);
             }
         }
     }
@@ -530,6 +542,9 @@ struct Params {
     extent: f32,
     decay: f32,
     blur: f32,
+    field_type: u32,  // 0 = scalar, 1 = vector
+    _pad1: f32,
+    _pad2: f32,
 };
 
 const FIELD_SCALE: f32 = 65536.0;
@@ -546,7 +561,10 @@ var<uniform> params: Params;
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
-    if idx >= params.total_cells {
+    // Buffer size is total_cells * components (1 for scalar, 3 for vector)
+    let components = select(1u, 3u, params.field_type == 1u);
+    let buffer_size = params.total_cells * components;
+    if idx >= buffer_size {
         return;
     }
 
@@ -566,6 +584,9 @@ struct Params {
     extent: f32,
     decay: f32,
     blur: f32,
+    field_type: u32,  // 0 = scalar, 1 = vector
+    _pad1: f32,
+    _pad2: f32,
 };
 
 @group(0) @binding(0)
@@ -592,53 +613,59 @@ fn idx_to_3d(idx: u32) -> vec3<u32> {
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    let idx = global_id.x;
-    if idx >= params.total_cells {
+    let cell_idx = global_id.x;
+    if cell_idx >= params.total_cells {
         return;
     }
 
-    let pos = idx_to_3d(idx);
+    let pos = idx_to_3d(cell_idx);
     let res = params.resolution;
+    let components = select(1u, 3u, params.field_type == 1u);
 
-    // Sample center and 6 neighbors for simple 3D blur
-    var sum = src[idx];
-    var count = 1.0;
+    // Process all components for this cell
+    for (var c = 0u; c < components; c = c + 1u) {
+        let idx = cell_idx * components + c;
 
-    // Only blur if blur > 0
-    if params.blur > 0.0 {
-        // X neighbors
-        if pos.x > 0u {
-            sum += src[idx_3d(pos.x - 1u, pos.y, pos.z)] * params.blur;
-            count += params.blur;
-        }
-        if pos.x < res - 1u {
-            sum += src[idx_3d(pos.x + 1u, pos.y, pos.z)] * params.blur;
-            count += params.blur;
+        // Sample center and 6 neighbors for simple 3D blur
+        var sum = src[idx];
+        var count = 1.0;
+
+        // Only blur if blur > 0
+        if params.blur > 0.0 {
+            // X neighbors
+            if pos.x > 0u {
+                sum += src[idx_3d(pos.x - 1u, pos.y, pos.z) * components + c] * params.blur;
+                count += params.blur;
+            }
+            if pos.x < res - 1u {
+                sum += src[idx_3d(pos.x + 1u, pos.y, pos.z) * components + c] * params.blur;
+                count += params.blur;
+            }
+
+            // Y neighbors
+            if pos.y > 0u {
+                sum += src[idx_3d(pos.x, pos.y - 1u, pos.z) * components + c] * params.blur;
+                count += params.blur;
+            }
+            if pos.y < res - 1u {
+                sum += src[idx_3d(pos.x, pos.y + 1u, pos.z) * components + c] * params.blur;
+                count += params.blur;
+            }
+
+            // Z neighbors
+            if pos.z > 0u {
+                sum += src[idx_3d(pos.x, pos.y, pos.z - 1u) * components + c] * params.blur;
+                count += params.blur;
+            }
+            if pos.z < res - 1u {
+                sum += src[idx_3d(pos.x, pos.y, pos.z + 1u) * components + c] * params.blur;
+                count += params.blur;
+            }
         }
 
-        // Y neighbors
-        if pos.y > 0u {
-            sum += src[idx_3d(pos.x, pos.y - 1u, pos.z)] * params.blur;
-            count += params.blur;
-        }
-        if pos.y < res - 1u {
-            sum += src[idx_3d(pos.x, pos.y + 1u, pos.z)] * params.blur;
-            count += params.blur;
-        }
-
-        // Z neighbors
-        if pos.z > 0u {
-            sum += src[idx_3d(pos.x, pos.y, pos.z - 1u)] * params.blur;
-            count += params.blur;
-        }
-        if pos.z < res - 1u {
-            sum += src[idx_3d(pos.x, pos.y, pos.z + 1u)] * params.blur;
-            count += params.blur;
-        }
+        // Average and apply decay
+        dst[idx] = (sum / count) * params.decay;
     }
-
-    // Average and apply decay
-    dst[idx] = (sum / count) * params.decay;
 }
 "#;
 
@@ -650,6 +677,9 @@ struct Params {
     extent: f32,
     decay: f32,
     blur: f32,
+    field_type: u32,  // 0 = scalar, 1 = vector
+    _pad1: f32,
+    _pad2: f32,
 };
 
 @group(0) @binding(0)
@@ -661,7 +691,10 @@ var<uniform> params: Params;
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let idx = global_id.x;
-    if idx >= params.total_cells {
+    // Buffer size is total_cells * components (1 for scalar, 3 for vector)
+    let components = select(1u, 3u, params.field_type == 1u);
+    let buffer_size = params.total_cells * components;
+    if idx >= buffer_size {
         return;
     }
 

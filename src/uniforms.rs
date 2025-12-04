@@ -243,6 +243,8 @@ pub struct UpdateContext<'a> {
     pub(crate) time: f32,
     /// Time since last frame in seconds.
     pub(crate) delta_time: f32,
+    /// Grid opacity to set (None = no change).
+    pub(crate) grid_opacity: &'a mut Option<f32>,
 }
 
 impl<'a> UpdateContext<'a> {
@@ -252,12 +254,14 @@ impl<'a> UpdateContext<'a> {
         input: &'a Input,
         time: f32,
         delta_time: f32,
+        grid_opacity: &'a mut Option<f32>,
     ) -> Self {
         Self {
             uniforms,
             input,
             time,
             delta_time,
+            grid_opacity,
         }
     }
 
@@ -311,5 +315,15 @@ impl<'a> UpdateContext<'a> {
     /// Get a custom uniform value.
     pub fn get(&self, name: &str) -> Option<&UniformValue> {
         self.uniforms.get(name)
+    }
+
+    // ========== Visual methods ==========
+
+    /// Set the spatial grid visualization opacity.
+    ///
+    /// Use 0.0 to hide the grid, 1.0 for full visibility.
+    /// The change takes effect on the next frame.
+    pub fn set_grid_opacity(&mut self, opacity: f32) {
+        *self.grid_opacity = Some(opacity.clamp(0.0, 1.0));
     }
 }

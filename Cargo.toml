@@ -126,10 +126,6 @@ required-features = ["egui"]
 
 # Experimental/creative examples in experimental/ subdirectory
 [[example]]
-name = "firefly_grove"
-path = "examples/experimental/firefly_grove.rs"
-
-[[example]]
 name = "black_hole"
 path = "examples/experimental/black_hole.rs"
 
@@ -203,8 +199,17 @@ name = "multi_field"
 path = "examples/multi_field.rs"
 
 [[example]]
-name = "sand"
-path = "examples/sand.rs"
+name = "volume_render"
+path = "examples/volume_render.rs"
+
+[[example]]
+name = "spatial_grid_demo"
+path = "examples/spatial_grid_demo.rs"
+
+[[example]]
+name = "gravity_visualizer"
+path = "examples/gravity_visualizer.rs"
+required-features = ["egui"]
 
 [[example]]
 name = "aurora"

@@ -163,6 +163,8 @@ pub struct Simulation<P: ParticleTrait> {
     start_dead: bool,
     /// Registry of 3D spatial fields for particle-environment interaction.
     field_registry: FieldRegistry,
+    /// Volume rendering configuration for fields.
+    volume_config: Option<crate::gpu::VolumeConfig>,
     /// Custom fragment shader code (replaces default fragment body).
     custom_fragment_shader: Option<String>,
     /// Whether egui UI is enabled.
@@ -209,6 +211,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             inbox_enabled: false,
             start_dead: false,
             field_registry: FieldRegistry::new(),
+            volume_config: None,
             custom_fragment_shader: None,
             #[cfg(feature = "egui")]
             egui_enabled: false,
@@ -520,6 +523,35 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// - **Reaction-diffusion**: Classic pattern formation (Gray-Scott, Turing)
     pub fn with_field(mut self, name: impl Into<String>, config: FieldConfig) -> Self {
         self.field_registry.add(name, config);
+        self
+    }
+
+    /// Enable volume rendering for a field.
+    ///
+    /// Volume rendering visualizes a 3D field as volumetric fog or glow
+    /// using ray marching. This allows you to see the field data directly,
+    /// not just the particles that interact with it.
+    ///
+    /// Requires at least one field to be registered with [`with_field`](Self::with_field).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use rdpe::prelude::*;
+    ///
+    /// Simulation::<Agent>::new()
+    ///     .with_field("pheromone", FieldConfig::new(64).with_decay(0.98))
+    ///     .with_volume_render(VolumeConfig::new()
+    ///         .with_palette(Palette::Inferno)
+    ///         .with_density_scale(5.0)
+    ///         .with_steps(64))
+    ///     .with_rule(Rule::Custom(r#"
+    ///         field_write(0u, p.position, 0.1);
+    ///     "#.into()))
+    ///     .run();
+    /// ```
+    pub fn with_volume_render(mut self, config: crate::gpu::VolumeConfig) -> Self {
+        self.volume_config = Some(config);
         self
     }
 
@@ -1651,6 +1683,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             texture_declarations: self.texture_registry.to_wgsl_declarations(0),
             texture_registry: self.texture_registry,
             field_registry: self.field_registry,
+            volume_config: self.volume_config,
             sub_emitters: self.sub_emitters,
             particle_wgsl_struct: P::WGSL_STRUCT.to_string(),
         };
@@ -1727,6 +1760,8 @@ pub(crate) struct SimConfig {
     pub texture_declarations: String,
     /// 3D spatial fields for particle-environment interaction.
     pub field_registry: FieldRegistry,
+    /// Volume rendering configuration for fields.
+    pub volume_config: Option<crate::gpu::VolumeConfig>,
     /// Sub-emitters for spawning particles on death.
     pub sub_emitters: Vec<crate::sub_emitter::SubEmitter>,
     /// WGSL struct definition for particles (needed for spawn shader).
@@ -1748,6 +1783,8 @@ struct App<P: ParticleTrait> {
     ui_callback: Option<UiCallback>,
     // Time tracking (single source of truth)
     time: Time,
+    // Grid opacity change requested by update callback (None = no change)
+    pending_grid_opacity: Option<f32>,
 }
 
 impl<P: ParticleTrait + 'static> App<P> {
@@ -1788,6 +1825,7 @@ impl<P: ParticleTrait + 'static> App<P> {
             #[cfg(feature = "egui")]
             ui_callback,
             time: Time::new(),
+            pending_grid_opacity: None,
         }
     }
 }
@@ -1828,7 +1866,9 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 &self.config.texture_registry,
                 &self.config.texture_declarations,
                 &self.config.field_registry,
+                self.config.volume_config.as_ref(),
                 &self.config.sub_emitters,
+                self.config.visual_config.spatial_grid_opacity,
                 &self.config.particle_wgsl_struct,
                 #[cfg(feature = "egui")]
                 self.config.egui_enabled,
@@ -1924,6 +1964,7 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                         &self.input,
                         time,
                         delta_time,
+                        &mut self.pending_grid_opacity,
                     );
                     callback(&mut ctx);
                 }
@@ -1936,6 +1977,11 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 };
 
                 if let Some(gpu_state) = &mut self.gpu_state {
+                    // Apply pending grid opacity change
+                    if let Some(opacity) = self.pending_grid_opacity.take() {
+                        gpu_state.set_grid_opacity(opacity);
+                    }
+
                     let bytes_ref = custom_bytes.as_deref();
 
                     #[cfg(feature = "egui")]
@@ -2381,7 +2427,7 @@ mod tests {
             .with_spatial_config(0.1, 32)
             .with_rule(Rule::Collide {
                 radius: 0.03,
-                response: 0.5,
+                restitution: 0.8,
             })
             .with_rule(Rule::Gravity(2.0))
             .with_rule(Rule::BounceWalls);

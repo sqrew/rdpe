@@ -284,6 +284,8 @@ pub struct VisualConfig {
     pub background_color: Vec3,
     /// Custom post-processing shader code (fragment shader body).
     pub post_process_shader: Option<String>,
+    /// Spatial grid visualization opacity (0.0 = off, 1.0 = full).
+    pub spatial_grid_opacity: f32,
 }
 
 impl Default for VisualConfig {
@@ -300,6 +302,7 @@ impl Default for VisualConfig {
             color_mapping: ColorMapping::None,
             background_color: Vec3::new(0.02, 0.02, 0.05), // Dark blue-black
             post_process_shader: None,
+            spatial_grid_opacity: 0.0, // Off by default
         }
     }
 }
@@ -441,6 +444,27 @@ impl VisualConfig {
     /// ```
     pub fn background(&mut self, color: Vec3) -> &mut Self {
         self.background_color = color;
+        self
+    }
+
+    /// Show the spatial hash grid as a wireframe overlay.
+    ///
+    /// Useful for debugging spatial configuration and understanding
+    /// how the neighbor query system works.
+    ///
+    /// # Arguments
+    ///
+    /// * `opacity` - Grid line opacity (0.0 = off, 1.0 = fully visible)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.spatial_grid(0.3); // Subtle grid overlay
+    /// })
+    /// ```
+    pub fn spatial_grid(&mut self, opacity: f32) -> &mut Self {
+        self.spatial_grid_opacity = opacity.clamp(0.0, 1.0);
         self
     }
 

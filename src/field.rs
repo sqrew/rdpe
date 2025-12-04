@@ -4,12 +4,17 @@
 //! Unlike the inbox system (particle-to-particle), fields are spatially indexed and
 //! persist independently of particles.
 //!
+//! # Field Types
+//!
+//! - **Scalar fields** (`f32` per cell): density, temperature, pheromones
+//! - **Vector fields** (`vec3` per cell): velocity, forces, gradients
+//!
 //! # Use Cases
 //!
 //! - **Pheromone trails**: Particles deposit chemicals, others follow gradients
 //! - **Density fields**: Accumulate particle presence for fluid-like behavior
 //! - **Temperature/heat**: Particles emit/absorb heat from spatial field
-//! - **Flow fields**: Pre-computed or dynamically generated velocity guidance
+//! - **Flow/velocity fields**: Particles advect through vector field for fluid simulation
 //!
 //! # Single Field Example
 //!
@@ -48,6 +53,33 @@
 //!     .run();
 //! ```
 
+/// Type of field data stored at each cell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FieldType {
+    /// Scalar field: one `f32` per cell.
+    /// Used for: density, temperature, pheromones, pressure.
+    #[default]
+    Scalar,
+    /// Vector field: one `vec3<f32>` per cell.
+    /// Used for: velocity, forces, flow direction, gradients.
+    Vector,
+}
+
+impl FieldType {
+    /// Number of f32 components per cell.
+    pub fn components(&self) -> u32 {
+        match self {
+            FieldType::Scalar => 1,
+            FieldType::Vector => 3,
+        }
+    }
+
+    /// Whether this is a vector field.
+    pub fn is_vector(&self) -> bool {
+        matches!(self, FieldType::Vector)
+    }
+}
+
 /// Configuration for a 3D spatial field.
 ///
 /// Fields are 3D grids that particles can read from and write to.
@@ -73,6 +105,9 @@ pub struct FieldConfig {
     /// Number of blur iterations per frame.
     /// More iterations = smoother but more expensive.
     pub blur_iterations: u32,
+
+    /// Type of field (Scalar or Vector).
+    pub field_type: FieldType,
 }
 
 impl FieldConfig {
@@ -104,7 +139,33 @@ impl FieldConfig {
             decay: 0.99,
             blur: 0.1,
             blur_iterations: 1,
+            field_type: FieldType::Scalar,
         }
+    }
+
+    /// Create a vector field configuration.
+    ///
+    /// Vector fields store a `vec3<f32>` per cell instead of a scalar.
+    /// Use for velocity fields, force fields, or flow visualization.
+    ///
+    /// # Memory Usage (3x scalar fields)
+    ///
+    /// - 32³ = 384KB
+    /// - 64³ = 3MB
+    /// - 128³ = 24MB
+    pub fn new_vector(resolution: u32) -> Self {
+        Self {
+            field_type: FieldType::Vector,
+            ..Self::new(resolution)
+        }
+    }
+
+    /// Convert this field to a vector field.
+    ///
+    /// Vector fields store `vec3<f32>` per cell for velocity/force data.
+    pub fn vector(mut self) -> Self {
+        self.field_type = FieldType::Vector;
+        self
     }
 
     /// Set the world-space extent of the field.
@@ -158,7 +219,12 @@ impl FieldConfig {
 
     /// Memory size in bytes (for the main field buffer).
     pub fn memory_size(&self) -> usize {
-        self.total_cells() as usize * 4 // f32 per cell
+        self.total_cells() as usize * 4 * self.field_type.components() as usize
+    }
+
+    /// Whether this is a vector field.
+    pub fn is_vector(&self) -> bool {
+        self.field_type.is_vector()
     }
 }
 
@@ -212,15 +278,22 @@ impl FieldRegistry {
         }
 
         let mut code = String::new();
-        let field_count = self.fields.len();
 
         // Generate buffer bindings for each field
-        // We use two buffers per field: write (atomic) and read (f32)
+        // Scalar fields: 2 bindings (write atomic, read f32)
+        // Vector fields: 2 bindings (write atomic x3 interleaved, read f32 x3 interleaved)
         let mut binding = base_binding;
         for (i, (name, config)) in self.fields.iter().enumerate() {
+            let type_str = if config.is_vector() { "vector" } else { "scalar" };
+            let buffer_size = if config.is_vector() {
+                config.total_cells() * 3
+            } else {
+                config.total_cells()
+            };
+
             code.push_str(&format!(
-                "// Field {}: '{}' ({}³ = {} cells)\n",
-                i, name, config.resolution, config.total_cells()
+                "// Field {}: '{}' ({}, {}³ = {} cells, {} buffer elements)\n",
+                i, name, type_str, config.resolution, config.total_cells(), buffer_size
             ));
 
             // Write buffer (atomic for particle deposits)
@@ -241,13 +314,14 @@ impl FieldRegistry {
         }
 
         // Generate field parameters struct (must match FieldParamsGpu in field_gpu.rs)
+        // Added field_type: 0 = scalar, 1 = vector
         code.push_str(r#"struct FieldParams {
     resolution: u32,
     total_cells: u32,
     extent: f32,
     decay: f32,
     blur: f32,
-    _pad0: f32,
+    field_type: u32,
     _pad1: f32,
     _pad2: f32,
 };
@@ -260,19 +334,23 @@ impl FieldRegistry {
         ));
 
         // Generate helper functions with dynamic switch cases
-        code.push_str(&self.generate_helper_functions(field_count));
+        code.push_str(&self.generate_helper_functions());
 
         code
     }
 
     /// Generate WGSL helper functions for field access.
-    fn generate_helper_functions(&self, field_count: usize) -> String {
+    fn generate_helper_functions(&self) -> String {
         let mut code = String::new();
 
         // Fixed-point scale constant
         code.push_str(r#"
 // Fixed-point scale for field writes (16.16 format)
 const FIELD_SCALE: f32 = 65536.0;
+
+// Field type constants
+const FIELD_TYPE_SCALAR: u32 = 0u;
+const FIELD_TYPE_VECTOR: u32 = 1u;
 
 // Convert world position to field cell index for a specific field
 fn field_pos_to_idx(field_idx: u32, pos: vec3<f32>) -> u32 {
@@ -291,8 +369,8 @@ fn field_pos_to_idx(field_idx: u32, pos: vec3<f32>) -> u32 {
 
 "#);
 
-        // Generate field_write function with switch cases for all fields
-        code.push_str(r#"// Write a value to the field at the given world position (atomic accumulate)
+        // Generate field_write function for scalar fields
+        code.push_str(r#"// Write a scalar value to a field at the given world position (atomic accumulate)
 fn field_write(field_idx: u32, pos: vec3<f32>, value: f32) {
     let idx = field_pos_to_idx(field_idx, pos);
     let scaled = i32(clamp(value, -32768.0, 32767.0) * FIELD_SCALE);
@@ -300,11 +378,19 @@ fn field_write(field_idx: u32, pos: vec3<f32>, value: f32) {
     switch field_idx {
 "#);
 
-        for i in 0..field_count {
-            code.push_str(&format!(
-                "        case {}u: {{ atomicAdd(&field_{}_write[idx], scaled); }}\n",
-                i, i
-            ));
+        for (i, (_, config)) in self.fields.iter().enumerate() {
+            if !config.is_vector() {
+                code.push_str(&format!(
+                    "        case {}u: {{ atomicAdd(&field_{}_write[idx], scaled); }}\n",
+                    i, i
+                ));
+            } else {
+                // For vector fields, field_write writes to all 3 components equally
+                code.push_str(&format!(
+                    "        case {}u: {{ atomicAdd(&field_{}_write[idx * 3u], scaled); atomicAdd(&field_{}_write[idx * 3u + 1u], scaled); atomicAdd(&field_{}_write[idx * 3u + 2u], scaled); }}\n",
+                    i, i, i, i
+                ));
+            }
         }
 
         code.push_str(r#"        default: {}
@@ -313,10 +399,43 @@ fn field_write(field_idx: u32, pos: vec3<f32>, value: f32) {
 
 "#);
 
-        // Generate field_read function with switch cases for all fields
-        code.push_str(r#"// Read a value from the field at the given world position (trilinear interpolation)
+        // Generate field_write_vec3 function for vector fields
+        code.push_str(r#"// Write a vec3 value to a vector field at the given world position (atomic accumulate)
+fn field_write_vec3(field_idx: u32, pos: vec3<f32>, value: vec3<f32>) {
+    let idx = field_pos_to_idx(field_idx, pos);
+    let scaled_x = i32(clamp(value.x, -32768.0, 32767.0) * FIELD_SCALE);
+    let scaled_y = i32(clamp(value.y, -32768.0, 32767.0) * FIELD_SCALE);
+    let scaled_z = i32(clamp(value.z, -32768.0, 32767.0) * FIELD_SCALE);
+
+    switch field_idx {
+"#);
+
+        for (i, (_, config)) in self.fields.iter().enumerate() {
+            if config.is_vector() {
+                code.push_str(&format!(
+                    "        case {}u: {{ atomicAdd(&field_{}_write[idx * 3u], scaled_x); atomicAdd(&field_{}_write[idx * 3u + 1u], scaled_y); atomicAdd(&field_{}_write[idx * 3u + 2u], scaled_z); }}\n",
+                    i, i, i, i
+                ));
+            }
+        }
+
+        code.push_str(r#"        default: {}
+    }
+}
+
+"#);
+
+        // Generate field_read function for scalar fields (returns magnitude for vector fields)
+        code.push_str(r#"// Read a scalar value from the field (trilinear interpolation)
+// For vector fields, returns the magnitude of the vector
 fn field_read(field_idx: u32, pos: vec3<f32>) -> f32 {
     let params = field_params[field_idx];
+
+    // If this is a vector field, return magnitude of vec3
+    if params.field_type == FIELD_TYPE_VECTOR {
+        return length(field_read_vec3(field_idx, pos));
+    }
+
     let resolution = params.resolution;
     let extent = params.extent;
 
@@ -346,17 +465,19 @@ fn field_read(field_idx: u32, pos: vec3<f32>) -> f32 {
     switch field_idx {
 "#);
 
-        for i in 0..field_count {
-            code.push_str(&format!(
-                r#"        case {}u: {{
+        for (i, (_, config)) in self.fields.iter().enumerate() {
+            if !config.is_vector() {
+                code.push_str(&format!(
+                    r#"        case {}u: {{
             v000 = field_{}_read[c000]; v100 = field_{}_read[c100];
             v010 = field_{}_read[c010]; v110 = field_{}_read[c110];
             v001 = field_{}_read[c001]; v101 = field_{}_read[c101];
             v011 = field_{}_read[c011]; v111 = field_{}_read[c111];
         }}
 "#,
-                i, i, i, i, i, i, i, i, i
-            ));
+                    i, i, i, i, i, i, i, i, i
+                ));
+            }
         }
 
         code.push_str(r#"        default: {
@@ -377,8 +498,80 @@ fn field_read(field_idx: u32, pos: vec3<f32>) -> f32 {
 
 "#);
 
+        // Generate field_read_vec3 function for vector fields
+        code.push_str(r#"// Read a vec3 value from a vector field (trilinear interpolation)
+fn field_read_vec3(field_idx: u32, pos: vec3<f32>) -> vec3<f32> {
+    let params = field_params[field_idx];
+    let resolution = params.resolution;
+    let extent = params.extent;
+
+    // Map to float cell coordinates
+    let half_size = extent;
+    let normalized = (pos + vec3<f32>(half_size)) / (2.0 * half_size);
+    let float_cell = clamp(normalized, vec3<f32>(0.0), vec3<f32>(0.999)) * f32(resolution);
+
+    // Get integer cell and fraction
+    let cell = vec3<u32>(floor(float_cell));
+    let frac = fract(float_cell);
+
+    // Sample 8 corners for trilinear interpolation
+    let res = resolution;
+    let c000 = cell.x + cell.y * res + cell.z * res * res;
+    let c100 = min(cell.x + 1u, res - 1u) + cell.y * res + cell.z * res * res;
+    let c010 = cell.x + min(cell.y + 1u, res - 1u) * res + cell.z * res * res;
+    let c110 = min(cell.x + 1u, res - 1u) + min(cell.y + 1u, res - 1u) * res + cell.z * res * res;
+    let c001 = cell.x + cell.y * res + min(cell.z + 1u, res - 1u) * res * res;
+    let c101 = min(cell.x + 1u, res - 1u) + cell.y * res + min(cell.z + 1u, res - 1u) * res * res;
+    let c011 = cell.x + min(cell.y + 1u, res - 1u) * res + min(cell.z + 1u, res - 1u) * res * res;
+    let c111 = min(cell.x + 1u, res - 1u) + min(cell.y + 1u, res - 1u) * res + min(cell.z + 1u, res - 1u) * res * res;
+
+    var v000: vec3<f32>; var v100: vec3<f32>; var v010: vec3<f32>; var v110: vec3<f32>;
+    var v001: vec3<f32>; var v101: vec3<f32>; var v011: vec3<f32>; var v111: vec3<f32>;
+
+    switch field_idx {
+"#);
+
+        for (i, (_, config)) in self.fields.iter().enumerate() {
+            if config.is_vector() {
+                // For vector fields, read 3 consecutive floats per cell
+                code.push_str(&format!(
+                    r#"        case {}u: {{
+            v000 = vec3<f32>(field_{}_read[c000 * 3u], field_{}_read[c000 * 3u + 1u], field_{}_read[c000 * 3u + 2u]);
+            v100 = vec3<f32>(field_{}_read[c100 * 3u], field_{}_read[c100 * 3u + 1u], field_{}_read[c100 * 3u + 2u]);
+            v010 = vec3<f32>(field_{}_read[c010 * 3u], field_{}_read[c010 * 3u + 1u], field_{}_read[c010 * 3u + 2u]);
+            v110 = vec3<f32>(field_{}_read[c110 * 3u], field_{}_read[c110 * 3u + 1u], field_{}_read[c110 * 3u + 2u]);
+            v001 = vec3<f32>(field_{}_read[c001 * 3u], field_{}_read[c001 * 3u + 1u], field_{}_read[c001 * 3u + 2u]);
+            v101 = vec3<f32>(field_{}_read[c101 * 3u], field_{}_read[c101 * 3u + 1u], field_{}_read[c101 * 3u + 2u]);
+            v011 = vec3<f32>(field_{}_read[c011 * 3u], field_{}_read[c011 * 3u + 1u], field_{}_read[c011 * 3u + 2u]);
+            v111 = vec3<f32>(field_{}_read[c111 * 3u], field_{}_read[c111 * 3u + 1u], field_{}_read[c111 * 3u + 2u]);
+        }}
+"#,
+                    i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i, i
+                ));
+            }
+        }
+
+        code.push_str(r#"        default: {
+            v000 = vec3<f32>(0.0); v100 = vec3<f32>(0.0); v010 = vec3<f32>(0.0); v110 = vec3<f32>(0.0);
+            v001 = vec3<f32>(0.0); v101 = vec3<f32>(0.0); v011 = vec3<f32>(0.0); v111 = vec3<f32>(0.0);
+        }
+    }
+
+    // Trilinear interpolation
+    let v00 = mix(v000, v100, frac.x);
+    let v10 = mix(v010, v110, frac.x);
+    let v01 = mix(v001, v101, frac.x);
+    let v11 = mix(v011, v111, frac.x);
+    let v0 = mix(v00, v10, frac.y);
+    let v1 = mix(v01, v11, frac.y);
+    return mix(v0, v1, frac.z);
+}
+
+"#);
+
         // field_gradient function (uses field_read, so no changes needed)
         code.push_str(r#"// Sample field gradient (for steering toward higher values)
+// Works for both scalar and vector fields (uses magnitude for vector fields)
 fn field_gradient(field_idx: u32, pos: vec3<f32>, epsilon: f32) -> vec3<f32> {
     let dx = field_read(field_idx, pos + vec3<f32>(epsilon, 0.0, 0.0))
            - field_read(field_idx, pos - vec3<f32>(epsilon, 0.0, 0.0));

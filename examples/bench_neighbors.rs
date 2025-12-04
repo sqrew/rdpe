@@ -68,7 +68,7 @@ fn main() {
         })
         .with_rule(Rule::Collide {
             radius: 0.02,
-            response: 0.5,
+            restitution: 0.8,
         })
         // Color based on local density (more neighbors = warmer)
         .with_rule(Rule::Custom(r#"
