@@ -1150,6 +1150,99 @@ pub enum Rule {
         response: String,
     },
 
+    /// Oscillator synchronization via field coupling (Kuramoto model).
+    ///
+    /// Each particle has an internal phase that advances over time. When the
+    /// phase exceeds 2π, the particle "fires" (emits to field, runs callback,
+    /// resets phase). Particles detect nearby firing through the field and
+    /// adjust their phase to synchronize.
+    ///
+    /// This implements the Kuramoto model for coupled oscillators, which
+    /// describes synchronization in fireflies, neurons, pacemaker cells,
+    /// applause, and many other natural phenomena.
+    ///
+    /// # Fields
+    ///
+    /// - `phase_field` - Name of the particle field storing phase (must be `f32`)
+    /// - `frequency` - Base oscillation frequency in Hz (cycles per second)
+    /// - `field` - Field index to emit to and read from
+    /// - `emit_amount` - How much to deposit to field when firing
+    /// - `coupling` - How strongly to adjust phase when detecting neighbors (0.0-1.0)
+    /// - `detection_threshold` - Minimum field value to trigger coupling
+    /// - `on_fire` - Optional WGSL code to run when the oscillator fires
+    ///
+    /// # Available Variables in `on_fire`
+    ///
+    /// - `p` - Current particle (read/write)
+    /// - `uniforms.time`, `uniforms.delta_time` - Time values
+    ///
+    /// # Example: Firefly synchronization
+    ///
+    /// ```ignore
+    /// #[derive(Particle)]
+    /// struct Firefly {
+    ///     position: Vec3,
+    ///     velocity: Vec3,
+    ///     phase: f32,      // Oscillator phase
+    ///     brightness: f32, // For visual flash
+    /// }
+    ///
+    /// .with_field("light", FieldConfig::new(48).with_decay(0.85))
+    /// .with_rule(Rule::Sync {
+    ///     phase_field: "phase".into(),
+    ///     frequency: 1.0,
+    ///     field: 0,
+    ///     emit_amount: 0.5,
+    ///     coupling: 0.3,
+    ///     detection_threshold: 0.1,
+    ///     on_fire: Some(r#"
+    ///         p.brightness = 1.0;
+    ///         p.color = vec3<f32>(1.0, 1.0, 0.5);
+    ///     "#.into()),
+    /// })
+    /// ```
+    ///
+    /// # Example: Neuron firing
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::Sync {
+    ///     phase_field: "membrane_potential".into(),
+    ///     frequency: 2.0,  // 2 Hz base firing rate
+    ///     field: 0,
+    ///     emit_amount: 0.8,
+    ///     coupling: 0.5,
+    ///     detection_threshold: 0.2,
+    ///     on_fire: Some(r#"
+    ///         // Action potential!
+    ///         p.color = vec3<f32>(1.0, 0.3, 0.1);
+    ///         // Could trigger downstream effects here
+    ///     "#.into()),
+    /// })
+    /// ```
+    ///
+    /// # The Math
+    ///
+    /// Phase advances: `dφ/dt = ω + K * sin(φ/2) * field_value`
+    ///
+    /// Where `ω` is frequency and `K` is coupling. The `sin(φ/2)` term means
+    /// particles respond most strongly when halfway through their cycle.
+    Sync {
+        /// Name of the particle field storing phase (f32, 0 to 2π).
+        phase_field: String,
+        /// Base oscillation frequency in Hz.
+        frequency: f32,
+        /// Field index to use for communication.
+        field: u32,
+        /// Amount to deposit to field when firing.
+        emit_amount: f32,
+        /// Coupling strength for phase adjustment (0.0-1.0 typical).
+        coupling: f32,
+        /// Minimum field value to trigger phase adjustment.
+        detection_threshold: f32,
+        /// Optional WGSL code to execute when the oscillator fires.
+        on_fire: Option<String>,
+    },
+
     /// Spring forces between bonded particles.
     ///
     /// Applies spring physics to particles connected by stored bond indices.
@@ -1848,6 +1941,1334 @@ pub enum Rule {
         /// Speed for full max_scale.
         max_speed: f32,
     },
+
+    /// Probabilistic execution of custom WGSL code.
+    ///
+    /// Runs the provided action with a given probability each frame.
+    /// Useful for random events like spontaneous death, mutation, color changes,
+    /// or any stochastic behavior.
+    ///
+    /// # Fields
+    ///
+    /// - `probability` - Chance per frame (0.0 to 1.0). Note: higher framerates
+    ///   mean more rolls, so 0.01 at 60fps ≈ 0.6 triggers/second.
+    /// - `action` - WGSL code to execute when the roll succeeds.
+    ///
+    /// # Available Variables
+    ///
+    /// Same as [`Rule::Custom`]:
+    /// - `p` - Current particle (read/write)
+    /// - `index` - Particle index (`u32`)
+    /// - `uniforms.time`, `uniforms.delta_time` - Time values
+    /// - Field functions if fields are configured
+    ///
+    /// # Example: Random death
+    ///
+    /// ```ignore
+    /// Rule::Maybe {
+    ///     probability: 0.001,  // 0.1% chance per frame
+    ///     action: r#"
+    ///         p.alive = false;
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Random color flash
+    ///
+    /// ```ignore
+    /// Rule::Maybe {
+    ///     probability: 0.02,
+    ///     action: r#"
+    ///         p.color = vec3<f32>(1.0, 0.0, 0.0);  // Flash red
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Spontaneous direction change
+    ///
+    /// ```ignore
+    /// Rule::Maybe {
+    ///     probability: 0.005,
+    ///     action: r#"
+    ///         // Random new direction (using position as seed)
+    ///         let seed = p.position * 12.9898 + uniforms.time;
+    ///         let rx = fract(sin(dot(seed.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    ///         let ry = fract(sin(dot(seed.yz, vec2(12.9898, 78.233))) * 43758.5453);
+    ///         let rz = fract(sin(dot(seed.xz, vec2(12.9898, 78.233))) * 43758.5453);
+    ///         p.velocity = normalize(vec3(rx, ry, rz) - 0.5) * length(p.velocity);
+    ///     "#.into(),
+    /// }
+    /// ```
+    Maybe {
+        /// Probability of executing action (0.0 to 1.0).
+        probability: f32,
+        /// WGSL code to execute when probability check passes.
+        action: String,
+    },
+
+    /// Conditional action execution.
+    ///
+    /// Evaluates a WGSL boolean condition and executes action if true.
+    /// The fundamental "when X, do Y" pattern for reactive particle behavior.
+    ///
+    /// # Fields
+    ///
+    /// - `condition` - WGSL boolean expression (must evaluate to `bool`)
+    /// - `action` - WGSL code to execute when condition is true
+    ///
+    /// # Available Variables
+    ///
+    /// Same as [`Rule::Custom`]:
+    /// - `p` - Current particle (read/write)
+    /// - `index` - Particle index (`u32`)
+    /// - `uniforms.time`, `uniforms.delta_time` - Time values
+    /// - Field functions if fields are configured
+    ///
+    /// # Example: Low energy warning
+    ///
+    /// ```ignore
+    /// Rule::Trigger {
+    ///     condition: "p.energy < 0.2".into(),
+    ///     action: r#"
+    ///         p.color = vec3<f32>(1.0, 0.0, 0.0);  // Flash red
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Boundary reaction
+    ///
+    /// ```ignore
+    /// Rule::Trigger {
+    ///     condition: "p.position.y < -0.8".into(),
+    ///     action: r#"
+    ///         p.velocity.y = abs(p.velocity.y) * 1.5;  // Bounce up hard
+    ///         p.color = vec3<f32>(1.0, 1.0, 1.0);
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Field-reactive behavior
+    ///
+    /// ```ignore
+    /// Rule::Trigger {
+    ///     condition: "field_read(0u, p.position) > 0.5".into(),
+    ///     action: r#"
+    ///         p.velocity *= 2.0;  // Speed up in high-field regions
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Compound conditions
+    ///
+    /// ```ignore
+    /// Rule::Trigger {
+    ///     condition: "p.age > 2.0 && p.energy < 0.3".into(),
+    ///     action: r#"
+    ///         p.state = 2u;  // Transition to dying state
+    ///     "#.into(),
+    /// }
+    /// ```
+    Trigger {
+        /// WGSL boolean expression (e.g., "p.energy < 0.1").
+        condition: String,
+        /// WGSL code to execute when condition is true.
+        action: String,
+    },
+
+    /// Periodic time-based action execution.
+    ///
+    /// Executes action at regular intervals. Each particle fires independently
+    /// based on global time, with optional per-particle phase offset for
+    /// staggered timing.
+    ///
+    /// # Fields
+    ///
+    /// - `interval` - Time between executions in seconds
+    /// - `phase_field` - Optional particle field name for phase offset (creates staggered pulses)
+    /// - `action` - WGSL code to execute on each pulse
+    ///
+    /// # Available Variables
+    ///
+    /// Same as [`Rule::Custom`]:
+    /// - `p` - Current particle (read/write)
+    /// - `index` - Particle index (`u32`)
+    /// - `uniforms.time`, `uniforms.delta_time` - Time values
+    ///
+    /// # Example: Heartbeat emission
+    ///
+    /// ```ignore
+    /// Rule::Periodic {
+    ///     interval: 0.5,  // Every 0.5 seconds
+    ///     phase_field: None,
+    ///     action: r#"
+    ///         field_write(0u, p.position, 1.0);
+    ///         p.color = vec3<f32>(1.0, 0.5, 0.5);
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Staggered pulses using phase field
+    ///
+    /// ```ignore
+    /// // Particles pulse at same interval but offset by their phase
+    /// Rule::Periodic {
+    ///     interval: 1.0,
+    ///     phase_field: Some("phase".into()),  // Uses p.phase for offset
+    ///     action: r#"
+    ///         p.brightness = 1.0;
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Periodic spawning trigger
+    ///
+    /// ```ignore
+    /// Rule::Periodic {
+    ///     interval: 2.0,
+    ///     phase_field: None,
+    ///     action: r#"
+    ///         p.should_spawn = 1u;  // Flag for spawn system
+    ///     "#.into(),
+    /// }
+    /// ```
+    Periodic {
+        /// Time between pulses in seconds.
+        interval: f32,
+        /// Optional particle field for phase offset (staggered timing).
+        phase_field: Option<String>,
+        /// WGSL code to execute on each pulse.
+        action: String,
+    },
+
+    /// Move toward higher or lower field values (chemotaxis/gradient following).
+    ///
+    /// Samples the field gradient at each particle's position and applies
+    /// force in that direction. Classic for slime mold, bacteria following
+    /// nutrients, heat-seeking, or any gradient-based navigation.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Field index to sample
+    /// - `strength` - Force magnitude
+    /// - `ascending` - If true, move toward higher values; if false, toward lower
+    ///
+    /// # How It Works
+    ///
+    /// Samples field at particle position ± small offset to estimate gradient,
+    /// then applies force along that gradient direction.
+    ///
+    /// # Example: Slime mold following pheromones
+    ///
+    /// ```ignore
+    /// // Particles emit pheromones and follow the gradient
+    /// .with_field("pheromone", FieldConfig::new(64).with_decay(0.98))
+    /// .with_rule(Rule::Custom(r#"
+    ///     field_write(0u, p.position, 0.1);  // Emit pheromone
+    /// "#.into()))
+    /// .with_rule(Rule::Gradient {
+    ///     field: 0,
+    ///     strength: 2.0,
+    ///     ascending: true,  // Move toward higher pheromone
+    /// })
+    /// ```
+    ///
+    /// # Example: Heat-seeking particles
+    ///
+    /// ```ignore
+    /// Rule::Gradient {
+    ///     field: 0,  // Heat field
+    ///     strength: 5.0,
+    ///     ascending: true,  // Move toward heat
+    /// }
+    /// ```
+    ///
+    /// # Example: Flee from danger
+    ///
+    /// ```ignore
+    /// Rule::Gradient {
+    ///     field: 1,  // Danger field
+    ///     strength: 3.0,
+    ///     ascending: false,  // Move away from danger (descending)
+    /// }
+    /// ```
+    Gradient {
+        /// Field index to sample for gradient.
+        field: u32,
+        /// Force strength.
+        strength: f32,
+        /// If true, move toward higher values; if false, toward lower.
+        ascending: bool,
+    },
+
+    /// Smoothly interpolate a particle field toward a target value.
+    ///
+    /// Exponential decay toward the target: `field = lerp(field, target, rate * dt)`.
+    /// Useful for equilibration, smooth transitions, relaxation dynamics.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Particle field name to interpolate (must be `f32`)
+    /// - `target` - Target value to approach
+    /// - `rate` - Interpolation speed (higher = faster approach)
+    ///
+    /// # Example: Temperature equilibration
+    ///
+    /// ```ignore
+    /// // Temperature relaxes toward ambient (0.5) over time
+    /// Rule::Lerp {
+    ///     field: "temperature".into(),
+    ///     target: 0.5,
+    ///     rate: 2.0,
+    /// }
+    /// ```
+    ///
+    /// # Example: Energy decay
+    ///
+    /// ```ignore
+    /// Rule::Lerp {
+    ///     field: "energy".into(),
+    ///     target: 0.0,
+    ///     rate: 0.5,  // Slow decay
+    /// }
+    /// ```
+    ///
+    /// # Example: Brightness fade
+    ///
+    /// ```ignore
+    /// Rule::Lerp {
+    ///     field: "brightness".into(),
+    ///     target: 0.1,  // Dim but not off
+    ///     rate: 3.0,
+    /// }
+    /// ```
+    Lerp {
+        /// Particle field name to interpolate (f32).
+        field: String,
+        /// Target value to approach.
+        target: f32,
+        /// Interpolation rate (speed of approach).
+        rate: f32,
+    },
+
+    /// Classic boid flocking behavior (separation + cohesion + alignment).
+    ///
+    /// **Requires spatial hashing.** Combines the three fundamental boid rules
+    /// into one convenient rule. For fine-grained control, use the individual
+    /// [`Rule::Separate`], [`Rule::Cohere`], and [`Rule::Align`] rules.
+    ///
+    /// # Fields
+    ///
+    /// - `radius` - Detection distance for all three behaviors
+    /// - `separation` - Strength of avoidance (prevent crowding)
+    /// - `cohesion` - Strength of attraction to flock center
+    /// - `alignment` - Strength of velocity matching
+    ///
+    /// # Example: Basic boid flock
+    ///
+    /// ```ignore
+    /// .with_spatial_config(0.2, 32)
+    /// .with_rule(Rule::Flock {
+    ///     radius: 0.15,
+    ///     separation: 2.0,
+    ///     cohesion: 1.0,
+    ///     alignment: 1.5,
+    /// })
+    /// .with_rule(Rule::SpeedLimit { min: 0.5, max: 2.0 })
+    /// ```
+    ///
+    /// # Tuning Tips
+    ///
+    /// - Higher separation → more spread out, less clumping
+    /// - Higher cohesion → tighter groups, may become too dense
+    /// - Higher alignment → smoother motion, more synchronized turns
+    /// - Balance is key: start with separation=2, cohesion=1, alignment=1.5
+    Flock {
+        /// Detection radius for all behaviors.
+        radius: f32,
+        /// Separation strength (avoid crowding).
+        separation: f32,
+        /// Cohesion strength (move toward center).
+        cohesion: f32,
+        /// Alignment strength (match velocity).
+        alignment: f32,
+    },
+
+    /// Conditional particle death.
+    ///
+    /// Evaluates a WGSL condition and "kills" the particle if true by setting
+    /// a specified boolean field to false. Useful for lifecycle management,
+    /// particles leaving bounds, energy depletion, etc.
+    ///
+    /// # Fields
+    ///
+    /// - `condition` - WGSL boolean expression for when to die
+    /// - `field` - Particle field name to set false (typically "alive")
+    ///
+    /// # Example: Die when out of energy
+    ///
+    /// ```ignore
+    /// #[derive(Particle)]
+    /// struct Cell {
+    ///     // ...
+    ///     alive: bool,
+    ///     energy: f32,
+    /// }
+    ///
+    /// Rule::Die {
+    ///     condition: "p.energy <= 0.0".into(),
+    ///     field: "alive".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Die when old
+    ///
+    /// ```ignore
+    /// Rule::Die {
+    ///     condition: "p.age > 10.0".into(),
+    ///     field: "alive".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Die when leaving bounds
+    ///
+    /// ```ignore
+    /// Rule::Die {
+    ///     condition: "length(p.position) > 2.0".into(),
+    ///     field: "alive".into(),
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// The particle isn't removed from simulation (that would require CPU
+    /// intervention). Instead, "dead" particles can be:
+    /// - Rendered invisible (check alive in color logic)
+    /// - Recycled (respawn at new position when alive == false)
+    /// - Ignored in interactions (check alive in neighbor rules)
+    Die {
+        /// WGSL boolean condition for death.
+        condition: String,
+        /// Particle field to set false (e.g., "alive").
+        field: String,
+    },
+
+    /// Finite state machine with conditional transitions.
+    ///
+    /// Particles have a state (stored in a `u32` field) and transition between
+    /// states based on WGSL conditions. Useful for lifecycle stages, behavior
+    /// modes, or any discrete state-based logic.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Particle field storing state (must be `u32`)
+    /// - `transitions` - List of (from_state, to_state, condition) tuples
+    ///
+    /// # Example: Simple lifecycle
+    ///
+    /// ```ignore
+    /// #[derive(Particle)]
+    /// struct Cell {
+    ///     // ...
+    ///     state: u32,  // 0=young, 1=mature, 2=old, 3=dead
+    ///     age: f32,
+    /// }
+    ///
+    /// Rule::State {
+    ///     field: "state".into(),
+    ///     transitions: vec![
+    ///         (0, 1, "p.age > 2.0".into()),   // young → mature
+    ///         (1, 2, "p.age > 5.0".into()),   // mature → old
+    ///         (2, 3, "p.age > 8.0".into()),   // old → dead
+    ///     ],
+    /// }
+    /// ```
+    ///
+    /// # Example: Behavior modes
+    ///
+    /// ```ignore
+    /// // States: 0=idle, 1=hunting, 2=fleeing
+    /// Rule::State {
+    ///     field: "behavior".into(),
+    ///     transitions: vec![
+    ///         (0, 1, "p.hunger > 0.7".into()),           // idle → hunting
+    ///         (0, 2, "p.threat_level > 0.5".into()),     // idle → fleeing
+    ///         (1, 0, "p.hunger < 0.3".into()),           // hunting → idle
+    ///         (2, 0, "p.threat_level < 0.2".into()),     // fleeing → idle
+    ///     ],
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// - Transitions are evaluated in order; first matching transition wins
+    /// - Use separate [`Rule::Trigger`] rules to execute actions on state entry
+    /// - Combine with [`Rule::Custom`] to implement state-dependent behavior
+    State {
+        /// Particle field storing state (u32).
+        field: String,
+        /// Transitions: (from_state, to_state, condition).
+        transitions: Vec<(u32, u32, String)>,
+    },
+
+    /// Grow or shrink particle scale over time.
+    ///
+    /// Changes `p.scale` at a constant rate, clamped to min/max bounds.
+    /// Positive rate = grow, negative rate = shrink.
+    ///
+    /// # Fields
+    ///
+    /// - `rate` - Scale change per second (can be negative)
+    /// - `min` - Minimum scale (won't shrink below this)
+    /// - `max` - Maximum scale (won't grow above this)
+    ///
+    /// # Example: Growing particles
+    ///
+    /// ```ignore
+    /// Rule::Grow { rate: 0.5, min: 0.1, max: 2.0 }
+    /// ```
+    ///
+    /// # Example: Shrinking particles
+    ///
+    /// ```ignore
+    /// Rule::Grow { rate: -0.3, min: 0.0, max: 1.0 }
+    /// ```
+    ///
+    /// # Example: Grow then die when too big
+    ///
+    /// ```ignore
+    /// Rule::Grow { rate: 0.2, min: 0.1, max: 3.0 },
+    /// Rule::Die { condition: "p.scale >= 3.0".into(), field: "alive".into() },
+    /// ```
+    Grow {
+        /// Scale change per second (positive = grow, negative = shrink).
+        rate: f32,
+        /// Minimum scale bound.
+        min: f32,
+        /// Maximum scale bound.
+        max: f32,
+    },
+
+    /// Multiplicative decay of a field toward zero.
+    ///
+    /// Each frame: `field *= rate`. Different from [`Rule::Lerp`] which does
+    /// additive interpolation. Decay is good for exponential falloff (energy,
+    /// heat, intensity).
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Particle field to decay (f32)
+    /// - `rate` - Multiplier per second (0.0-1.0 for decay, >1.0 for growth)
+    ///
+    /// # Example: Energy decay
+    ///
+    /// ```ignore
+    /// // Energy halves roughly every second
+    /// Rule::Decay { field: "energy".into(), rate: 0.5 }
+    /// ```
+    ///
+    /// # Example: Slow fade
+    ///
+    /// ```ignore
+    /// Rule::Decay { field: "brightness".into(), rate: 0.9 }
+    /// ```
+    ///
+    /// # Math Note
+    ///
+    /// The actual per-frame multiplier is `rate^delta_time` to be framerate
+    /// independent. A rate of 0.5 means "multiply by 0.5 per second".
+    Decay {
+        /// Field to decay (f32).
+        field: String,
+        /// Decay rate per second (0.5 = halve per second).
+        rate: f32,
+    },
+
+    /// Buoyancy force based on per-particle density.
+    ///
+    /// Applies vertical force based on particle density vs medium density.
+    /// Light particles (density < medium) float up, heavy particles sink.
+    /// Classic for fluid simulations with varying densities.
+    ///
+    /// Unlike `Rule::Buoyancy` which uses a fixed buoyancy factor, this reads
+    /// density from a particle field, enabling per-particle buoyancy effects.
+    ///
+    /// # Fields
+    ///
+    /// - `density_field` - Particle field storing density (f32)
+    /// - `medium_density` - Density of the surrounding medium
+    /// - `strength` - Force multiplier
+    ///
+    /// # Example: Oil and water
+    ///
+    /// ```ignore
+    /// // Oil (density 0.8) floats, rocks (density 2.5) sink
+    /// Rule::DensityBuoyancy {
+    ///     density_field: "density".into(),
+    ///     medium_density: 1.0,  // Water
+    ///     strength: 5.0,
+    /// }
+    /// ```
+    ///
+    /// # Physics Note
+    ///
+    /// Force = (medium_density - particle_density) * strength * up
+    /// Positive when lighter than medium (floats), negative when heavier (sinks).
+    DensityBuoyancy {
+        /// Particle field storing density (f32).
+        density_field: String,
+        /// Density of surrounding medium.
+        medium_density: f32,
+        /// Force strength multiplier.
+        strength: f32,
+    },
+
+    /// Property diffusion through neighbor averaging.
+    ///
+    /// **Requires spatial hashing.** A particle's property value moves toward
+    /// the average of its neighbors. Classic for heat diffusion, chemical
+    /// concentration spreading, or any equilibrating property.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Particle field to diffuse (f32)
+    /// - `rate` - Diffusion speed (0.0-1.0, higher = faster equilibration)
+    /// - `radius` - Neighbor detection distance
+    ///
+    /// # Example: Heat diffusion
+    ///
+    /// ```ignore
+    /// Rule::Diffuse {
+    ///     field: "temperature".into(),
+    ///     rate: 0.3,
+    ///     radius: 0.15,
+    /// }
+    /// ```
+    ///
+    /// # Example: Chemical spreading
+    ///
+    /// ```ignore
+    /// Rule::Diffuse {
+    ///     field: "concentration".into(),
+    ///     rate: 0.1,
+    ///     radius: 0.1,
+    /// }
+    /// ```
+    Diffuse {
+        /// Particle field to diffuse (f32).
+        field: String,
+        /// Diffusion rate (0.0-1.0).
+        rate: f32,
+        /// Neighbor detection radius.
+        radius: f32,
+    },
+
+    /// Scale accelerations by inverse mass (F=ma → a=F/m).
+    ///
+    /// Makes heavy particles sluggish and light particles responsive.
+    /// Apply this rule AFTER force-applying rules to scale their effect
+    /// by particle mass.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Particle field storing mass (f32, should be > 0)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Apply forces first
+    /// Rule::Gravity(9.8),
+    /// Rule::Attract { point: Vec3::ZERO, strength: 2.0 },
+    /// // Then scale by mass
+    /// Rule::Mass { field: "mass".into() },
+    /// ```
+    ///
+    /// # Implementation Note
+    ///
+    /// This divides velocity changes by mass. For proper physics, place it
+    /// after all force rules but before position integration (which RDPE
+    /// does automatically).
+    Mass {
+        /// Particle field storing mass (f32).
+        field: String,
+    },
+
+    /// Animate a property from start to end over a duration.
+    ///
+    /// Smoothly interpolates a field based on elapsed time from a timer field.
+    /// Great for spawn animations, death fades, or any time-based transitions.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Property to animate (f32)
+    /// - `from` - Starting value
+    /// - `to` - Ending value
+    /// - `duration` - Animation duration in seconds
+    /// - `timer_field` - Particle field tracking elapsed time (use with Rule::Age)
+    ///
+    /// # Example: Spawn scale-in
+    ///
+    /// ```ignore
+    /// Rule::Age { field: "age".into() },
+    /// Rule::Tween {
+    ///     field: "scale".into(),
+    ///     from: 0.0,
+    ///     to: 1.0,
+    ///     duration: 0.5,
+    ///     timer_field: "age".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Fade out before death
+    ///
+    /// ```ignore
+    /// // Assumes death_timer starts counting when dying
+    /// Rule::Tween {
+    ///     field: "alpha".into(),
+    ///     from: 1.0,
+    ///     to: 0.0,
+    ///     duration: 1.0,
+    ///     timer_field: "death_timer".into(),
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Animation clamps at `to` value when timer exceeds duration.
+    Tween {
+        /// Property to animate (f32).
+        field: String,
+        /// Starting value.
+        from: f32,
+        /// Ending value.
+        to: f32,
+        /// Animation duration in seconds.
+        duration: f32,
+        /// Timer field tracking elapsed time.
+        timer_field: String,
+    },
+
+    /// Binary step function (Schmitt trigger without hysteresis).
+    ///
+    /// Outputs one value when input is above threshold, another when below.
+    /// Classic for state transitions, on/off switches, or discretizing
+    /// continuous values.
+    ///
+    /// # Fields
+    ///
+    /// - `input_field` - Field to test against threshold
+    /// - `output_field` - Field to write result to
+    /// - `threshold` - The threshold value
+    /// - `above` - Value to output when input >= threshold
+    /// - `below` - Value to output when input < threshold
+    ///
+    /// # Example: Binary alive/dead state
+    ///
+    /// ```ignore
+    /// Rule::Threshold {
+    ///     input_field: "health".into(),
+    ///     output_field: "alive".into(),
+    ///     threshold: 0.0,
+    ///     above: 1.0,
+    ///     below: 0.0,
+    /// }
+    /// ```
+    ///
+    /// # Example: Hot/cold indicator
+    ///
+    /// ```ignore
+    /// Rule::Threshold {
+    ///     input_field: "temperature".into(),
+    ///     output_field: "is_hot".into(),
+    ///     threshold: 100.0,
+    ///     above: 1.0,
+    ///     below: 0.0,
+    /// }
+    /// ```
+    Threshold {
+        /// Field to test.
+        input_field: String,
+        /// Field to write result to.
+        output_field: String,
+        /// Threshold value.
+        threshold: f32,
+        /// Output when input >= threshold.
+        above: f32,
+        /// Output when input < threshold.
+        below: f32,
+    },
+
+    /// Conditional action gate.
+    ///
+    /// Executes WGSL code only when a condition is true. Like `Rule::Trigger`
+    /// but without the "only once" semantic - runs every frame the condition
+    /// is met.
+    ///
+    /// # Fields
+    ///
+    /// - `condition` - WGSL boolean expression
+    /// - `action` - WGSL code to execute when condition is true
+    ///
+    /// # Example: Boost speed when energy is high
+    ///
+    /// ```ignore
+    /// Rule::Gate {
+    ///     condition: "p.energy > 0.8".into(),
+    ///     action: "p.velocity *= 1.5;".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Glow when nearby other particles
+    ///
+    /// ```ignore
+    /// Rule::Gate {
+    ///     condition: "p.neighbor_count > 5.0".into(),
+    ///     action: "p.brightness = 1.0;".into(),
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// For one-shot triggers (fire once then stop), use [`Rule::Trigger`].
+    Gate {
+        /// WGSL boolean condition.
+        condition: String,
+        /// WGSL code to run when true.
+        action: String,
+    },
+
+    /// Add procedural noise to a field.
+    ///
+    /// Applies smooth Perlin-style noise to a particle field based on
+    /// position and/or time. Great for organic movement, flickering,
+    /// or natural variation.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Field to add noise to
+    /// - `amplitude` - Noise strength (how much it varies)
+    /// - `frequency` - Spatial frequency (higher = more detail)
+    /// - `time_scale` - How fast noise evolves (0 = static)
+    ///
+    /// # Example: Flickering brightness
+    ///
+    /// ```ignore
+    /// Rule::Noise {
+    ///     field: "brightness".into(),
+    ///     amplitude: 0.3,
+    ///     frequency: 2.0,
+    ///     time_scale: 5.0,
+    /// }
+    /// ```
+    ///
+    /// # Example: Organic position jitter
+    ///
+    /// ```ignore
+    /// Rule::Noise {
+    ///     field: "position.x".into(),
+    ///     amplitude: 0.05,
+    ///     frequency: 1.0,
+    ///     time_scale: 2.0,
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Uses the simulation's built-in `noise3` function. Noise is additive
+    /// (adds to existing field value, doesn't replace it).
+    Noise {
+        /// Field to add noise to.
+        field: String,
+        /// Noise amplitude.
+        amplitude: f32,
+        /// Spatial frequency.
+        frequency: f32,
+        /// Time evolution speed (0 = static noise).
+        time_scale: f32,
+    },
+
+    /// Remap a field from one range to another.
+    ///
+    /// Linear interpolation: maps `[in_min, in_max]` to `[out_min, out_max]`.
+    /// Values outside input range are extrapolated (use with Clamp if needed).
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Field to remap (modified in place)
+    /// - `in_min`, `in_max` - Input range
+    /// - `out_min`, `out_max` - Output range
+    ///
+    /// # Example: Age to opacity (young=visible, old=faded)
+    ///
+    /// ```ignore
+    /// Rule::Remap {
+    ///     field: "opacity".into(),
+    ///     in_min: 0.0, in_max: 10.0,   // age range
+    ///     out_min: 1.0, out_max: 0.0,  // fade out
+    /// }
+    /// ```
+    ///
+    /// # Example: Normalize velocity magnitude
+    ///
+    /// ```ignore
+    /// Rule::Remap {
+    ///     field: "speed_normalized".into(),
+    ///     in_min: 0.0, in_max: 5.0,
+    ///     out_min: 0.0, out_max: 1.0,
+    /// }
+    /// ```
+    Remap {
+        /// Field to remap.
+        field: String,
+        /// Input range minimum.
+        in_min: f32,
+        /// Input range maximum.
+        in_max: f32,
+        /// Output range minimum.
+        out_min: f32,
+        /// Output range maximum.
+        out_max: f32,
+    },
+
+    /// Clamp a field to a range.
+    ///
+    /// Simple bounds constraint. Values below min become min,
+    /// values above max become max.
+    ///
+    /// # Example: Limit energy
+    ///
+    /// ```ignore
+    /// Rule::Clamp {
+    ///     field: "energy".into(),
+    ///     min: 0.0,
+    ///     max: 100.0,
+    /// }
+    /// ```
+    Clamp {
+        /// Field to clamp.
+        field: String,
+        /// Minimum value.
+        min: f32,
+        /// Maximum value.
+        max: f32,
+    },
+
+    /// Exponential smoothing toward a target value.
+    ///
+    /// Low-pass filter that smoothly moves a field toward a target.
+    /// Higher rate = faster convergence. Classic for easing, damping,
+    /// or filtering noisy values.
+    ///
+    /// # Fields
+    ///
+    /// - `field` - Field to smooth
+    /// - `target` - Target value to approach
+    /// - `rate` - Smoothing rate (0-1, higher = faster)
+    ///
+    /// # Example: Smooth brightness toward 0
+    ///
+    /// ```ignore
+    /// Rule::Smooth {
+    ///     field: "brightness".into(),
+    ///     target: 0.0,
+    ///     rate: 0.1,
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Formula: `field = mix(field, target, rate * delta_time)`
+    Smooth {
+        /// Field to smooth.
+        field: String,
+        /// Target value.
+        target: f32,
+        /// Smoothing rate per second.
+        rate: f32,
+    },
+
+    /// Quantize a field to discrete steps.
+    ///
+    /// Snaps continuous values to a grid. Useful for pixelated effects,
+    /// discrete states, or grid-based movement.
+    ///
+    /// # Example: Snap position to grid
+    ///
+    /// ```ignore
+    /// Rule::Quantize {
+    ///     field: "position.x".into(),
+    ///     step: 0.1,
+    /// }
+    /// ```
+    ///
+    /// # Example: Discrete energy levels
+    ///
+    /// ```ignore
+    /// Rule::Quantize {
+    ///     field: "energy".into(),
+    ///     step: 10.0,  // 0, 10, 20, 30...
+    /// }
+    /// ```
+    Quantize {
+        /// Field to quantize.
+        field: String,
+        /// Step size (values snap to multiples of this).
+        step: f32,
+    },
+
+    /// Wrap a field value within a range (modulo).
+    ///
+    /// Values that exceed max wrap back to min, and vice versa.
+    /// Essential for cyclic quantities like angles, phases, or
+    /// toroidal coordinates.
+    ///
+    /// # Example: Wrap phase to 0-2π
+    ///
+    /// ```ignore
+    /// Rule::Modulo {
+    ///     field: "phase".into(),
+    ///     min: 0.0,
+    ///     max: 6.28318,
+    /// }
+    /// ```
+    ///
+    /// # Example: Wrap hue for color cycling
+    ///
+    /// ```ignore
+    /// Rule::Modulo {
+    ///     field: "hue".into(),
+    ///     min: 0.0,
+    ///     max: 1.0,
+    /// }
+    /// ```
+    Modulo {
+        /// Field to wrap.
+        field: String,
+        /// Range minimum.
+        min: f32,
+        /// Range maximum.
+        max: f32,
+    },
+
+    /// Copy one field to another.
+    ///
+    /// Optionally scale and offset the value during copy.
+    /// Useful for derived values, backups, or transformations.
+    ///
+    /// # Fields
+    ///
+    /// - `from` - Source field
+    /// - `to` - Destination field
+    /// - `scale` - Multiply by this (default 1.0)
+    /// - `offset` - Add this after scaling (default 0.0)
+    ///
+    /// # Example: Copy age to display value
+    ///
+    /// ```ignore
+    /// Rule::Copy {
+    ///     from: "age".into(),
+    ///     to: "display_age".into(),
+    ///     scale: 1.0,
+    ///     offset: 0.0,
+    /// }
+    /// ```
+    ///
+    /// # Example: Invert and shift
+    ///
+    /// ```ignore
+    /// Rule::Copy {
+    ///     from: "health".into(),
+    ///     to: "damage".into(),
+    ///     scale: -1.0,
+    ///     offset: 100.0,  // damage = 100 - health
+    /// }
+    /// ```
+    Copy {
+        /// Source field.
+        from: String,
+        /// Destination field.
+        to: String,
+        /// Scale factor.
+        scale: f32,
+        /// Offset added after scaling.
+        offset: f32,
+    },
+
+    // =========================================================================
+    // Logic Gates (analog/signal style)
+    // =========================================================================
+
+    /// Logical AND (analog: minimum of two fields).
+    ///
+    /// Output is the minimum of two input fields. In boolean terms,
+    /// both must be "high" for output to be high.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rule::And {
+    ///     a: "has_energy".into(),
+    ///     b: "is_ready".into(),
+    ///     output: "can_fire".into(),
+    /// }
+    /// ```
+    And {
+        /// First input field.
+        a: String,
+        /// Second input field.
+        b: String,
+        /// Output field.
+        output: String,
+    },
+
+    /// Logical OR (analog: maximum of two fields).
+    ///
+    /// Output is the maximum of two input fields. In boolean terms,
+    /// either being "high" makes output high.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rule::Or {
+    ///     a: "danger_left".into(),
+    ///     b: "danger_right".into(),
+    ///     output: "any_danger".into(),
+    /// }
+    /// ```
+    Or {
+        /// First input field.
+        a: String,
+        /// Second input field.
+        b: String,
+        /// Output field.
+        output: String,
+    },
+
+    /// Logical NOT (inversion).
+    ///
+    /// Inverts a field value. Default is `1.0 - x` but can specify
+    /// custom range for inversion.
+    ///
+    /// # Example: Simple invert (0↔1)
+    ///
+    /// ```ignore
+    /// Rule::Not {
+    ///     input: "alive".into(),
+    ///     output: "dead".into(),
+    ///     max: 1.0,
+    /// }
+    /// ```
+    ///
+    /// # Example: Invert in custom range
+    ///
+    /// ```ignore
+    /// Rule::Not {
+    ///     input: "brightness".into(),
+    ///     output: "darkness".into(),
+    ///     max: 100.0,  // darkness = 100 - brightness
+    /// }
+    /// ```
+    Not {
+        /// Input field.
+        input: String,
+        /// Output field.
+        output: String,
+        /// Maximum value (output = max - input).
+        max: f32,
+    },
+
+    /// Logical XOR (analog: absolute difference).
+    ///
+    /// Output is `abs(a - b)`. High when inputs differ, low when same.
+    /// Useful for detecting disagreement or change.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rule::Xor {
+    ///     a: "signal_a".into(),
+    ///     b: "signal_b".into(),
+    ///     output: "mismatch".into(),
+    /// }
+    /// ```
+    Xor {
+        /// First input field.
+        a: String,
+        /// Second input field.
+        b: String,
+        /// Output field.
+        output: String,
+    },
+
+    // =========================================================================
+    // Stateful Logic
+    // =========================================================================
+
+    /// Hysteresis (Schmitt trigger) - two-threshold switching.
+    ///
+    /// Prevents oscillation at boundaries by using separate thresholds
+    /// for turning on vs off. Output goes high when input exceeds
+    /// `high_threshold`, stays high until input drops below `low_threshold`.
+    ///
+    /// # Fields
+    ///
+    /// - `input` - Field to monitor
+    /// - `output` - Field to set (acts as state memory too)
+    /// - `low_threshold` - Turn off below this
+    /// - `high_threshold` - Turn on above this
+    /// - `on_value` - Value when "on" (default 1.0)
+    /// - `off_value` - Value when "off" (default 0.0)
+    ///
+    /// # Example: Temperature control
+    ///
+    /// ```ignore
+    /// // Heater turns on at 18°, stays on until 22°
+    /// Rule::Hysteresis {
+    ///     input: "temperature".into(),
+    ///     output: "heater_on".into(),
+    ///     low_threshold: 18.0,
+    ///     high_threshold: 22.0,
+    ///     on_value: 1.0,
+    ///     off_value: 0.0,
+    /// }
+    /// ```
+    Hysteresis {
+        /// Input field to monitor.
+        input: String,
+        /// Output field (also stores state).
+        output: String,
+        /// Turn off when input drops below this.
+        low_threshold: f32,
+        /// Turn on when input rises above this.
+        high_threshold: f32,
+        /// Output value when "on".
+        on_value: f32,
+        /// Output value when "off".
+        off_value: f32,
+    },
+
+    /// Set-Reset Latch (SR flip-flop).
+    ///
+    /// Persistent memory that sets on one condition, resets on another.
+    /// Once set, stays set until explicitly reset.
+    ///
+    /// # Example: Alarm that latches on
+    ///
+    /// ```ignore
+    /// Rule::Latch {
+    ///     output: "alarm".into(),
+    ///     set_condition: "p.danger > 0.9".into(),
+    ///     reset_condition: "p.acknowledged > 0.5".into(),
+    ///     set_value: 1.0,
+    ///     reset_value: 0.0,
+    /// }
+    /// ```
+    Latch {
+        /// Output field (stores latched state).
+        output: String,
+        /// WGSL condition to set the latch.
+        set_condition: String,
+        /// WGSL condition to reset the latch.
+        reset_condition: String,
+        /// Value when set.
+        set_value: f32,
+        /// Value when reset.
+        reset_value: f32,
+    },
+
+    /// Edge detector - fire on transition.
+    ///
+    /// Outputs a pulse (one frame) when input crosses a threshold.
+    /// Requires a "previous value" field to track state.
+    ///
+    /// # Fields
+    ///
+    /// - `input` - Field to monitor
+    /// - `prev_field` - Field storing previous frame's value
+    /// - `output` - Field to pulse on edge
+    /// - `threshold` - Crossing point
+    /// - `rising` - Detect low→high transitions
+    /// - `falling` - Detect high→low transitions
+    ///
+    /// # Example: Detect when energy crosses 50%
+    ///
+    /// ```ignore
+    /// Rule::Edge {
+    ///     input: "energy".into(),
+    ///     prev_field: "energy_prev".into(),
+    ///     output: "energy_crossed".into(),
+    ///     threshold: 0.5,
+    ///     rising: true,
+    ///     falling: true,
+    /// }
+    /// ```
+    Edge {
+        /// Input field to monitor.
+        input: String,
+        /// Field storing previous value (you must initialize this).
+        prev_field: String,
+        /// Output pulse field.
+        output: String,
+        /// Threshold to detect crossing.
+        threshold: f32,
+        /// Detect rising edge (low to high).
+        rising: bool,
+        /// Detect falling edge (high to low).
+        falling: bool,
+    },
+
+    // =========================================================================
+    // Selectors
+    // =========================================================================
+
+    /// Conditional select (ternary operator).
+    ///
+    /// `output = condition ? then_value : else_value`
+    ///
+    /// # Example: Choose speed based on state
+    ///
+    /// ```ignore
+    /// Rule::Select {
+    ///     condition: "p.is_fleeing > 0.5".into(),
+    ///     then_field: "fast_speed".into(),
+    ///     else_field: "normal_speed".into(),
+    ///     output: "current_speed".into(),
+    /// }
+    /// ```
+    Select {
+        /// WGSL boolean condition.
+        condition: String,
+        /// Field to use when true.
+        then_field: String,
+        /// Field to use when false.
+        else_field: String,
+        /// Output field.
+        output: String,
+    },
+
+    /// Blend two fields by a weight field.
+    ///
+    /// `output = mix(a, b, weight)` where weight 0→a, weight 1→b.
+    ///
+    /// # Example: Blend colors by temperature
+    ///
+    /// ```ignore
+    /// Rule::Blend {
+    ///     a: "cold_color".into(),
+    ///     b: "hot_color".into(),
+    ///     weight: "temperature_normalized".into(),
+    ///     output: "display_color".into(),
+    /// }
+    /// ```
+    Blend {
+        /// First input field (weight=0).
+        a: String,
+        /// Second input field (weight=1).
+        b: String,
+        /// Weight field (0-1).
+        weight: String,
+        /// Output field.
+        output: String,
+    },
 }
 
 impl Rule {
@@ -1869,9 +3290,11 @@ impl Rule {
             | Rule::Separate { .. }
             | Rule::Cohere { .. }
             | Rule::Align { .. }
+            | Rule::Flock { .. }
             | Rule::Convert { .. }
             | Rule::Chase { .. }
             | Rule::Evade { .. }
+            | Rule::Diffuse { .. }
             | Rule::NeighborCustom(_) => true,
             Rule::Typed { rule, .. } => rule.requires_neighbors(),
             _ => false,
@@ -1881,7 +3304,7 @@ impl Rule {
     /// Returns `true` if this rule uses cohesion accumulators.
     pub(crate) fn needs_cohesion_accumulator(&self) -> bool {
         match self {
-            Rule::Cohere { .. } => true,
+            Rule::Cohere { .. } | Rule::Flock { .. } => true,
             Rule::Typed { rule, .. } => rule.needs_cohesion_accumulator(),
             _ => false,
         }
@@ -1890,7 +3313,7 @@ impl Rule {
     /// Returns `true` if this rule uses alignment accumulators.
     pub(crate) fn needs_alignment_accumulator(&self) -> bool {
         match self {
-            Rule::Align { .. } => true,
+            Rule::Align { .. } | Rule::Flock { .. } => true,
             Rule::Typed { rule, .. } => rule.needs_alignment_accumulator(),
             _ => false,
         }
@@ -1946,6 +3369,15 @@ impl Rule {
         match self {
             Rule::Avoid { .. } => true,
             Rule::Typed { rule, .. } => rule.needs_avoid_accumulator(),
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if this rule uses diffuse accumulators.
+    pub(crate) fn needs_diffuse_accumulator(&self) -> bool {
+        match self {
+            Rule::Diffuse { .. } => true,
+            Rule::Typed { rule, .. } => rule.needs_diffuse_accumulator(),
             _ => false,
         }
     }
@@ -2164,6 +3596,50 @@ impl Rule {
             ),
 
             Rule::Custom(code) => format!("    // Custom rule\n{}", code),
+
+            Rule::Sync {
+                phase_field,
+                frequency,
+                field,
+                emit_amount,
+                coupling,
+                detection_threshold,
+                on_fire,
+            } => {
+                let on_fire_code = on_fire.as_ref().map(|c| c.as_str()).unwrap_or("");
+                format!(
+                    r#"    // Oscillator synchronization (Kuramoto model)
+    {{
+        let tau = 6.28318;
+
+        // Advance phase by frequency
+        p.{phase_field} += {frequency} * uniforms.delta_time * tau;
+
+        // Read field to detect nearby firing
+        let detected = field_read({field}u, p.position);
+
+        // If we detect activity, nudge our phase (coupling)
+        if detected > {detection_threshold} {{
+            // sin(phase/2) peaks at phase=π, meaning particles respond most
+            // strongly when halfway through their cycle
+            let phase_response = sin(p.{phase_field} * 0.5);
+            p.{phase_field} += {coupling} * phase_response * detected * uniforms.delta_time * tau;
+        }}
+
+        // Check if it's time to fire
+        if p.{phase_field} >= tau {{
+            // Reset phase (keep remainder for stability)
+            p.{phase_field} = p.{phase_field} - tau;
+
+            // Emit to field
+            field_write({field}u, p.position, {emit_amount});
+
+            // Run custom on_fire callback
+{on_fire_code}
+        }}
+    }}"#
+                )
+            }
 
             Rule::BondSprings { bonds, stiffness, damping, rest_length, max_stretch } => {
                 let no_bond = u32::MAX;
@@ -2702,6 +4178,248 @@ impl Rule {
     }}"#
             ),
 
+            Rule::Maybe { probability, action } => format!(
+                r#"    // Maybe (probabilistic)
+    {{
+        // Hash-based random using particle index and time
+        let hash_seed = f32(index) * 12.9898 + uniforms.time * 78.233;
+        let rand = fract(sin(hash_seed) * 43758.5453);
+        if rand < {probability} {{
+{action}
+        }}
+    }}"#
+            ),
+
+            Rule::Trigger { condition, action } => format!(
+                r#"    // Trigger (conditional)
+    if {condition} {{
+{action}
+    }}"#
+            ),
+
+            Rule::Periodic { interval, phase_field, action } => {
+                let phase_offset = match phase_field {
+                    Some(field) => format!("p.{field}"),
+                    None => "0.0".to_string(),
+                };
+                format!(
+                    r#"    // Periodic (time-based)
+    {{
+        let phase_offset = {phase_offset};
+        let adjusted_time = uniforms.time + phase_offset * {interval};
+        let prev_time = adjusted_time - uniforms.delta_time;
+        let current_cycle = floor(adjusted_time / {interval});
+        let prev_cycle = floor(prev_time / {interval});
+        if current_cycle != prev_cycle {{
+{action}
+        }}
+    }}"#
+                )
+            }
+
+            Rule::Gradient { field, strength, ascending } => {
+                let sign = if *ascending { 1.0 } else { -1.0 };
+                format!(
+                    r#"    // Gradient (chemotaxis)
+    {{
+        let eps = 0.02;  // Sample offset
+        let here = field_read({field}u, p.position);
+        let dx = field_read({field}u, p.position + vec3<f32>(eps, 0.0, 0.0)) - field_read({field}u, p.position - vec3<f32>(eps, 0.0, 0.0));
+        let dy = field_read({field}u, p.position + vec3<f32>(0.0, eps, 0.0)) - field_read({field}u, p.position - vec3<f32>(0.0, eps, 0.0));
+        let dz = field_read({field}u, p.position + vec3<f32>(0.0, 0.0, eps)) - field_read({field}u, p.position - vec3<f32>(0.0, 0.0, eps));
+        let grad = vec3<f32>(dx, dy, dz) / (2.0 * eps);
+        let grad_len = length(grad);
+        if grad_len > 0.0001 {{
+            p.velocity += normalize(grad) * {strength} * {sign:.1} * uniforms.delta_time;
+        }}
+    }}"#
+                )
+            }
+
+            Rule::Lerp { field, target, rate } => format!(
+                r#"    // Lerp (smooth interpolation)
+    p.{field} = mix(p.{field}, {target}, clamp({rate} * uniforms.delta_time, 0.0, 1.0));"#
+            ),
+
+            Rule::Die { condition, field } => format!(
+                r#"    // Die (conditional death)
+    if {condition} {{
+        p.{field} = false;
+    }}"#
+            ),
+
+            Rule::State { field, transitions } => {
+                let mut code = String::from("    // State machine transitions\n");
+                for (from, to, condition) in transitions {
+                    code.push_str(&format!(
+                        "    if p.{field} == {from}u && {condition} {{ p.{field} = {to}u; }}\n"
+                    ));
+                }
+                code
+            }
+
+            Rule::Grow { rate, min, max } => format!(
+                r#"    // Grow (scale over time)
+    p.scale = clamp(p.scale + {rate} * uniforms.delta_time, {min}, {max});"#
+            ),
+
+            Rule::Decay { field, rate } => format!(
+                r#"    // Decay (multiplicative)
+    p.{field} *= pow({rate}, uniforms.delta_time);"#
+            ),
+
+            Rule::DensityBuoyancy { density_field, medium_density, strength } => format!(
+                r#"    // Density-based buoyancy
+    {{
+        let buoyancy_force = ({medium_density} - p.{density_field}) * {strength};
+        p.velocity.y += buoyancy_force * uniforms.delta_time;
+    }}"#
+            ),
+
+            Rule::Mass { field } => format!(
+                r#"    // Mass scaling (F=ma → a=F/m)
+    {{
+        let inv_mass = 1.0 / max(p.{field}, 0.001);
+        // Scale this frame's velocity change by inverse mass
+        // Note: this assumes velocity changes since last frame are forces
+        p.velocity *= inv_mass;
+    }}"#
+            ),
+
+            Rule::Tween { field, from, to, duration, timer_field } => format!(
+                r#"    // Tween animation
+    {{
+        let t = clamp(p.{timer_field} / {duration}, 0.0, 1.0);
+        p.{field} = mix({from}, {to}, t);
+    }}"#
+            ),
+
+            Rule::Threshold { input_field, output_field, threshold, above, below } => format!(
+                r#"    // Threshold (step function)
+    if p.{input_field} >= {threshold} {{
+        p.{output_field} = {above};
+    }} else {{
+        p.{output_field} = {below};
+    }}"#
+            ),
+
+            Rule::Gate { condition, action } => format!(
+                r#"    // Gate (conditional action)
+    if {condition} {{
+        {action}
+    }}"#
+            ),
+
+            Rule::Noise { field, amplitude, frequency, time_scale } => format!(
+                r#"    // Procedural noise
+    {{
+        let noise_pos = p.position * {frequency} + vec3<f32>(uniforms.time * {time_scale});
+        p.{field} += noise3(noise_pos) * {amplitude};
+    }}"#
+            ),
+
+            Rule::Remap { field, in_min, in_max, out_min, out_max } => format!(
+                r#"    // Remap range
+    {{
+        let t = (p.{field} - {in_min:.6}) / ({in_max:.6} - {in_min:.6});
+        p.{field} = {out_min:.6} + t * ({out_max:.6} - {out_min:.6});
+    }}"#
+            ),
+
+            Rule::Clamp { field, min, max } => format!(
+                "    // Clamp\n    p.{field} = clamp(p.{field}, {min:.6}, {max:.6});"
+            ),
+
+            Rule::Smooth { field, target, rate } => format!(
+                "    // Smooth toward target\n    p.{field} = mix(p.{field}, {target:.6}, {rate:.6} * uniforms.delta_time);"
+            ),
+
+            Rule::Quantize { field, step } => format!(
+                "    // Quantize to steps\n    p.{field} = floor(p.{field} / {step:.6}) * {step:.6};"
+            ),
+
+            Rule::Modulo { field, min, max } => format!(
+                r#"    // Modulo wrap
+    {{
+        let range = {max:.6} - {min:.6};
+        p.{field} = {min:.6} + (((p.{field} - {min:.6}) % range) + range) % range;
+    }}"#
+            ),
+
+            Rule::Copy { from, to, scale, offset } => format!(
+                "    // Copy field\n    p.{to} = p.{from} * {scale:.6} + {offset:.6};"
+            ),
+
+            // Logic gates
+            Rule::And { a, b, output } => format!(
+                "    // AND (min)\n    p.{output} = min(p.{a}, p.{b});"
+            ),
+
+            Rule::Or { a, b, output } => format!(
+                "    // OR (max)\n    p.{output} = max(p.{a}, p.{b});"
+            ),
+
+            Rule::Not { input, output, max } => format!(
+                "    // NOT (invert)\n    p.{output} = {max:.6} - p.{input};"
+            ),
+
+            Rule::Xor { a, b, output } => format!(
+                "    // XOR (abs difference)\n    p.{output} = abs(p.{a} - p.{b});"
+            ),
+
+            Rule::Hysteresis { input, output, low_threshold, high_threshold, on_value, off_value } => format!(
+                r#"    // Hysteresis (Schmitt trigger)
+    if p.{input} > {high_threshold:.6} {{
+        p.{output} = {on_value:.6};
+    }} else if p.{input} < {low_threshold:.6} {{
+        p.{output} = {off_value:.6};
+    }}"#
+            ),
+
+            Rule::Latch { output, set_condition, reset_condition, set_value, reset_value } => format!(
+                r#"    // Latch (SR flip-flop)
+    if {reset_condition} {{
+        p.{output} = {reset_value:.6};
+    }} else if {set_condition} {{
+        p.{output} = {set_value:.6};
+    }}"#
+            ),
+
+            Rule::Edge { input, prev_field, output, threshold, rising, falling } => {
+                let rising_check = if *rising {
+                    format!("(p.{prev_field} < {threshold:.6} && p.{input} >= {threshold:.6})")
+                } else {
+                    "false".to_string()
+                };
+                let falling_check = if *falling {
+                    format!("(p.{prev_field} >= {threshold:.6} && p.{input} < {threshold:.6})")
+                } else {
+                    "false".to_string()
+                };
+                format!(
+                    r#"    // Edge detector
+    if {rising_check} || {falling_check} {{
+        p.{output} = 1.0;
+    }} else {{
+        p.{output} = 0.0;
+    }}
+    p.{prev_field} = p.{input};"#
+                )
+            }
+
+            Rule::Select { condition, then_field, else_field, output } => format!(
+                r#"    // Select (ternary)
+    if {condition} {{
+        p.{output} = p.{then_field};
+    }} else {{
+        p.{output} = p.{else_field};
+    }}"#
+            ),
+
+            Rule::Blend { a, b, weight, output } => format!(
+                "    // Blend by weight\n    p.{output} = mix(p.{a}, p.{b}, p.{weight});"
+            ),
+
             // Neighbor rules generate code through to_neighbor_wgsl
             Rule::Collide { .. }
             | Rule::OnCollision { .. }
@@ -2714,10 +4432,12 @@ impl Rule {
             | Rule::Separate { .. }
             | Rule::Cohere { .. }
             | Rule::Align { .. }
+            | Rule::Flock { .. }
             | Rule::Typed { .. }
             | Rule::Convert { .. }
             | Rule::Chase { .. }
             | Rule::Evade { .. }
+            | Rule::Diffuse { .. }
             | Rule::NeighborCustom(_) => String::new(),
         }
     }
@@ -2840,6 +4560,23 @@ impl Rule {
             }}"#
             ),
 
+            Rule::Flock { radius, separation, .. } => format!(
+                r#"            // Flock: separation + cohesion + alignment accumulation
+            if neighbor_dist < {radius} {{
+                // Separation (immediate)
+                if neighbor_dist > 0.0001 {{
+                    let sep_force = ({radius} - neighbor_dist) / {radius};
+                    p.velocity += neighbor_dir * sep_force * {separation} * uniforms.delta_time;
+                }}
+                // Cohesion accumulation
+                cohesion_sum += neighbor_pos;
+                cohesion_count += 1.0;
+                // Alignment accumulation
+                alignment_sum += neighbor_vel;
+                alignment_count += 1.0;
+            }}"#
+            ),
+
             Rule::Typed { self_type, other_type, rule } => {
                 let inner = rule.to_neighbor_wgsl();
                 if inner.is_empty() {
@@ -2899,6 +4636,14 @@ impl Rule {
                 code
             ),
 
+            Rule::Diffuse { field, radius, .. } => format!(
+                r#"            // Diffuse: accumulate neighbor values
+            if neighbor_dist < {radius} {{
+                diffuse_sum += other.{field};
+                diffuse_count += 1.0;
+            }}"#
+            ),
+
             _ => String::new(),
         }
     }
@@ -2920,6 +4665,24 @@ impl Rule {
     if alignment_count > 0.0 {{
         let avg_vel = alignment_sum / alignment_count;
         p.velocity += (avg_vel - p.velocity) * {strength} * uniforms.delta_time;
+    }}"#
+            ),
+
+            Rule::Flock { cohesion, alignment, .. } => format!(
+                r#"    // Apply flock cohesion and alignment
+    if cohesion_count > 0.0 {{
+        // Cohesion: steer toward center
+        let center = cohesion_sum / cohesion_count;
+        let to_center = center - p.position;
+        let center_dist = length(to_center);
+        if center_dist > 0.001 {{
+            p.velocity += normalize(to_center) * {cohesion} * uniforms.delta_time;
+        }}
+    }}
+    if alignment_count > 0.0 {{
+        // Alignment: match average velocity
+        let avg_vel = alignment_sum / alignment_count;
+        p.velocity += (avg_vel - p.velocity) * {alignment} * uniforms.delta_time;
     }}"#
             ),
 
@@ -2998,6 +4761,14 @@ impl Rule {
             // Steer away smoothly
             p.velocity += normalize(avg_avoid) * {strength} * uniforms.delta_time;
         }}
+    }}"#
+            ),
+
+            Rule::Diffuse { field, rate, .. } => format!(
+                r#"    // Apply diffusion (blend toward neighbor average)
+    if diffuse_count > 0.0 {{
+        let avg_value = diffuse_sum / diffuse_count;
+        p.{field} = mix(p.{field}, avg_value, {rate} * uniforms.delta_time);
     }}"#
             ),
 

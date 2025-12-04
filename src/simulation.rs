@@ -1238,6 +1238,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             let needs_pressure = self.rules.iter().any(|r| r.needs_pressure_accumulator());
             let needs_surface_tension = self.rules.iter().any(|r| r.needs_surface_tension_accumulator());
             let needs_avoid = self.rules.iter().any(|r| r.needs_avoid_accumulator());
+            let needs_diffuse = self.rules.iter().any(|r| r.needs_diffuse_accumulator());
 
             // Generate interaction matrix code if present
             let (interaction_init, interaction_neighbor, interaction_post) =
@@ -1276,6 +1277,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
                 }
                 if needs_avoid {
                     vars.push_str("    var avoid_sum = vec3<f32>(0.0);\n    var avoid_count = 0.0;\n");
+                }
+                if needs_diffuse {
+                    vars.push_str("    var diffuse_sum = 0.0;\n    var diffuse_count = 0.0;\n");
                 }
                 // Add interaction matrix init
                 if !interaction_init.is_empty() {

@@ -215,3 +215,33 @@ required-features = ["egui"]
 name = "aurora"
 path = "examples/experimental/aurora.rs"
 required-features = ["egui"]
+
+[[example]]
+name = "density_fluids"
+path = "examples/density_fluids.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "wave_field"
+path = "examples/wave_field.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "fireflies"
+path = "examples/fireflies.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "neural_network"
+path = "examples/neural_network.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "signal_swarm"
+path = "examples/signal_swarm.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "compute_demo"
+path = "examples/compute_demo.rs"
+required-features = ["egui"]
