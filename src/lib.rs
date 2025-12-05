@@ -123,7 +123,7 @@ pub use glam::{Vec2, Vec3, Vec4};
 pub use gpu::VolumeConfig;
 pub use interactions::InteractionMatrix;
 pub use lifecycle::Lifecycle;
-pub use rdpe_derive::{Particle, ParticleType};
+pub use rdpe_derive::{MultiParticle, Particle, ParticleType};
 pub use rules::{AgentState, Falloff, Rule, Transition};
 pub use simulation::Simulation;
 pub use sub_emitter::SubEmitter;
@@ -192,6 +192,19 @@ pub trait ParticleTrait: Clone + Send + Sync {
     /// Always present since lifecycle fields are auto-injected.
     const SCALE_OFFSET: u32;
 
+    /// Additional WGSL code prepended to shaders.
+    ///
+    /// Used by `MultiParticle` enums to inject type constants and helper functions.
+    /// Regular particle structs leave this empty.
+    ///
+    /// Example for a multi-particle enum:
+    /// ```wgsl
+    /// const BOID: u32 = 0u;
+    /// const PREDATOR: u32 = 1u;
+    /// fn is_boid(p: Particle) -> bool { return p.particle_type == BOID; }
+    /// ```
+    const EXTRA_WGSL: &'static str = "";
+
     /// Convert this particle to its GPU representation.
     ///
     /// Called once per particle during initialization.
@@ -230,5 +243,5 @@ pub mod prelude {
     pub use crate::visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VisualConfig};
     pub use crate::ParticleTrait;
     pub use crate::{Vec2, Vec3, Vec4};
-    pub use rdpe_derive::{Particle, ParticleType};
+    pub use rdpe_derive::{MultiParticle, Particle, ParticleType};
 }

@@ -1075,6 +1075,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
 
     /// Generate the compute shader WGSL code.
     fn generate_compute_shader(&self) -> String {
+        let extra_wgsl = P::EXTRA_WGSL;
         let particle_struct = P::WGSL_STRUCT;
         let has_neighbors = self.has_neighbor_rules();
         let has_sub_emitters = !self.sub_emitters.is_empty();
@@ -1188,7 +1189,8 @@ fn inbox_receive_at(my_idx: u32, channel: u32) -> f32 {
         let shader = if !has_neighbors {
             // Simple shader without neighbor queries
             format!(
-                r#"{particle_struct}
+                r#"{extra_wgsl}
+{particle_struct}
 
 struct Uniforms {{
     view_proj: mat4x4<f32>,
@@ -1336,7 +1338,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             };
 
             format!(
-                r#"{particle_struct}
+                r#"{extra_wgsl}
+{particle_struct}
 
 {MORTON_WGSL}
 

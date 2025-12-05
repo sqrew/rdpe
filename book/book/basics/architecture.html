@@ -250,7 +250,7 @@ struct Boid {
 <p>When rules need neighbor queries, RDPE builds a spatial hash:</p>
 <ol>
 <li><strong>Morton encoding</strong> - Convert 3D position to 1D cell index</li>
-<li><strong>Radix sort</strong> - Sort particles by cell (8 passes, 4 bits each)</li>
+<li><strong>Radix sort</strong> - Sort particles by cell (dynamic passes based on grid resolution)</li>
 <li><strong>Cell table</strong> - Build start/end indices for each cell</li>
 </ol>
 <p>This accelerates neighbor queries from O(n²) to O(n × average_neighbors).</p>

@@ -177,7 +177,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><strong>RDPE</strong> (Reaction Diffusion Particle Engine) is a GPU-accelerated particle simulation library for Rust. It lets you create complex, interactive particle systems with minimal code by combining simple, composable rules.</p>
+<p><strong>RDPE</strong> (Realtime Data Presentation Engine) is a GPU-accelerated particle simulation library for Rust. It lets you create complex, interactive particle systems with minimal code by combining simple, composable rules.</p>
 <h2 id="what-can-you-build"><a class="header" href="#what-can-you-build">What Can You Build?</a></h2>
 <p>With RDPE, you can simulate:</p>
 <ul>
@@ -306,7 +306,7 @@ struct Boid {
 <p>When rules need neighbor queries, RDPE builds a spatial hash:</p>
 <ol>
 <li><strong>Morton encoding</strong> - Convert 3D position to 1D cell index</li>
-<li><strong>Radix sort</strong> - Sort particles by cell (8 passes, 4 bits each)</li>
+<li><strong>Radix sort</strong> - Sort particles by cell (dynamic passes based on grid resolution)</li>
 <li><strong>Cell table</strong> - Build start/end indices for each cell</li>
 </ol>
 <p>This accelerates neighbor queries from O(n²) to O(n × average_neighbors).</p>
@@ -685,6 +685,32 @@ struct GameParticle {
     .run();
 <span class="boring">}</span></code></pre></pre>
 <h2 id="options"><a class="header" href="#options">Options</a></h2>
+<h3 id="particle-shapes"><a class="header" href="#particle-shapes">Particle Shapes</a></h3>
+<p>Control the visual shape of each particle:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.shape(ParticleShape::Circle);      // Soft circle with smooth falloff (default)
+v.shape(ParticleShape::CircleHard);  // Hard-edged circle
+v.shape(ParticleShape::Square);      // Square/rectangle
+v.shape(ParticleShape::Ring);        // Ring/donut shape
+v.shape(ParticleShape::Star);        // 5-pointed star
+v.shape(ParticleShape::Triangle);    // Equilateral triangle
+v.shape(ParticleShape::Hexagon);     // Regular hexagon
+v.shape(ParticleShape::Diamond);     // Diamond/rhombus
+v.shape(ParticleShape::Point);       // Single pixel (fastest)
+<span class="boring">}</span></code></pre></pre>
+<div class="table-wrapper"><table><thead><tr><th>Shape</th><th>Best For</th></tr></thead><tbody>
+<tr><td><code>Circle</code></td><td>General purpose, soft edges</td></tr>
+<tr><td><code>CircleHard</code></td><td>Sharp particles, dots</td></tr>
+<tr><td><code>Square</code></td><td>Pixels, grid-based simulations</td></tr>
+<tr><td><code>Ring</code></td><td>Bubbles, force fields</td></tr>
+<tr><td><code>Star</code></td><td>Magic effects, sparkles</td></tr>
+<tr><td><code>Triangle</code></td><td>Arrows, directional particles</td></tr>
+<tr><td><code>Hexagon</code></td><td>Cells, tiles, molecules</td></tr>
+<tr><td><code>Diamond</code></td><td>Crystals, gems</td></tr>
+<tr><td><code>Point</code></td><td>Maximum performance, retro aesthetic</td></tr>
+</tbody></table>
+</div>
 <h3 id="background-color"><a class="header" href="#background-color">Background Color</a></h3>
 <p>Set the scene backdrop:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -925,6 +951,47 @@ fn main() {
 <li><strong>Dead start</strong>: When using emitters, initialize particles as dead in your spawner (they'll be spawned by the emitter).</li>
 <li><strong>Burst timing</strong>: Burst emitters fire at <code>time &lt; 0.1</code>, so they work immediately on startup.</li>
 </ul>
+<h2 id="sub-emitters"><a class="header" href="#sub-emitters">Sub-Emitters</a></h2>
+<p>Sub-emitters spawn child particles when parent particles die. This enables fireworks, explosions, chain reactions, and biological reproduction.</p>
+<h3 id="basic-sub-emitter"><a class="header" href="#basic-sub-emitter">Basic Sub-Emitter</a></h3>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(ParticleType)]
+enum Firework {
+    Rocket,
+    Spark,
+}
+
+Simulation::&lt;Particle&gt;::new()
+    .with_sub_emitter(SubEmitter::new(
+        Firework::Rocket.into(),  // Parent type
+        Firework::Spark.into(),   // Child type
+    )
+    .count(30)                    // Children per death
+    .speed(1.0..3.0)              // Random speed range
+    .spread(std::f32::consts::PI) // Hemisphere
+    .inherit_velocity(0.3))       // 30% of parent velocity
+    .run();
+<span class="boring">}</span></code></pre></pre>
+<h3 id="sub-emitter-options"><a class="header" href="#sub-emitter-options">Sub-Emitter Options</a></h3>
+<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>.count(n)</code></td><td>Number of children per parent death</td></tr>
+<tr><td><code>.speed(min..max)</code></td><td>Random speed range</td></tr>
+<tr><td><code>.spread(radians)</code></td><td>0 = laser, PI = hemisphere, TAU = full sphere</td></tr>
+<tr><td><code>.inherit_velocity(factor)</code></td><td>0.0 to 1.0, how much parent velocity children get</td></tr>
+<tr><td><code>.child_lifetime(secs)</code></td><td>Override lifetime for children</td></tr>
+<tr><td><code>.child_color(Vec3)</code></td><td>Override color for children</td></tr>
+<tr><td><code>.spawn_radius(r)</code></td><td>Random offset from parent position</td></tr>
+</tbody></table>
+</div>
+<h3 id="chaining-sub-emitters"><a class="header" href="#chaining-sub-emitters">Chaining Sub-Emitters</a></h3>
+<p>Create multi-stage effects:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Rockets → Sparks → Embers
+.with_sub_emitter(SubEmitter::new(Rocket.into(), Spark.into()).count(30))
+.with_sub_emitter(SubEmitter::new(Spark.into(), Ember.into()).count(5))
+<span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="typed-interactions"><a class="header" href="#typed-interactions">Typed Interactions</a></h1>
 <p>Typed interactions let different particle types behave differently toward each other. This enables predator-prey dynamics, team-based systems, and state machines.</p>
 <h2 id="defining-particle-types"><a class="header" href="#defining-particle-types">Defining Particle Types</a></h2>
@@ -1607,32 +1674,44 @@ const STATE_EATING: u32 = 3;
 <span class="boring">}</span></code></pre></pre>
 <h2 id="communication-information-exchange"><a class="header" href="#communication-information-exchange">Communication: Information Exchange</a></h2>
 <h3 id="inboxes-direct-messages"><a class="header" href="#inboxes-direct-messages">Inboxes (Direct Messages)</a></h3>
-<p>Particles can send targeted messages:</p>
+<p>Particles can send float values to each other via 4 inbox channels:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[derive(Particle, Clone)]
-struct Messenger {
-    position: Vec3,
-    velocity: Vec3,
-    inbox: u32,  // Receives messages here
-}
+</span>.with_inbox()  // Enable inbox system
+.with_spatial_config(0.2, 32)
 
-.with_inbox("inbox")
+// Send values in neighbor rule
 .with_rule(Rule::NeighborCustom(r#"
-    // Send alert to nearby friends
+    // Send danger signal to nearby friends
     if p.fear_level &gt; 0.8 &amp;&amp; other.particle_type == p.particle_type {
-        send_inbox(other_idx, 1u);  // "Danger!"
+        inbox_send(other_idx, 0u, 1.0);  // Channel 0: danger level
+    }
+
+    // Share energy with neighbors
+    if neighbor_dist &lt; 0.05 {
+        inbox_send(other_idx, 1u, p.energy * 0.1);  // Channel 1: energy transfer
     }
 "#.into()))
 
+// Receive accumulated values
 .with_rule(Rule::Custom(r#"
-    // React to received messages
-    if p.inbox == 1u {
+    // React to danger signals (channel 0)
+    let danger = inbox_receive_at(index, 0u);
+    if danger &gt; 0.5 {
         p.fear_level = max(p.fear_level, 0.5);
-        p.inbox = 0u;  // Clear inbox
     }
+
+    // Receive transferred energy (channel 1)
+    p.energy += inbox_receive_at(index, 1u);
 "#.into()))
 <span class="boring">}</span></code></pre></pre>
+<p><strong>Inbox details:</strong></p>
+<ul>
+<li>4 channels per particle (vec4)</li>
+<li>Values are accumulated atomically across all senders</li>
+<li>Cleared each frame</li>
+<li>~0.00001 precision in range ±32768</li>
+</ul>
 <h3 id="fields-broadcast"><a class="header" href="#fields-broadcast">Fields (Broadcast)</a></h3>
 <p>Write to fields for area-of-effect communication:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1788,6 +1867,228 @@ const REST: u32 = 3;
 </tbody></table>
 </div>
 <p>No special "Agent" API needed—the primitives compose into whatever agent architecture your simulation requires.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="multi-particle-types"><a class="header" href="#multi-particle-types">Multi-Particle Types</a></h1>
+<p>The <code>MultiParticle</code> derive macro lets you define multiple particle types with different fields in a single enum, then use them together in heterogeneous simulations.</p>
+<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
+<p>With regular <code>#[derive(Particle)]</code>, all particles in a simulation share the same struct. If you want boids with a <code>flock_id</code> and predators with <code>hunger</code>, you'd need to put both fields on every particle:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(Particle, Clone)]
+struct Creature {
+    position: Vec3,
+    velocity: Vec3,
+    particle_type: u32,
+    flock_id: u32,   // Only boids use this
+    hunger: f32,     // Only predators use this
+}
+<span class="boring">}</span></code></pre></pre>
+<p>This works, but it's awkward and wastes memory.</p>
+<h2 id="the-solution-multiparticle"><a class="header" href="#the-solution-multiparticle">The Solution: MultiParticle</a></h2>
+<p><code>MultiParticle</code> lets you define each type with only its relevant fields:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[derive(MultiParticle, Clone)]
+enum Creature {
+    Boid {
+        position: Vec3,
+        velocity: Vec3,
+        flock_id: u32,
+    },
+    Predator {
+        position: Vec3,
+        velocity: Vec3,
+        hunger: f32,
+        target_id: u32,
+    },
+}
+<span class="boring">}</span></code></pre></pre>
+<p>From this single definition, the macro generates:</p>
+<ol>
+<li><strong>Standalone structs</strong> - <code>Boid</code> and <code>Predator</code> as separate types, each implementing <code>ParticleTrait</code></li>
+<li><strong>Type constants</strong> - <code>Creature::BOID</code> and <code>Creature::PREDATOR</code> for use in typed rules</li>
+<li><strong>Unified GPU struct</strong> - A combined struct with all fields for the GPU</li>
+<li><strong>WGSL helpers</strong> - Constants (<code>BOID</code>, <code>PREDATOR</code>) and functions (<code>is_boid()</code>, <code>is_predator()</code>)</li>
+</ol>
+<h2 id="creating-particles"><a class="header" href="#creating-particles">Creating Particles</a></h2>
+<p>Use clean struct-like enum syntax:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Boid with its specific fields
+Creature::Boid {
+    position: pos,
+    velocity: vel,
+    flock_id: 0,
+}
+
+// Predator with its specific fields
+Creature::Predator {
+    position: pos,
+    velocity: vel,
+    hunger: 1.0,
+    target_id: 0,
+}
+<span class="boring">}</span></code></pre></pre>
+<h2 id="type-constants-in-rules"><a class="header" href="#type-constants-in-rules">Type Constants in Rules</a></h2>
+<p>The generated constants make typed rules self-documenting:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Predators chase boids
+.with_rule(Rule::Chase {
+    self_type: Creature::PREDATOR,
+    target_type: Creature::BOID,
+    radius: 0.5,
+    strength: 3.5,
+})
+
+// Boids evade predators
+.with_rule(Rule::Evade {
+    self_type: Creature::BOID,
+    threat_type: Creature::PREDATOR,
+    radius: 0.3,
+    strength: 5.0,
+})
+
+// Boids flock with other boids
+.with_rule(Rule::Typed {
+    self_type: Creature::BOID,
+    other_type: Some(Creature::BOID),
+    rule: Box::new(Rule::Cohere { radius: 0.15, strength: 1.2 }),
+})
+<span class="boring">}</span></code></pre></pre>
+<h2 id="wgsl-helpers"><a class="header" href="#wgsl-helpers">WGSL Helpers</a></h2>
+<p>In custom rules, use the generated helpers to access variant-specific fields:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_rule(Rule::Custom(r#"
+    // Check type with helper function
+    if is_predator(p) {
+        // Access predator-specific field
+        p.hunger = max(0.0, p.hunger - uniforms.delta_time * 0.1);
+
+        // Hungry predators move faster
+        let speed_boost = 1.0 + (1.0 - p.hunger) * 0.5;
+        p.velocity *= speed_boost;
+    }
+
+    if is_boid(p) {
+        // Access boid-specific field
+        let flock = p.flock_id;
+    }
+"#.into()))
+<span class="boring">}</span></code></pre></pre>
+<p>The generated WGSL includes:</p>
+<pre><code class="language-wgsl">// Type constants
+const BOID: u32 = 0u;
+const PREDATOR: u32 = 1u;
+
+// Helper functions
+fn is_boid(p: Particle) -&gt; bool { return p.particle_type == 0u; }
+fn is_predator(p: Particle) -&gt; bool { return p.particle_type == 1u; }
+</code></pre>
+<h2 id="standalone-simulations"><a class="header" href="#standalone-simulations">Standalone Simulations</a></h2>
+<p>The generated structs work independently too:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// Mixed simulation
+Simulation::&lt;Creature&gt;::new()
+
+// Boid-only simulation (uses generated Boid struct)
+Simulation::&lt;Boid&gt;::new()
+
+// Predator-only simulation (uses generated Predator struct)
+Simulation::&lt;Predator&gt;::new()
+<span class="boring">}</span></code></pre></pre>
+<h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<ul>
+<li>The enum must also derive <code>Clone</code></li>
+<li>Each variant must have <code>position: Vec3</code> and <code>velocity: Vec3</code></li>
+<li>Use struct-like syntax (named fields, not tuple variants)</li>
+</ul>
+<h2 id="how-it-works-1"><a class="header" href="#how-it-works-1">How It Works</a></h2>
+<p>On the GPU, all particles share a unified struct containing every field from every variant:</p>
+<pre><code class="language-wgsl">struct Particle {
+    position: vec3&lt;f32&gt;,
+    velocity: vec3&lt;f32&gt;,
+    flock_id: u32,      // From Boid
+    hunger: f32,        // From Predator
+    target_id: u32,     // From Predator
+    particle_type: u32, // Discriminant
+    // ... lifecycle fields
+}
+</code></pre>
+<p>When a <code>Creature::Boid</code> is converted to GPU format:</p>
+<ul>
+<li><code>flock_id</code> is set from the boid's value</li>
+<li><code>hunger</code> and <code>target_id</code> are zeroed</li>
+<li><code>particle_type</code> is set to <code>0</code> (BOID)</li>
+</ul>
+<p>This means accessing the "wrong" variant's fields in WGSL just reads zeros - it's safe but meaningless. Always check <code>particle_type</code> or use the helper functions first.</p>
+<h2 id="complete-example-2"><a class="header" href="#complete-example-2">Complete Example</a></h2>
+<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
+
+#[derive(MultiParticle, Clone)]
+enum Creature {
+    Boid {
+        position: Vec3,
+        velocity: Vec3,
+        flock_id: u32,
+    },
+    Predator {
+        position: Vec3,
+        velocity: Vec3,
+        hunger: f32,
+    },
+}
+
+fn main() {
+    Simulation::&lt;Creature&gt;::new()
+        .with_particle_count(1000)
+        .with_spawner(|i, count| {
+            if i &lt; count * 9 / 10 {
+                Creature::Boid {
+                    position: random_position(),
+                    velocity: Vec3::ZERO,
+                    flock_id: i % 3,
+                }
+            } else {
+                Creature::Predator {
+                    position: random_position(),
+                    velocity: Vec3::ZERO,
+                    hunger: 1.0,
+                }
+            }
+        })
+        // Boid flocking
+        .with_rule(Rule::Typed {
+            self_type: Creature::BOID,
+            other_type: Some(Creature::BOID),
+            rule: Box::new(Rule::Cohere { radius: 0.15, strength: 1.0 }),
+        })
+        // Predator hunting
+        .with_rule(Rule::Chase {
+            self_type: Creature::PREDATOR,
+            target_type: Creature::BOID,
+            radius: 0.5,
+            strength: 3.0,
+        })
+        // Prey evasion
+        .with_rule(Rule::Evade {
+            self_type: Creature::BOID,
+            threat_type: Creature::PREDATOR,
+            radius: 0.3,
+            strength: 5.0,
+        })
+        .run();
+}</code></pre></pre>
+<h2 id="when-to-use-multiparticle"><a class="header" href="#when-to-use-multiparticle">When to Use MultiParticle</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Use Case</th><th>Approach</th></tr></thead><tbody>
+<tr><td>Single particle type</td><td>Regular <code>#[derive(Particle)]</code></td></tr>
+<tr><td>Multiple types, same fields</td><td><code>ParticleType</code> enum + <code>particle_type</code> field</td></tr>
+<tr><td>Multiple types, different fields</td><td><code>#[derive(MultiParticle)]</code></td></tr>
+</tbody></table>
+</div>
+<p><code>MultiParticle</code> shines when your types genuinely need different data - predators tracking hunger, boids tracking flock membership, infected particles tracking infection time, etc.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="fields"><a class="header" href="#fields">Fields</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="spatial-hashing"><a class="header" href="#spatial-hashing">Spatial Hashing</a></h1>
 <p>Spatial hashing accelerates neighbor queries from O(n²) to approximately O(n). It's automatically enabled when you use neighbor-based rules.</p>
 <h2 id="why-its-needed"><a class="header" href="#why-its-needed">Why It's Needed</a></h2>
@@ -1798,7 +2099,7 @@ const REST: u32 = 3;
 <tr><td>100,000</td><td>10,000,000,000</td><td>~5,000,000</td></tr>
 </tbody></table>
 </div>
-<h2 id="how-it-works-1"><a class="header" href="#how-it-works-1">How It Works</a></h2>
+<h2 id="how-it-works-2"><a class="header" href="#how-it-works-2">How It Works</a></h2>
 <h3 id="1-morton-encoding-z-order-curve"><a class="header" href="#1-morton-encoding-z-order-curve">1. Morton Encoding (Z-Order Curve)</a></h3>
 <p>3D space is divided into a grid of cells. Each cell gets a unique ID using Morton encoding:</p>
 <pre><code>3D Position → Cell Coordinates → Morton Code (single u32)
@@ -1807,8 +2108,8 @@ const REST: u32 = 3;
 <h3 id="2-radix-sort"><a class="header" href="#2-radix-sort">2. Radix Sort</a></h3>
 <p>Particles are sorted by their Morton code using GPU radix sort:</p>
 <ul>
-<li>8 passes (4 bits per pass for 32-bit keys)</li>
-<li>Each pass: histogram → prefix sum → scatter</li>
+<li>Dynamic pass count based on grid resolution (e.g., 32³ grid = 15 bits needed = 4 passes)</li>
+<li>Each pass processes 4 bits: histogram → prefix sum → scatter</li>
 <li>Result: particles ordered by spatial cell</li>
 </ul>
 <h3 id="3-cell-table"><a class="header" href="#3-cell-table">3. Cell Table</a></h3>
@@ -1825,6 +2126,13 @@ cell_end[morton_code] = one past last particle index
     }
 }
 </code></pre>
+<h3 id="max-neighbors-limit"><a class="header" href="#max-neighbors-limit">Max Neighbors Limit</a></h3>
+<p>For dense clusters, you can cap how many neighbors each particle processes:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_max_neighbors(48)  // Stop after 48 neighbors
+<span class="boring">}</span></code></pre></pre>
+<p>This provides an early-exit from the neighbor loop, trading accuracy for performance in pathological cases where particles cluster tightly.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>Configure spatial hashing with:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -1900,236 +2208,9 @@ cell_end[morton_code] = one past last particle index
 </li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="3d-spatial-fields"><a class="header" href="#3d-spatial-fields">3D Spatial Fields</a></h1>
-<p>Fields are persistent 3D grids that particles can read from and write to. Unlike particle-to-particle interactions, fields provide a shared spatial medium for indirect communication and environmental effects.</p>
-<h2 id="use-cases-1"><a class="header" href="#use-cases-1">Use Cases</a></h2>
-<ul>
-<li><strong>Pheromone trails</strong>: Particles deposit chemicals, others follow gradients (slime mold)</li>
-<li><strong>Density fields</strong>: Accumulate particle presence for fluid-like behavior</li>
-<li><strong>Temperature/heat</strong>: Particles emit or absorb heat from the environment</li>
-<li><strong>Flow fields</strong>: Pre-computed or dynamic velocity guidance</li>
-</ul>
-<h2 id="basic-usage-3"><a class="header" href="#basic-usage-3">Basic Usage</a></h2>
-<p>Add a field with <code>.with_field()</code> and access it in custom rules:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Simulation::&lt;Agent&gt;::new()
-    .with_field(
-        "pheromone",
-        FieldConfig::new(64)      // 64³ grid resolution
-            .with_extent(1.0)     // World space: -1 to +1
-            .with_decay(0.98)     // Fade each frame
-            .with_blur(0.1)       // Diffusion strength
-    )
-    .with_rule(Rule::Custom(r#"
-        // Deposit pheromone at current position
-        field_write(0u, p.position, 0.1);
-
-        // Read pheromone concentration
-        let concentration = field_read(0u, p.position);
-
-        // Color based on local concentration
-        p.color = vec3&lt;f32&gt;(0.0, concentration, 0.5);
-    "#.into()))
-    .run();
-<span class="boring">}</span></code></pre></pre>
-<h2 id="field-configuration"><a class="header" href="#field-configuration">Field Configuration</a></h2>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>FieldConfig::new(resolution)
-    .with_extent(extent)           // World bounds (-extent to +extent)
-    .with_decay(decay)             // Per-frame multiplier (0.0-1.0)
-    .with_blur(blur)               // Diffusion strength (0.0-1.0)
-    .with_blur_iterations(n)       // Blur passes per frame (1-3 typical)
-<span class="boring">}</span></code></pre></pre>
-<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Range</th><th>Effect</th></tr></thead><tbody>
-<tr><td><code>resolution</code></td><td>8-256</td><td>Grid cells per axis (memory = resolution³ × 4 bytes)</td></tr>
-<tr><td><code>extent</code></td><td>&gt; 0</td><td>World space coverage (should match simulation bounds)</td></tr>
-<tr><td><code>decay</code></td><td>0.0-1.0</td><td>0.99 = slow fade, 0.5 = fast fade, 1.0 = permanent</td></tr>
-<tr><td><code>blur</code></td><td>0.0-1.0</td><td>0.0 = no spread, 0.5 = heavy diffusion</td></tr>
-</tbody></table>
-</div>
-<h3 id="memory-usage-1"><a class="header" href="#memory-usage-1">Memory Usage</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Resolution</th><th>Total Cells</th><th>Memory</th></tr></thead><tbody>
-<tr><td>32³</td><td>32,768</td><td>~128 KB</td></tr>
-<tr><td>64³</td><td>262,144</td><td>~1 MB</td></tr>
-<tr><td>128³</td><td>2,097,152</td><td>~8 MB</td></tr>
-</tbody></table>
-</div>
-<h2 id="shader-functions"><a class="header" href="#shader-functions">Shader Functions</a></h2>
-<p>Fields are accessed by index (0, 1, 2...) in the order they were registered.</p>
-<h3 id="field_writefield_idx-position-value"><a class="header" href="#field_writefield_idx-position-value"><code>field_write(field_idx, position, value)</code></a></h3>
-<p>Atomically adds a value to the field at the given world position. Multiple particles writing to the same cell accumulate their values.</p>
-<pre><code class="language-wgsl">// Deposit pheromone
-field_write(0u, p.position, 0.1);
-
-// Deposit more in high-velocity areas
-field_write(0u, p.position, length(p.velocity) * 0.05);
-</code></pre>
-<h3 id="field_readfield_idx-position"><a class="header" href="#field_readfield_idx-position"><code>field_read(field_idx, position)</code></a></h3>
-<p>Samples the field at a world position using trilinear interpolation for smooth values between grid cells.</p>
-<pre><code class="language-wgsl">// Read at current position
-let here = field_read(0u, p.position);
-
-// Read ahead (for steering)
-let ahead = field_read(0u, p.position + normalize(p.velocity) * 0.1);
-</code></pre>
-<h3 id="field_gradientfield_idx-position-epsilon"><a class="header" href="#field_gradientfield_idx-position-epsilon"><code>field_gradient(field_idx, position, epsilon)</code></a></h3>
-<p>Computes the gradient (direction of steepest increase) at a position. Useful for steering toward higher concentrations.</p>
-<pre><code class="language-wgsl">// Get gradient direction
-let grad = field_gradient(0u, p.position, 0.05);
-
-// Steer toward higher values
-p.velocity += normalize(grad) * 0.5 * uniforms.delta_time;
-</code></pre>
-<h2 id="example-slime-mold"><a class="header" href="#example-slime-mold">Example: Slime Mold</a></h2>
-<p>Classic Physarum simulation where agents deposit pheromones and follow gradients:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[derive(Particle, Clone)]
-struct SlimeAgent {
-    position: Vec3,
-    velocity: Vec3,
-    #[color]
-    color: Vec3,
-    heading: f32,  // Direction angle in XZ plane
-}
-
-Simulation::&lt;SlimeAgent&gt;::new()
-    .with_particle_count(30_000)
-    .with_field(
-        "pheromone",
-        FieldConfig::new(64)
-            .with_extent(1.2)
-            .with_decay(0.98)
-            .with_blur(0.1)
-    )
-    .with_uniform::&lt;f32&gt;("sense_dist", 0.1)
-    .with_uniform::&lt;f32&gt;("sense_angle", 0.4)
-    .with_uniform::&lt;f32&gt;("turn_speed", 4.0)
-    .with_rule(Rule::Custom(r#"
-        let dt = uniforms.delta_time;
-
-        // Deposit pheromone trail
-        field_write(0u, p.position, 0.2);
-
-        // Sense in three directions
-        let fwd = vec3&lt;f32&gt;(cos(p.heading), 0.0, sin(p.heading));
-        let left_ang = p.heading + uniforms.sense_angle;
-        let right_ang = p.heading - uniforms.sense_angle;
-
-        let sense_fwd = p.position + fwd * uniforms.sense_dist;
-        let sense_left = p.position + vec3&lt;f32&gt;(cos(left_ang), 0.0, sin(left_ang)) * uniforms.sense_dist;
-        let sense_right = p.position + vec3&lt;f32&gt;(cos(right_ang), 0.0, sin(right_ang)) * uniforms.sense_dist;
-
-        let val_fwd = field_read(0u, sense_fwd);
-        let val_left = field_read(0u, sense_left);
-        let val_right = field_read(0u, sense_right);
-
-        // Turn toward highest concentration
-        if val_left &gt; val_fwd &amp;&amp; val_left &gt; val_right {
-            p.heading += uniforms.turn_speed * dt;
-        } else if val_right &gt; val_fwd {
-            p.heading -= uniforms.turn_speed * dt;
-        }
-
-        // Move forward
-        p.position += vec3&lt;f32&gt;(cos(p.heading), 0.0, sin(p.heading)) * 0.5 * dt;
-        p.position.y = 0.0;
-
-        // Color by local pheromone
-        let pheromone = field_read(0u, p.position);
-        p.color = vec3&lt;f32&gt;(0.1, 0.3 + pheromone * 0.5, 0.2);
-
-        p.velocity = vec3&lt;f32&gt;(0.0);  // We handle movement directly
-    "#.into()))
-    .run();
-<span class="boring">}</span></code></pre></pre>
-<h2 id="example-heat-diffusion"><a class="header" href="#example-heat-diffusion">Example: Heat Diffusion</a></h2>
-<p>Particles emit heat that spreads through the field:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Simulation::&lt;Particle&gt;::new()
-    .with_field(
-        "temperature",
-        FieldConfig::new(32)
-            .with_decay(0.995)    // Slow cooling
-            .with_blur(0.3)       // Fast heat spread
-            .with_blur_iterations(2)
-    )
-    .with_rule(Rule::Custom(r#"
-        // Hot particles emit heat
-        if p.color.r &gt; 0.5 {
-            field_write(0u, p.position, 0.1);
-        }
-
-        // All particles absorb ambient temperature
-        let temp = field_read(0u, p.position);
-        p.color = vec3&lt;f32&gt;(temp, 0.2, 1.0 - temp);
-    "#.into()))
-    .run();
-<span class="boring">}</span></code></pre></pre>
-<h2 id="multiple-fields"><a class="header" href="#multiple-fields">Multiple Fields</a></h2>
-<p>Register multiple fields for complex simulations. Each field can have independent resolution, decay, blur, and extent settings. Fields are accessed by index in registration order.</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Simulation::&lt;Agent&gt;::new()
-    .with_field("food", FieldConfig::new(64).with_decay(0.99))       // Index 0
-    .with_field("danger", FieldConfig::new(32).with_decay(0.9).with_blur(0.2))  // Index 1
-    .with_rule(Rule::Custom(r#"
-        let food = field_read(0u, p.position);      // Field 0
-        let danger = field_read(1u, p.position);    // Field 1
-
-        // Seek food, avoid danger
-        let food_grad = field_gradient(0u, p.position, 0.05);
-        let danger_grad = field_gradient(1u, p.position, 0.05);
-
-        p.velocity += food_grad * 2.0 - danger_grad * 5.0;
-    "#.into()))
-    .run();
-<span class="boring">}</span></code></pre></pre>
-<h3 id="example-competing-teams"><a class="header" href="#example-competing-teams">Example: Competing Teams</a></h3>
-<p>Two particle teams, each depositing to their own field and avoiding the other:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>Simulation::&lt;Agent&gt;::new()
-    // Each team gets its own pheromone field
-    .with_field("red_pheromone", FieldConfig::new(48).with_decay(0.97).with_blur(0.15))
-    .with_field("blue_pheromone", FieldConfig::new(48).with_decay(0.97).with_blur(0.15))
-    .with_rule(Rule::Custom(r#"
-        // p.team is 0 or 1
-        let my_field = p.team;
-        let other_field = 1u - p.team;
-
-        // Deposit to my team's field
-        field_write(my_field, p.position, 0.15);
-
-        // Sense ahead
-        let ahead = p.position + normalize(p.velocity) * 0.1;
-
-        // Follow my team, avoid other team
-        let my_val = field_read(my_field, ahead);
-        let other_val = field_read(other_field, ahead);
-        let score = my_val - other_val * 1.5;
-
-        // Steer based on combined score
-        let my_grad = field_gradient(my_field, p.position, 0.05);
-        let other_grad = field_gradient(other_field, p.position, 0.05);
-        p.velocity += (my_grad - other_grad * 1.5) * uniforms.delta_time;
-    "#.into()))
-    .run();
-<span class="boring">}</span></code></pre></pre>
-<p>See <code>examples/multi_field.rs</code> for a complete working example.</p>
-<h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
-<ul>
-<li><strong>Match extents</strong>: Set field extent to match or exceed your simulation bounds</li>
-<li><strong>Resolution tradeoffs</strong>: Higher resolution = more detail but more memory and slower blur</li>
-<li><strong>Decay vs blur</strong>: High decay + low blur = sharp trails; low decay + high blur = ambient clouds</li>
-<li><strong>2D simulations</strong>: For XZ-plane simulations, the Y axis still exists but particles sample from y=0</li>
-<li><strong>Performance</strong>: Field processing adds GPU overhead; start with 32³ or 64³ resolution</li>
-</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="custom-rules-1"><a class="header" href="#custom-rules-1">Custom Rules</a></h1>
 <p>When built-in rules aren't enough, <code>Rule::Custom</code> lets you write raw WGSL shader code.</p>
-<h2 id="basic-usage-4"><a class="header" href="#basic-usage-4">Basic Usage</a></h2>
+<h2 id="basic-usage-3"><a class="header" href="#basic-usage-3">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_rule(Rule::Custom(r#"
@@ -2292,7 +2373,7 @@ Rule::Custom(r#"
 <span class="boring">}</span></code></pre></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="fragment-shaders"><a class="header" href="#fragment-shaders">Fragment Shaders</a></h1>
 <p>Fragment shaders control how each particle looks - its shape, glow, color effects, and more.</p>
-<h2 id="basic-usage-5"><a class="header" href="#basic-usage-5">Basic Usage</a></h2>
+<h2 id="basic-usage-4"><a class="header" href="#basic-usage-4">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>Simulation::&lt;MyParticle&gt;::new()
@@ -2313,7 +2394,7 @@ Rule::Custom(r#"
 <tr><td><code>uniforms.*</code></td><td>varies</td><td>Any custom uniforms defined via <code>.with_uniform()</code></td></tr>
 </tbody></table>
 </div>
-<h2 id="how-it-works-2"><a class="header" href="#how-it-works-2">How It Works</a></h2>
+<h2 id="how-it-works-3"><a class="header" href="#how-it-works-3">How It Works</a></h2>
 <p>Your snippet is injected into a fragment shader that runs for every pixel of every particle. The <code>in.uv</code> coordinates tell you where you are within the particle's billboard quad:</p>
 <pre><code>(-1,-1) -------- (1,-1)
    |               |
@@ -2418,7 +2499,7 @@ Rule::Custom(r#"
     return vec4&lt;f32&gt;(in.color * intensity, alpha);
 "#)
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-2"><a class="header" href="#tips-2">Tips</a></h2>
+<h2 id="tips-1"><a class="header" href="#tips-1">Tips</a></h2>
 <h3 id="coordinate-system"><a class="header" href="#coordinate-system">Coordinate System</a></h3>
 <ul>
 <li><code>in.uv</code> ranges from -1 to 1</li>
@@ -2627,7 +2708,7 @@ let fire_lut = TextureConfig::gradient(256, [0, 0, 0, 255], [255, 255, 200, 255]
     return vec4&lt;f32&gt;(sprite.rgb * in.color, sprite.a);
 "#)
 <span class="boring">}</span></code></pre></pre>
-<h2 id="complete-example-2"><a class="header" href="#complete-example-2">Complete Example</a></h2>
+<h2 id="complete-example-3"><a class="header" href="#complete-example-3">Complete Example</a></h2>
 <pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
 
 #[derive(Particle, Clone)]
@@ -2678,7 +2759,7 @@ fn main() {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="post-processing-1"><a class="header" href="#post-processing-1">Post-Processing</a></h1>
 <p>Post-processing applies screen-space effects to the rendered scene - things like bloom, vignette, chromatic aberration, and CRT scanlines.</p>
-<h2 id="basic-usage-6"><a class="header" href="#basic-usage-6">Basic Usage</a></h2>
+<h2 id="basic-usage-5"><a class="header" href="#basic-usage-5">Basic Usage</a></h2>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>.with_visuals(|v| {
@@ -2699,7 +2780,7 @@ fn main() {
 <tr><td><code>uniforms.*</code></td><td>varies</td><td>Any custom uniforms defined via <code>.with_uniform()</code></td></tr>
 </tbody></table>
 </div>
-<h2 id="how-it-works-3"><a class="header" href="#how-it-works-3">How It Works</a></h2>
+<h2 id="how-it-works-4"><a class="header" href="#how-it-works-4">How It Works</a></h2>
 <p>After all particles are rendered to an offscreen texture, your post-process shader runs once per screen pixel. You sample the scene texture and output a modified color.</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -2893,7 +2974,7 @@ v.post_process(r#"
 <li><strong>Fragment shaders</strong> (<code>.with_fragment_shader()</code>) - for per-particle visuals</li>
 <li><strong>Post-process shaders</strong> (<code>.post_process()</code>) - for screen-space effects</li>
 </ul>
-<h2 id="basic-usage-7"><a class="header" href="#basic-usage-7">Basic Usage</a></h2>
+<h2 id="basic-usage-6"><a class="header" href="#basic-usage-6">Basic Usage</a></h2>
 <p>Define uniforms with <code>.with_uniform()</code> and access them in any shader:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -3007,7 +3088,7 @@ v.post_process(r#"
     ctx.set("strength", strength);
 })
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-3"><a class="header" href="#tips-3">Tips</a></h2>
+<h2 id="tips-2"><a class="header" href="#tips-2">Tips</a></h2>
 <ul>
 <li><strong>Initialize all uniforms</strong>: Always set initial values with <code>.with_uniform()</code> before using <code>.with_update()</code>.</li>
 <li><strong>Type suffixes</strong>: Use <code>1.0f32</code> not <code>1.0</code> to ensure correct type inference.</li>
@@ -3107,7 +3188,7 @@ v.post_process(r#"
     p.velocity += turbulence(p.position, uniforms.time, 1.5) * uniforms.delta_time;
 "#.into()))
 <span class="boring">}</span></code></pre></pre>
-<h2 id="tips-4"><a class="header" href="#tips-4">Tips</a></h2>
+<h2 id="tips-3"><a class="header" href="#tips-3">Tips</a></h2>
 <ul>
 <li><strong>Parameter passing</strong>: Pass uniforms as function parameters rather than accessing them directly.</li>
 <li><strong>Return types</strong>: Always specify return types for WGSL functions.</li>
@@ -3179,7 +3260,7 @@ p.color = hsv_to_rgb(hue, 0.8, 1.0);
 let new_hue = hsv.x + 0.1;  // Shift hue
 p.color = hsv_to_rgb(new_hue, hsv.y, hsv.z);
 </code></pre>
-<h2 id="complete-example-3"><a class="header" href="#complete-example-3">Complete Example</a></h2>
+<h2 id="complete-example-4"><a class="header" href="#complete-example-4">Complete Example</a></h2>
 <pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
 
 #[derive(Particle, Clone)]
@@ -3241,7 +3322,7 @@ rdpe = { version = "0.1", features = ["egui"] }
 <p>Or run examples with:</p>
 <pre><code class="language-bash">cargo run --example egui_interactive --features egui
 </code></pre>
-<h2 id="basic-usage-8"><a class="header" href="#basic-usage-8">Basic Usage</a></h2>
+<h2 id="basic-usage-7"><a class="header" href="#basic-usage-7">Basic Usage</a></h2>
 <p>Use <code>.with_ui()</code> to add an egui callback:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -3323,7 +3404,7 @@ fn main() {
        │    .with_ui()       │    .with_update()    │    Rule::Custom
        └─────────────────────┴──────────────────────┴─────────────────▶ Shader
 </code></pre>
-<h2 id="complete-example-4"><a class="header" href="#complete-example-4">Complete Example</a></h2>
+<h2 id="complete-example-5"><a class="header" href="#complete-example-5">Complete Example</a></h2>
 <p>Here's a full interactive simulation:</p>
 <pre><pre class="playground"><code class="language-rust">use rand::Rng;
 use rdpe::prelude::*;
@@ -3427,7 +3508,7 @@ fn main() {
         .with_rule(Rule::BounceWalls)
         .run();
 }</code></pre></pre>
-<h2 id="tips-5"><a class="header" href="#tips-5">Tips</a></h2>
+<h2 id="tips-4"><a class="header" href="#tips-4">Tips</a></h2>
 <h3 id="mutex-performance"><a class="header" href="#mutex-performance">Mutex Performance</a></h3>
 <p>Don't worry about <code>Mutex</code> overhead - both callbacks run on the main thread, so there's no contention. Lock/unlock is ~20ns, negligible at 60fps.</p>
 <h3 id="initial-values-must-match"><a class="header" href="#initial-values-must-match">Initial Values Must Match</a></h3>
@@ -3499,17 +3580,14 @@ cargo run --example murmuration --features egui
 <div style="break-before: page; page-break-before: always;"></div><h1 id="performance-tips-2"><a class="header" href="#performance-tips-2">Performance Tips</a></h1>
 <p>RDPE runs on the GPU, but performance still varies based on configuration.</p>
 <h2 id="particle-count"><a class="header" href="#particle-count">Particle Count</a></h2>
-<p>The GPU handles particles in parallel, but there are limits:</p>
-<div class="table-wrapper"><table><thead><tr><th>Particles</th><th>Typical Performance</th></tr></thead><tbody>
-<tr><td>1,000</td><td>Extremely fast</td></tr>
-<tr><td>10,000</td><td>Very fast</td></tr>
-<tr><td>50,000</td><td>Fast</td></tr>
-<tr><td>100,000</td><td>Good</td></tr>
-<tr><td>500,000</td><td>May drop frames</td></tr>
-<tr><td>1,000,000+</td><td>Depends on GPU</td></tr>
+<p>The GPU handles particles in parallel, but performance depends on what you're simulating:</p>
+<div class="table-wrapper"><table><thead><tr><th>Scenario</th><th>Particles</th><th>Typical FPS</th></tr></thead><tbody>
+<tr><td>No neighbors (gravity, drag, etc.)</td><td>500,000</td><td>60+</td></tr>
+<tr><td>Full boids (separate, cohere, align)</td><td>50,000</td><td>20+</td></tr>
+<tr><td>Spatial fields</td><td>100,000</td><td>30+</td></tr>
 </tbody></table>
 </div>
-<h3 id="tips-6"><a class="header" href="#tips-6">Tips</a></h3>
+<h3 id="tips-5"><a class="header" href="#tips-5">Tips</a></h3>
 <ul>
 <li>Start with fewer particles, increase until performance drops</li>
 <li>Integrated GPUs handle fewer particles than discrete GPUs</li>
@@ -3542,6 +3620,13 @@ cargo run --example murmuration --features egui
 <li><strong>Few particles</strong> - Overhead may not be worth it</li>
 <li><strong>Large interaction radius</strong> - Less benefit (checking many neighbors anyway)</li>
 </ul>
+<h3 id="max-neighbors-limit-1"><a class="header" href="#max-neighbors-limit-1">Max Neighbors Limit</a></h3>
+<p>In dense clusters, particles may have hundreds of neighbors. Cap the iteration:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_max_neighbors(48)  // Stop after processing 48 neighbors
+<span class="boring">}</span></code></pre></pre>
+<p>This trades some accuracy for a significant performance boost (2x or more in pathological cases). Values of 32-64 work well for most simulations.</p>
 <h2 id="rule-complexity"><a class="header" href="#rule-complexity">Rule Complexity</a></h2>
 <h3 id="simple-rules-fast"><a class="header" href="#simple-rules-fast">Simple Rules (Fast)</a></h3>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -3661,38 +3746,48 @@ cargo run --example &lt;name&gt; --features egui
 <p>These showcase fundamental RDPE capabilities:</p>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>boids</code></td><td>Classic flocking algorithm (Separate + Cohere + Align)</td></tr>
+<tr><td><code>aquarium</code></td><td>Fish and sharks with Chase/Evade behaviors</td></tr>
 <tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between particle types</td></tr>
 <tr><td><code>infection</code></td><td>SIR epidemic model with type conversion</td></tr>
+<tr><td><code>connections</code></td><td>Drawing lines between nearby particles</td></tr>
 <tr><td><code>inbox</code></td><td>Particle-to-particle communication system</td></tr>
 <tr><td><code>slime_mold</code></td><td>Physarum-inspired emergent patterns (requires <code>--features egui</code>)</td></tr>
 <tr><td><code>slime_mold_field</code></td><td>Slime mold using 3D spatial fields (requires <code>--features egui</code>)</td></tr>
 <tr><td><code>multi_field</code></td><td>Multiple competing pheromone fields</td></tr>
 </tbody></table>
 </div>
-<h2 id="single-rule-examples"><a class="header" href="#single-rule-examples">Single-Rule Examples</a></h2>
-<p>Located in <code>examples/rules/</code>, each demonstrates one specific rule:</p>
-<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Rule</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>bounce_walls</code></td><td><code>BounceWalls</code></td><td>Particles reflecting off boundaries</td></tr>
-<tr><td><code>vortex</code></td><td><code>Vortex</code></td><td>Circular swirling motion</td></tr>
-<tr><td><code>turbulence</code></td><td><code>Turbulence</code></td><td>Chaotic flow field</td></tr>
-<tr><td><code>orbit</code></td><td><code>Orbit</code></td><td>Particles orbiting Y axis</td></tr>
-<tr><td><code>curl</code></td><td><code>Curl</code></td><td>Turbulent curl noise motion</td></tr>
-<tr><td><code>neighbors</code></td><td>Neighbor iteration</td><td>Demonstrates spatial queries</td></tr>
-<tr><td><code>nbody</code></td><td>N-body gravity</td><td>Gravitational attraction</td></tr>
-<tr><td><code>fluid</code></td><td>SPH-style</td><td>Fluid dynamics simulation</td></tr>
-<tr><td><code>magnetism</code></td><td>Magnetic poles</td><td>Attraction/repulsion fields</td></tr>
-<tr><td><code>point_gravity</code></td><td>Point attraction</td><td>Gravity toward a point</td></tr>
-<tr><td><code>spring</code></td><td>Spring force</td><td>Elastic forces toward origin</td></tr>
-<tr><td><code>oscillate</code></td><td>Oscillation</td><td>Harmonic motion</td></tr>
+<h2 id="effect-examples"><a class="header" href="#effect-examples">Effect Examples</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>explosion</code></td><td>Burst emitter with particle effects</td></tr>
+<tr><td><code>fountain</code></td><td>Cone emitter shooting upward</td></tr>
+<tr><td><code>rain</code></td><td>Box emitter simulating rainfall</td></tr>
+<tr><td><code>shockwave</code></td><td>Expanding shockwave and pulse effects</td></tr>
+<tr><td><code>trails</code></td><td>Particle motion trails</td></tr>
+<tr><td><code>fireflies</code></td><td>Synchronized blinking behavior</td></tr>
+<tr><td><code>falling_leaves</code></td><td>Organic falling motion</td></tr>
+</tbody></table>
+</div>
+<h2 id="physics--motion"><a class="header" href="#physics--motion">Physics &amp; Motion</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>swirl</code></td><td>Vortex-like circular motion</td></tr>
+<tr><td><code>noisy</code></td><td>Noise-based movement</td></tr>
+<tr><td><code>wave_field</code></td><td>Wave-like oscillating motion</td></tr>
+<tr><td><code>attractor</code></td><td>Point attraction</td></tr>
+<tr><td><code>orbiting_attractor</code></td><td>Orbiting gravity source</td></tr>
+<tr><td><code>gravity_visualizer</code></td><td>Gravity field visualization</td></tr>
+<tr><td><code>density_fluids</code></td><td>SPH-style fluid simulation</td></tr>
+<tr><td><code>particle_life</code></td><td>Particle Life cellular automaton</td></tr>
 </tbody></table>
 </div>
 <h2 id="visual-examples"><a class="header" href="#visual-examples">Visual Examples</a></h2>
-<p>Demonstrating rendering customization:</p>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>shapes</code></td><td>All available particle shapes (Circle, Star, Hexagon, etc.)</td></tr>
 <tr><td><code>custom_shader</code></td><td>Custom fragment shader for particle appearance</td></tr>
-<tr><td><code>post_process</code></td><td>Screen-space post-processing (vignette, aberration, grain)</td></tr>
+<tr><td><code>post_process</code></td><td>Screen-space post-processing effects</td></tr>
 <tr><td><code>texture_example</code></td><td>Custom texture sampling in shaders</td></tr>
-<tr><td><code>input_demo</code></td><td>Keyboard and mouse input handling</td></tr>
+<tr><td><code>palettes</code></td><td>Built-in color palettes and mappings</td></tr>
+<tr><td><code>glow</code></td><td>Glowing particle effects</td></tr>
+<tr><td><code>sphere_shell</code></td><td>Spherical particle distribution</td></tr>
 </tbody></table>
 </div>
 <h2 id="interactive-examples"><a class="header" href="#interactive-examples">Interactive Examples</a></h2>
@@ -3701,82 +3796,74 @@ cargo run --example &lt;name&gt; --features egui
 <tr><td><code>egui_controls</code></td><td>Basic egui integration</td></tr>
 <tr><td><code>egui_interactive</code></td><td>Full interactive parameter control</td></tr>
 <tr><td><code>slime_mold</code></td><td>Physarum simulation with controls</td></tr>
-<tr><td><code>plasma_storm</code></td><td>Interactive plasma effects</td></tr>
-<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation with controls</td></tr>
-<tr><td><code>murmuration</code></td><td>Starling flock patterns</td></tr>
-<tr><td><code>neon_assault_interactive</code></td><td>80s arcade with runtime controls</td></tr>
 </tbody></table>
 </div>
-<h2 id="experimental--creative"><a class="header" href="#experimental--creative">Experimental / Creative</a></h2>
-<p>Located in <code>examples/experimental/</code>, these push creative boundaries:</p>
+<h2 id="other-examples"><a class="header" href="#other-examples">Other Examples</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>ethereal_web</code></td><td>Dreamlike visualization combining all features</td></tr>
-<tr><td><code>neon_assault</code></td><td>80s arcade aesthetic with CRT post-processing</td></tr>
-<tr><td><code>neon_assault_interactive</code></td><td>Neon assault with egui controls</td></tr>
-<tr><td><code>cosmic_jellyfish</code></td><td>Organic pulsing creature</td></tr>
-<tr><td><code>firefly_grove</code></td><td>Synchronized blinking lights</td></tr>
-<tr><td><code>black_hole</code></td><td>Gravitational lensing effect</td></tr>
-<tr><td><code>thought_storm</code></td><td>Neural activity visualization</td></tr>
-<tr><td><code>plasma_storm</code></td><td>Interactive plasma (egui)</td></tr>
-<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation (egui)</td></tr>
-<tr><td><code>murmuration</code></td><td>Starling flock patterns (egui)</td></tr>
+<tr><td><code>getting_started</code></td><td>Minimal example to get started</td></tr>
+<tr><td><code>input_demo</code></td><td>Keyboard and mouse input handling</td></tr>
+<tr><td><code>lifecycle_demo</code></td><td>Particle aging, death, and respawning</td></tr>
+<tr><td><code>spatial_grid_demo</code></td><td>Spatial hashing visualization</td></tr>
+<tr><td><code>agent_demo</code></td><td>Particles as autonomous agents</td></tr>
+<tr><td><code>signal_swarm</code></td><td>Swarm signaling behavior</td></tr>
+<tr><td><code>neural_network</code></td><td>Neural network-style visualization</td></tr>
+<tr><td><code>chemistry</code></td><td>Chemical reaction simulation</td></tr>
+<tr><td><code>cells</code></td><td>Cell-like behavior</td></tr>
+<tr><td><code>rocket</code></td><td>Rocket with exhaust particles</td></tr>
+<tr><td><code>volume_render</code></td><td>3D volume rendering</td></tr>
 </tbody></table>
 </div>
 <h2 id="learning-path"><a class="header" href="#learning-path">Learning Path</a></h2>
 <h3 id="1-start-with-basics"><a class="header" href="#1-start-with-basics">1. Start with Basics</a></h3>
 <ul>
+<li><code>getting_started</code> - Minimal setup</li>
 <li><code>boids</code> - Core particle simulation</li>
-<li><code>bounce_walls</code> - Simple rule</li>
-<li><code>orbit</code> - Basic motion</li>
 </ul>
 <h3 id="2-explore-interactions"><a class="header" href="#2-explore-interactions">2. Explore Interactions</a></h3>
 <ul>
 <li><code>predator_prey</code> - Typed particles</li>
 <li><code>infection</code> - Type conversion</li>
-<li><code>neighbors</code> - Spatial queries</li>
+<li><code>aquarium</code> - Chase and evade</li>
 </ul>
-<h3 id="3-customize-visuals"><a class="header" href="#3-customize-visuals">3. Customize Visuals</a></h3>
+<h3 id="3-add-effects"><a class="header" href="#3-add-effects">3. Add Effects</a></h3>
+<ul>
+<li><code>explosion</code> - Emitters</li>
+<li><code>trails</code> - Motion trails</li>
+<li><code>connections</code> - Visual connections</li>
+</ul>
+<h3 id="4-customize-visuals"><a class="header" href="#4-customize-visuals">4. Customize Visuals</a></h3>
 <ul>
 <li><code>custom_shader</code> - Fragment shaders</li>
 <li><code>post_process</code> - Screen effects</li>
+<li><code>palettes</code> - Color schemes</li>
 </ul>
-<h3 id="4-add-interactivity"><a class="header" href="#4-add-interactivity">4. Add Interactivity</a></h3>
+<h3 id="5-add-interactivity"><a class="header" href="#5-add-interactivity">5. Add Interactivity</a></h3>
 <ul>
 <li><code>egui_controls</code> - Basic UI</li>
 <li><code>slime_mold</code> - Full interactive example</li>
 </ul>
-<h3 id="5-go-creative"><a class="header" href="#5-go-creative">5. Go Creative</a></h3>
-<ul>
-<li><code>ethereal_web</code> - All features combined</li>
-<li><code>neon_assault</code> - Aesthetic deep dive</li>
-</ul>
-<h2 id="running-all-examples"><a class="header" href="#running-all-examples">Running All Examples</a></h2>
-<p>To quickly try everything:</p>
+<h2 id="running-examples-1"><a class="header" href="#running-examples-1">Running Examples</a></h2>
 <pre><code class="language-bash"># Core
 cargo run --example boids
+cargo run --example aquarium
 cargo run --example predator_prey
 cargo run --example infection
-cargo run --example multi_field
 
-# Rules
-cargo run --example orbit
-cargo run --example curl
-cargo run --example nbody
+# Effects
+cargo run --example explosion
+cargo run --example fountain
+cargo run --example shockwave
+cargo run --example trails
 
 # Visual
+cargo run --example shapes
 cargo run --example custom_shader
 cargo run --example post_process
-cargo run --example texture_example
-cargo run --example input_demo
-
-# Creative
-cargo run --example ethereal_web
-cargo run --example neon_assault
+cargo run --example palettes
 
 # Interactive (requires egui feature)
 cargo run --example slime_mold --features egui
-cargo run --example slime_mold_field --features egui
-cargo run --example neon_assault_interactive --features egui
+cargo run --example egui_interactive --features egui
 </code></pre>
 <p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>
 

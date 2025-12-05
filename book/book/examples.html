@@ -187,38 +187,48 @@ cargo run --example &lt;name&gt; --features egui
 <p>These showcase fundamental RDPE capabilities:</p>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>boids</code></td><td>Classic flocking algorithm (Separate + Cohere + Align)</td></tr>
+<tr><td><code>aquarium</code></td><td>Fish and sharks with Chase/Evade behaviors</td></tr>
 <tr><td><code>predator_prey</code></td><td>Chase and evade behaviors between particle types</td></tr>
 <tr><td><code>infection</code></td><td>SIR epidemic model with type conversion</td></tr>
+<tr><td><code>connections</code></td><td>Drawing lines between nearby particles</td></tr>
 <tr><td><code>inbox</code></td><td>Particle-to-particle communication system</td></tr>
 <tr><td><code>slime_mold</code></td><td>Physarum-inspired emergent patterns (requires <code>--features egui</code>)</td></tr>
 <tr><td><code>slime_mold_field</code></td><td>Slime mold using 3D spatial fields (requires <code>--features egui</code>)</td></tr>
 <tr><td><code>multi_field</code></td><td>Multiple competing pheromone fields</td></tr>
 </tbody></table>
 </div>
-<h2 id="single-rule-examples"><a class="header" href="#single-rule-examples">Single-Rule Examples</a></h2>
-<p>Located in <code>examples/rules/</code>, each demonstrates one specific rule:</p>
-<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Rule</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>bounce_walls</code></td><td><code>BounceWalls</code></td><td>Particles reflecting off boundaries</td></tr>
-<tr><td><code>vortex</code></td><td><code>Vortex</code></td><td>Circular swirling motion</td></tr>
-<tr><td><code>turbulence</code></td><td><code>Turbulence</code></td><td>Chaotic flow field</td></tr>
-<tr><td><code>orbit</code></td><td><code>Orbit</code></td><td>Particles orbiting Y axis</td></tr>
-<tr><td><code>curl</code></td><td><code>Curl</code></td><td>Turbulent curl noise motion</td></tr>
-<tr><td><code>neighbors</code></td><td>Neighbor iteration</td><td>Demonstrates spatial queries</td></tr>
-<tr><td><code>nbody</code></td><td>N-body gravity</td><td>Gravitational attraction</td></tr>
-<tr><td><code>fluid</code></td><td>SPH-style</td><td>Fluid dynamics simulation</td></tr>
-<tr><td><code>magnetism</code></td><td>Magnetic poles</td><td>Attraction/repulsion fields</td></tr>
-<tr><td><code>point_gravity</code></td><td>Point attraction</td><td>Gravity toward a point</td></tr>
-<tr><td><code>spring</code></td><td>Spring force</td><td>Elastic forces toward origin</td></tr>
-<tr><td><code>oscillate</code></td><td>Oscillation</td><td>Harmonic motion</td></tr>
+<h2 id="effect-examples"><a class="header" href="#effect-examples">Effect Examples</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>explosion</code></td><td>Burst emitter with particle effects</td></tr>
+<tr><td><code>fountain</code></td><td>Cone emitter shooting upward</td></tr>
+<tr><td><code>rain</code></td><td>Box emitter simulating rainfall</td></tr>
+<tr><td><code>shockwave</code></td><td>Expanding shockwave and pulse effects</td></tr>
+<tr><td><code>trails</code></td><td>Particle motion trails</td></tr>
+<tr><td><code>fireflies</code></td><td>Synchronized blinking behavior</td></tr>
+<tr><td><code>falling_leaves</code></td><td>Organic falling motion</td></tr>
+</tbody></table>
+</div>
+<h2 id="physics--motion"><a class="header" href="#physics--motion">Physics &amp; Motion</a></h2>
+<div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>swirl</code></td><td>Vortex-like circular motion</td></tr>
+<tr><td><code>noisy</code></td><td>Noise-based movement</td></tr>
+<tr><td><code>wave_field</code></td><td>Wave-like oscillating motion</td></tr>
+<tr><td><code>attractor</code></td><td>Point attraction</td></tr>
+<tr><td><code>orbiting_attractor</code></td><td>Orbiting gravity source</td></tr>
+<tr><td><code>gravity_visualizer</code></td><td>Gravity field visualization</td></tr>
+<tr><td><code>density_fluids</code></td><td>SPH-style fluid simulation</td></tr>
+<tr><td><code>particle_life</code></td><td>Particle Life cellular automaton</td></tr>
 </tbody></table>
 </div>
 <h2 id="visual-examples"><a class="header" href="#visual-examples">Visual Examples</a></h2>
-<p>Demonstrating rendering customization:</p>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>shapes</code></td><td>All available particle shapes (Circle, Star, Hexagon, etc.)</td></tr>
 <tr><td><code>custom_shader</code></td><td>Custom fragment shader for particle appearance</td></tr>
-<tr><td><code>post_process</code></td><td>Screen-space post-processing (vignette, aberration, grain)</td></tr>
+<tr><td><code>post_process</code></td><td>Screen-space post-processing effects</td></tr>
 <tr><td><code>texture_example</code></td><td>Custom texture sampling in shaders</td></tr>
-<tr><td><code>input_demo</code></td><td>Keyboard and mouse input handling</td></tr>
+<tr><td><code>palettes</code></td><td>Built-in color palettes and mappings</td></tr>
+<tr><td><code>glow</code></td><td>Glowing particle effects</td></tr>
+<tr><td><code>sphere_shell</code></td><td>Spherical particle distribution</td></tr>
 </tbody></table>
 </div>
 <h2 id="interactive-examples"><a class="header" href="#interactive-examples">Interactive Examples</a></h2>
@@ -227,82 +237,74 @@ cargo run --example &lt;name&gt; --features egui
 <tr><td><code>egui_controls</code></td><td>Basic egui integration</td></tr>
 <tr><td><code>egui_interactive</code></td><td>Full interactive parameter control</td></tr>
 <tr><td><code>slime_mold</code></td><td>Physarum simulation with controls</td></tr>
-<tr><td><code>plasma_storm</code></td><td>Interactive plasma effects</td></tr>
-<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation with controls</td></tr>
-<tr><td><code>murmuration</code></td><td>Starling flock patterns</td></tr>
-<tr><td><code>neon_assault_interactive</code></td><td>80s arcade with runtime controls</td></tr>
 </tbody></table>
 </div>
-<h2 id="experimental--creative"><a class="header" href="#experimental--creative">Experimental / Creative</a></h2>
-<p>Located in <code>examples/experimental/</code>, these push creative boundaries:</p>
+<h2 id="other-examples"><a class="header" href="#other-examples">Other Examples</a></h2>
 <div class="table-wrapper"><table><thead><tr><th>Example</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>ethereal_web</code></td><td>Dreamlike visualization combining all features</td></tr>
-<tr><td><code>neon_assault</code></td><td>80s arcade aesthetic with CRT post-processing</td></tr>
-<tr><td><code>neon_assault_interactive</code></td><td>Neon assault with egui controls</td></tr>
-<tr><td><code>cosmic_jellyfish</code></td><td>Organic pulsing creature</td></tr>
-<tr><td><code>firefly_grove</code></td><td>Synchronized blinking lights</td></tr>
-<tr><td><code>black_hole</code></td><td>Gravitational lensing effect</td></tr>
-<tr><td><code>thought_storm</code></td><td>Neural activity visualization</td></tr>
-<tr><td><code>plasma_storm</code></td><td>Interactive plasma (egui)</td></tr>
-<tr><td><code>fluid_galaxy</code></td><td>Galaxy formation (egui)</td></tr>
-<tr><td><code>murmuration</code></td><td>Starling flock patterns (egui)</td></tr>
+<tr><td><code>getting_started</code></td><td>Minimal example to get started</td></tr>
+<tr><td><code>input_demo</code></td><td>Keyboard and mouse input handling</td></tr>
+<tr><td><code>lifecycle_demo</code></td><td>Particle aging, death, and respawning</td></tr>
+<tr><td><code>spatial_grid_demo</code></td><td>Spatial hashing visualization</td></tr>
+<tr><td><code>agent_demo</code></td><td>Particles as autonomous agents</td></tr>
+<tr><td><code>signal_swarm</code></td><td>Swarm signaling behavior</td></tr>
+<tr><td><code>neural_network</code></td><td>Neural network-style visualization</td></tr>
+<tr><td><code>chemistry</code></td><td>Chemical reaction simulation</td></tr>
+<tr><td><code>cells</code></td><td>Cell-like behavior</td></tr>
+<tr><td><code>rocket</code></td><td>Rocket with exhaust particles</td></tr>
+<tr><td><code>volume_render</code></td><td>3D volume rendering</td></tr>
 </tbody></table>
 </div>
 <h2 id="learning-path"><a class="header" href="#learning-path">Learning Path</a></h2>
 <h3 id="1-start-with-basics"><a class="header" href="#1-start-with-basics">1. Start with Basics</a></h3>
 <ul>
+<li><code>getting_started</code> - Minimal setup</li>
 <li><code>boids</code> - Core particle simulation</li>
-<li><code>bounce_walls</code> - Simple rule</li>
-<li><code>orbit</code> - Basic motion</li>
 </ul>
 <h3 id="2-explore-interactions"><a class="header" href="#2-explore-interactions">2. Explore Interactions</a></h3>
 <ul>
 <li><code>predator_prey</code> - Typed particles</li>
 <li><code>infection</code> - Type conversion</li>
-<li><code>neighbors</code> - Spatial queries</li>
+<li><code>aquarium</code> - Chase and evade</li>
 </ul>
-<h3 id="3-customize-visuals"><a class="header" href="#3-customize-visuals">3. Customize Visuals</a></h3>
+<h3 id="3-add-effects"><a class="header" href="#3-add-effects">3. Add Effects</a></h3>
+<ul>
+<li><code>explosion</code> - Emitters</li>
+<li><code>trails</code> - Motion trails</li>
+<li><code>connections</code> - Visual connections</li>
+</ul>
+<h3 id="4-customize-visuals"><a class="header" href="#4-customize-visuals">4. Customize Visuals</a></h3>
 <ul>
 <li><code>custom_shader</code> - Fragment shaders</li>
 <li><code>post_process</code> - Screen effects</li>
+<li><code>palettes</code> - Color schemes</li>
 </ul>
-<h3 id="4-add-interactivity"><a class="header" href="#4-add-interactivity">4. Add Interactivity</a></h3>
+<h3 id="5-add-interactivity"><a class="header" href="#5-add-interactivity">5. Add Interactivity</a></h3>
 <ul>
 <li><code>egui_controls</code> - Basic UI</li>
 <li><code>slime_mold</code> - Full interactive example</li>
 </ul>
-<h3 id="5-go-creative"><a class="header" href="#5-go-creative">5. Go Creative</a></h3>
-<ul>
-<li><code>ethereal_web</code> - All features combined</li>
-<li><code>neon_assault</code> - Aesthetic deep dive</li>
-</ul>
-<h2 id="running-all-examples"><a class="header" href="#running-all-examples">Running All Examples</a></h2>
-<p>To quickly try everything:</p>
+<h2 id="running-examples-1"><a class="header" href="#running-examples-1">Running Examples</a></h2>
 <pre><code class="language-bash"># Core
 cargo run --example boids
+cargo run --example aquarium
 cargo run --example predator_prey
 cargo run --example infection
-cargo run --example multi_field
 
-# Rules
-cargo run --example orbit
-cargo run --example curl
-cargo run --example nbody
+# Effects
+cargo run --example explosion
+cargo run --example fountain
+cargo run --example shockwave
+cargo run --example trails
 
 # Visual
+cargo run --example shapes
 cargo run --example custom_shader
 cargo run --example post_process
-cargo run --example texture_example
-cargo run --example input_demo
-
-# Creative
-cargo run --example ethereal_web
-cargo run --example neon_assault
+cargo run --example palettes
 
 # Interactive (requires egui feature)
 cargo run --example slime_mold --features egui
-cargo run --example slime_mold_field --features egui
-cargo run --example neon_assault_interactive --features egui
+cargo run --example egui_interactive --features egui
 </code></pre>
 <p>Each example file contains <code>//!</code> doc comments explaining what it demonstrates and suggestions for experimentation.</p>
 

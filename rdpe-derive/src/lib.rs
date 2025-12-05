@@ -1,9 +1,10 @@
 //! Derive macros for the RDPE particle simulation engine.
 //!
-//! This crate provides two derive macros:
+//! This crate provides three derive macros:
 //!
 //! - [`Particle`] - Generates GPU-compatible structs and WGSL code
 //! - [`ParticleType`] - Creates type-safe enums for particle categories
+//! - [`MultiParticle`] - Combines multiple Particle types into one simulation
 //!
 //! # Usage
 //!
@@ -603,5 +604,683 @@ fn generate_conversion(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStrea
         _ => {
             quote! { self.#field_name }
         }
+    }
+}
+
+/// Derive macro for multi-particle enums with inline struct definitions.
+///
+/// Generates standalone particle structs AND a unified enum, enabling both
+/// single-type and heterogeneous particle simulations from one definition.
+///
+/// # Overview
+///
+/// `MultiParticle` lets you define multiple particle types inline as struct-like
+/// enum variants. The macro generates:
+///
+/// 1. **Standalone structs** - Each variant becomes its own struct implementing `ParticleTrait`
+/// 2. **Unified enum** - The enum implements `ParticleTrait` with all fields combined
+/// 3. **Rust type constants** - `EnumName::VARIANT` constants for use in typed rules
+/// 4. **WGSL helpers** - Type constants and helper functions for shaders
+///
+/// # Example
+///
+/// ```ignore
+/// use rdpe::prelude::*;
+///
+/// #[derive(MultiParticle, Clone)]
+/// enum Creature {
+///     Boid {
+///         position: Vec3,
+///         velocity: Vec3,
+///         flock_id: u32,
+///     },
+///     Predator {
+///         position: Vec3,
+///         velocity: Vec3,
+///         hunger: f32,
+///         target_id: u32,
+///     },
+/// }
+///
+/// // All three work:
+/// Simulation::<Creature>::new()  // Mixed simulation
+/// Simulation::<Boid>::new()      // Boid-only simulation (uses generated struct)
+/// Simulation::<Predator>::new()  // Predator-only simulation (uses generated struct)
+///
+/// // Creating particles with clean struct-like syntax:
+/// Creature::Boid { position: Vec3::ZERO, velocity: Vec3::ZERO, flock_id: 0 }
+/// Creature::Predator { position: Vec3::ZERO, velocity: Vec3::ZERO, hunger: 1.0, target_id: 0 }
+///
+/// // Using type constants in rules:
+/// Rule::Chase {
+///     self_type: Creature::PREDATOR,
+///     target_type: Creature::BOID,
+///     radius: 0.5,
+///     strength: 3.0,
+/// }
+/// ```
+///
+/// # Requirements
+///
+/// - The enum must also derive `Clone` (for `ParticleTrait` bounds)
+/// - Each variant must use struct-like syntax with named fields
+/// - Each variant must have `position: Vec3` and `velocity: Vec3` fields
+/// - Use `#[color]` attribute on a `Vec3` field for custom particle color
+///
+/// # Generated Code
+///
+/// For an enum `Creature { Boid { ... }, Predator { ... } }`, the macro generates:
+///
+/// ```ignore
+/// // Standalone structs (separate types for single-particle simulations)
+/// struct Boid { position: Vec3, velocity: Vec3, flock_id: u32 }
+/// impl ParticleTrait for Boid { ... }
+///
+/// struct Predator { position: Vec3, velocity: Vec3, hunger: f32, target_id: u32 }
+/// impl ParticleTrait for Predator { ... }
+///
+/// // ParticleTrait on the original enum (for mixed simulations)
+/// impl ParticleTrait for Creature { ... }  // Unified GPU struct with all fields
+/// ```
+///
+/// # WGSL Usage
+///
+/// In custom rules, use the generated constants and helpers:
+///
+/// ```wgsl
+/// // Type constants
+/// const BOID: u32 = 0u;
+/// const PREDATOR: u32 = 1u;
+///
+/// // Helper functions
+/// fn is_boid(p: Particle) -> bool { return p.particle_type == 0u; }
+/// fn is_predator(p: Particle) -> bool { return p.particle_type == 1u; }
+///
+/// // Usage in custom rules
+/// if is_predator(p) {
+///     p.hunger -= uniforms.delta_time * 0.1;
+/// }
+/// ```
+#[proc_macro_derive(MultiParticle, attributes(color))]
+pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let enum_name = &input.ident;
+    let enum_gpu_name = Ident::new(&format!("{}Gpu", enum_name), Span::call_site());
+    let visibility = &input.vis;
+
+    // Parse as enum with struct-like variants
+    let variants = match &input.data {
+        Data::Enum(data) => &data.variants,
+        _ => panic!("MultiParticle derive only supports enums"),
+    };
+
+    // Collect variant info: (name, fields as Vec<(name, type_string, is_color)>)
+    let mut variant_info: Vec<(Ident, Vec<(Ident, String, bool)>)> = Vec::new();
+
+    for variant in variants.iter() {
+        let variant_name = variant.ident.clone();
+
+        let fields = match &variant.fields {
+            Fields::Named(named) => {
+                named.named.iter().map(|f| {
+                    let field_name = f.ident.clone().unwrap();
+                    let ty = &f.ty;
+                    let type_str = quote!(#ty).to_string().replace(" ", "");
+                    let is_color = f.attrs.iter().any(|a| a.path().is_ident("color"));
+                    (field_name, type_str, is_color)
+                }).collect::<Vec<_>>()
+            }
+            _ => panic!(
+                "MultiParticle variant '{}' must have named fields (struct-like syntax)",
+                variant_name
+            ),
+        };
+
+        // Validate required fields
+        let has_position = fields.iter().any(|(n, t, _)| n == "position" && (t == "Vec3" || t == "glam::Vec3"));
+        let has_velocity = fields.iter().any(|(n, t, _)| n == "velocity" && (t == "Vec3" || t == "glam::Vec3"));
+
+        if !has_position {
+            panic!("MultiParticle variant '{}' must have 'position: Vec3' field", variant_name);
+        }
+        if !has_velocity {
+            panic!("MultiParticle variant '{}' must have 'velocity: Vec3' field", variant_name);
+        }
+
+        variant_info.push((variant_name, fields));
+    }
+
+    // ========================================
+    // Generate standalone structs for each variant
+    // ========================================
+    let mut standalone_structs = Vec::new();
+
+    for (variant_name, fields) in &variant_info {
+        let struct_gpu_name = Ident::new(&format!("{}Gpu", variant_name), Span::call_site());
+
+        // Build struct fields
+        let struct_fields: Vec<_> = fields.iter().map(|(name, type_str, _)| {
+            let ty = rust_type_from_string(type_str);
+            quote! { pub #name: #ty }
+        }).collect();
+
+        // Build GPU struct using the generate_particle_gpu_struct helper
+        let (gpu_fields, wgsl_struct, color_field, color_offset, alive_offset, scale_offset) =
+            generate_particle_gpu_struct(fields, false); // false = include particle_type
+
+        let gpu_field_tokens: Vec<_> = gpu_fields.iter().map(|(name, ty)| {
+            let name_ident = Ident::new(name, Span::call_site());
+            quote! { pub #name_ident: #ty }
+        }).collect();
+
+        // Build to_gpu conversions
+        let to_gpu_conversions: Vec<_> = gpu_fields.iter().map(|(name, _ty)| {
+            let name_ident = Ident::new(name, Span::call_site());
+            if name.starts_with("_pad") {
+                // Use Default::default() for all padding (works for both f32 and [f32; N])
+                quote! { #name_ident: Default::default() }
+            } else if name == "particle_type" {
+                quote! { #name_ident: 0 }
+            } else if name == "age" {
+                quote! { #name_ident: 0.0 }
+            } else if name == "alive" {
+                quote! { #name_ident: 1u32 }
+            } else if name == "scale" {
+                quote! { #name_ident: 1.0 }
+            } else {
+                // User field - check if it needs to_array
+                let field_info = fields.iter().find(|(n, _, _)| n.to_string() == *name);
+                if let Some((_, type_str, _)) = field_info {
+                    if type_str == "Vec3" || type_str == "Vec2" || type_str == "Vec4" ||
+                       type_str == "glam::Vec3" || type_str == "glam::Vec2" || type_str == "glam::Vec4" {
+                        quote! { #name_ident: self.#name_ident.to_array() }
+                    } else {
+                        quote! { #name_ident: self.#name_ident }
+                    }
+                } else {
+                    quote! { #name_ident: Default::default() }
+                }
+            }
+        }).collect();
+
+        let color_field_expr = match &color_field {
+            Some(name) => quote! { Some(#name) },
+            None => quote! { None },
+        };
+
+        let color_offset_expr = match color_offset {
+            Some(offset) => quote! { Some(#offset) },
+            None => quote! { None },
+        };
+
+        standalone_structs.push(quote! {
+            /// Auto-generated struct from MultiParticle variant
+            #[derive(Clone)]
+            #visibility struct #variant_name {
+                #(#struct_fields),*
+            }
+
+            #[repr(C)]
+            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+            #visibility struct #struct_gpu_name {
+                #(#gpu_field_tokens),*
+            }
+
+            impl rdpe::ParticleTrait for #variant_name {
+                type Gpu = #struct_gpu_name;
+
+                const WGSL_STRUCT: &'static str = #wgsl_struct;
+                const COLOR_FIELD: Option<&'static str> = #color_field_expr;
+                const COLOR_OFFSET: Option<u32> = #color_offset_expr;
+                const ALIVE_OFFSET: u32 = #alive_offset;
+                const SCALE_OFFSET: u32 = #scale_offset;
+
+                fn to_gpu(&self) -> Self::Gpu {
+                    #struct_gpu_name {
+                        #(#to_gpu_conversions),*
+                    }
+                }
+            }
+        });
+    }
+
+    // ========================================
+    // Build unified field list for the enum
+    // ========================================
+    let mut all_fields: Vec<(String, String, bool)> = vec![
+        ("position".to_string(), "Vec3".to_string(), false),
+        ("velocity".to_string(), "Vec3".to_string(), false),
+    ];
+
+    let mut seen_fields: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    seen_fields.insert("position".to_string(), "Vec3".to_string());
+    seen_fields.insert("velocity".to_string(), "Vec3".to_string());
+
+    for (variant_name, fields) in &variant_info {
+        for (fname, ftype, is_color) in fields {
+            let fname_str = fname.to_string();
+            let ftype_normalized = ftype.replace("glam::", "");
+            if fname_str == "position" || fname_str == "velocity" {
+                continue; // Already added
+            }
+            if let Some(existing_type) = seen_fields.get(&fname_str) {
+                if existing_type != &ftype_normalized {
+                    panic!(
+                        "Field '{}' has conflicting types: '{}' in one variant, '{}' in '{}'",
+                        fname_str, existing_type, ftype_normalized, variant_name
+                    );
+                }
+            } else {
+                seen_fields.insert(fname_str.clone(), ftype_normalized.clone());
+                all_fields.push((fname_str, ftype_normalized, *is_color));
+            }
+        }
+    }
+
+    // ========================================
+    // Generate unified GPU struct for enum
+    // ========================================
+    let (enum_gpu_fields, enum_wgsl_struct, _, _, enum_alive_offset, enum_scale_offset) =
+        generate_unified_gpu_struct(&all_fields);
+
+    let enum_gpu_field_tokens: Vec<_> = enum_gpu_fields.iter().map(|(name, ty)| {
+        let name_ident = Ident::new(name, Span::call_site());
+        quote! { pub #name_ident: #ty }
+    }).collect();
+
+    // Generate EXTRA_WGSL with type constants and helpers
+    let mut extra_wgsl_lines = Vec::new();
+    extra_wgsl_lines.push("// MultiParticle type constants".to_string());
+
+    for (i, (variant_name, _)) in variant_info.iter().enumerate() {
+        let const_name = variant_name.to_string().to_uppercase();
+        extra_wgsl_lines.push(format!("const {}: u32 = {}u;", const_name, i));
+    }
+
+    extra_wgsl_lines.push("".to_string());
+    extra_wgsl_lines.push("// MultiParticle type helpers".to_string());
+
+    for (i, (variant_name, _)) in variant_info.iter().enumerate() {
+        let fn_name = format!("is_{}", variant_name.to_string().to_lowercase());
+        extra_wgsl_lines.push(format!(
+            "fn {}(p: Particle) -> bool {{ return p.particle_type == {}u; }}",
+            fn_name, i
+        ));
+    }
+
+    let extra_wgsl = extra_wgsl_lines.join("\n");
+
+    // Generate to_gpu() match arms for enum (matching on struct-like variants)
+    let to_gpu_arms: Vec<_> = variant_info
+        .iter()
+        .enumerate()
+        .map(|(idx, (variant_name, variant_fields))| {
+            let idx_u32 = idx as u32;
+
+            // Generate field bindings for the match pattern
+            let field_bindings: Vec<_> = variant_fields.iter().map(|(fname, _, _)| {
+                quote! { #fname }
+            }).collect();
+
+            // Generate field assignments for the GPU struct
+            let mut field_assignments = Vec::new();
+
+            for (fname, ftype, _) in &all_fields {
+                let field_ident = Ident::new(fname, Span::call_site());
+
+                // Check if this variant has this field
+                let has_field = variant_fields.iter().any(|(vf, _, _)| vf.to_string() == *fname);
+
+                if has_field {
+                    let type_info = type_info_from_string(ftype);
+                    if type_info.needs_to_array {
+                        field_assignments.push(quote! { #field_ident: #field_ident.to_array() });
+                    } else {
+                        field_assignments.push(quote! { #field_ident: *#field_ident });
+                    }
+                } else {
+                    let zero_val = zero_value_for_type(ftype);
+                    field_assignments.push(quote! { #field_ident: #zero_val });
+                }
+            }
+
+            // Particle type and lifecycle
+            field_assignments.push(quote! { particle_type: #idx_u32 });
+            field_assignments.push(quote! { age: 0.0 });
+            field_assignments.push(quote! { alive: 1u32 });
+            field_assignments.push(quote! { scale: 1.0 });
+
+            quote! {
+                #enum_name::#variant_name { #(#field_bindings),* } => {
+                    #enum_gpu_name {
+                        #(#field_assignments,)*
+                        ..bytemuck::Zeroable::zeroed()
+                    }
+                }
+            }
+        })
+        .collect();
+
+    // Generate type ID constants for the enum
+    let type_constants: Vec<_> = variant_info
+        .iter()
+        .enumerate()
+        .map(|(idx, (variant_name, _))| {
+            let const_name = Ident::new(
+                &variant_name.to_string().to_uppercase(),
+                Span::call_site(),
+            );
+            let idx_u32 = idx as u32;
+            quote! {
+                /// Type ID for use in typed rules (Chase, Evade, Typed, etc.)
+                pub const #const_name: u32 = #idx_u32;
+            }
+        })
+        .collect();
+
+    let expanded = quote! {
+        // Standalone structs with full Particle implementations
+        #(#standalone_structs)*
+
+        // Type ID constants for the enum
+        impl #enum_name {
+            #(#type_constants)*
+        }
+
+        // Unified GPU struct for the enum (we don't re-declare the enum itself!)
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        #visibility struct #enum_gpu_name {
+            #(#enum_gpu_field_tokens),*
+        }
+
+        impl rdpe::ParticleTrait for #enum_name {
+            type Gpu = #enum_gpu_name;
+
+            const WGSL_STRUCT: &'static str = #enum_wgsl_struct;
+            const COLOR_FIELD: Option<&'static str> = None;
+            const COLOR_OFFSET: Option<u32> = None;
+            const ALIVE_OFFSET: u32 = #enum_alive_offset;
+            const SCALE_OFFSET: u32 = #enum_scale_offset;
+            const EXTRA_WGSL: &'static str = #extra_wgsl;
+
+            fn to_gpu(&self) -> Self::Gpu {
+                match self {
+                    #(#to_gpu_arms)*
+                }
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
+
+/// Generate a Rust type token from a type string
+fn rust_type_from_string(ty: &str) -> proc_macro2::TokenStream {
+    match ty.replace("glam::", "").as_str() {
+        "Vec3" => quote! { rdpe::Vec3 },
+        "Vec2" => quote! { rdpe::Vec2 },
+        "Vec4" => quote! { rdpe::Vec4 },
+        "f32" => quote! { f32 },
+        "u32" => quote! { u32 },
+        "i32" => quote! { i32 },
+        _ => panic!("Unsupported type: {}", ty),
+    }
+}
+
+/// Generate GPU struct fields, WGSL, and offsets for a single particle type
+fn generate_particle_gpu_struct(
+    fields: &[(Ident, String, bool)],
+    _is_standalone: bool,
+) -> (Vec<(String, proc_macro2::TokenStream)>, String, Option<String>, Option<u32>, u32, u32) {
+    let mut gpu_fields: Vec<(String, proc_macro2::TokenStream)> = Vec::new();
+    let mut wgsl_lines = Vec::new();
+    let mut field_offset = 0u32;
+    let mut padding_count = 0u32;
+    let mut color_field: Option<String> = None;
+    let mut color_offset: Option<u32> = None;
+
+    for (field_name, type_str, is_color) in fields {
+        let type_info = type_info_from_string(&type_str.replace("glam::", ""));
+
+        // Add padding if needed
+        let padding_needed = (type_info.align - (field_offset % type_info.align)) % type_info.align;
+        if padding_needed > 0 {
+            let pad_name = format!("_pad{}", padding_count);
+            padding_count += 1;
+
+            if padding_needed == 4 {
+                wgsl_lines.push(format!("    {}: f32,", pad_name));
+                gpu_fields.push((pad_name, quote! { f32 }));
+            } else {
+                let count = (padding_needed / 4) as usize;
+                wgsl_lines.push(format!("    {}: array<f32, {}>,", pad_name, count));
+                gpu_fields.push((pad_name, quote! { [f32; #count] }));
+            }
+            field_offset += padding_needed;
+        }
+
+        if *is_color {
+            color_field = Some(field_name.to_string());
+            color_offset = Some(field_offset);
+        }
+
+        wgsl_lines.push(format!("    {}: {},", field_name, type_info.wgsl_type));
+        gpu_fields.push((field_name.to_string(), type_info.gpu_type.clone()));
+        field_offset += type_info.size;
+    }
+
+    // Add particle_type
+    {
+        let padding_needed = (4 - (field_offset % 4)) % 4;
+        if padding_needed > 0 {
+            let pad_name = format!("_pad{}", padding_count);
+            padding_count += 1;
+            let count = (padding_needed / 4) as usize;
+            if count == 1 {
+                wgsl_lines.push(format!("    {}: f32,", pad_name));
+                gpu_fields.push((pad_name, quote! { f32 }));
+            } else {
+                wgsl_lines.push(format!("    {}: array<f32, {}>,", pad_name, count));
+                gpu_fields.push((pad_name, quote! { [f32; #count] }));
+            }
+            field_offset += padding_needed;
+        }
+
+        wgsl_lines.push("    particle_type: u32,".to_string());
+        gpu_fields.push(("particle_type".to_string(), quote! { u32 }));
+        field_offset += 4;
+    }
+
+    // Add lifecycle fields
+    wgsl_lines.push("    age: f32,".to_string());
+    gpu_fields.push(("age".to_string(), quote! { f32 }));
+    field_offset += 4;
+
+    let alive_offset = field_offset;
+    wgsl_lines.push("    alive: u32,".to_string());
+    gpu_fields.push(("alive".to_string(), quote! { u32 }));
+    field_offset += 4;
+
+    let scale_offset = field_offset;
+    wgsl_lines.push("    scale: f32,".to_string());
+    gpu_fields.push(("scale".to_string(), quote! { f32 }));
+    field_offset += 4;
+
+    // Final padding
+    let final_padding = (16 - (field_offset % 16)) % 16;
+    if final_padding > 0 {
+        let pad_name = format!("_pad{}", padding_count);
+        if final_padding == 4 {
+            wgsl_lines.push(format!("    {}: f32,", pad_name));
+            gpu_fields.push((pad_name, quote! { f32 }));
+        } else {
+            let count = (final_padding / 4) as usize;
+            wgsl_lines.push(format!("    {}: array<f32, {}>,", pad_name, count));
+            gpu_fields.push((pad_name, quote! { [f32; #count] }));
+        }
+    }
+
+    let wgsl_struct = format!("struct Particle {{\n{}\n}}", wgsl_lines.join("\n"));
+
+    (gpu_fields, wgsl_struct, color_field, color_offset, alive_offset, scale_offset)
+}
+
+/// Generate unified GPU struct for the enum (containing all fields from all variants)
+fn generate_unified_gpu_struct(
+    all_fields: &[(String, String, bool)],
+) -> (Vec<(String, proc_macro2::TokenStream)>, String, Option<String>, Option<u32>, u32, u32) {
+    let mut gpu_fields: Vec<(String, proc_macro2::TokenStream)> = Vec::new();
+    let mut wgsl_lines = Vec::new();
+    let mut field_offset = 0u32;
+    let mut padding_count = 0u32;
+
+    for (field_name, type_str, _) in all_fields {
+        let type_info = type_info_from_string(type_str);
+
+        // Add padding if needed
+        let padding_needed = (type_info.align - (field_offset % type_info.align)) % type_info.align;
+        if padding_needed > 0 {
+            let pad_name = format!("_pad{}", padding_count);
+            padding_count += 1;
+
+            if padding_needed == 4 {
+                wgsl_lines.push(format!("    {}: f32,", pad_name));
+                gpu_fields.push((pad_name, quote! { f32 }));
+            } else {
+                let count = (padding_needed / 4) as usize;
+                wgsl_lines.push(format!("    {}: array<f32, {}>,", pad_name, count));
+                gpu_fields.push((pad_name, quote! { [f32; #count] }));
+            }
+            field_offset += padding_needed;
+        }
+
+        wgsl_lines.push(format!("    {}: {},", field_name, type_info.wgsl_type));
+        gpu_fields.push((field_name.clone(), type_info.gpu_type.clone()));
+        field_offset += type_info.size;
+    }
+
+    // Add particle_type
+    {
+        let padding_needed = (4 - (field_offset % 4)) % 4;
+        if padding_needed > 0 {
+            let pad_name = format!("_pad{}", padding_count);
+            padding_count += 1;
+            let count = (padding_needed / 4) as usize;
+            if count == 1 {
+                wgsl_lines.push(format!("    {}: f32,", pad_name));
+                gpu_fields.push((pad_name, quote! { f32 }));
+            } else {
+                wgsl_lines.push(format!("    {}: array<f32, {}>,", pad_name, count));
+                gpu_fields.push((pad_name, quote! { [f32; #count] }));
+            }
+            field_offset += padding_needed;
+        }
+
+        wgsl_lines.push("    particle_type: u32,".to_string());
+        gpu_fields.push(("particle_type".to_string(), quote! { u32 }));
+        field_offset += 4;
+    }
+
+    // Add lifecycle fields
+    wgsl_lines.push("    age: f32,".to_string());
+    gpu_fields.push(("age".to_string(), quote! { f32 }));
+    field_offset += 4;
+
+    let alive_offset = field_offset;
+    wgsl_lines.push("    alive: u32,".to_string());
+    gpu_fields.push(("alive".to_string(), quote! { u32 }));
+    field_offset += 4;
+
+    let scale_offset = field_offset;
+    wgsl_lines.push("    scale: f32,".to_string());
+    gpu_fields.push(("scale".to_string(), quote! { f32 }));
+    field_offset += 4;
+
+    // Final padding
+    let final_padding = (16 - (field_offset % 16)) % 16;
+    if final_padding > 0 {
+        let pad_name = format!("_pad{}", padding_count);
+        if final_padding == 4 {
+            wgsl_lines.push(format!("    {}: f32,", pad_name));
+            gpu_fields.push((pad_name, quote! { f32 }));
+        } else {
+            let count = (final_padding / 4) as usize;
+            wgsl_lines.push(format!("    {}: array<f32, {}>,", pad_name, count));
+            gpu_fields.push((pad_name, quote! { [f32; #count] }));
+        }
+    }
+
+    let wgsl_struct = format!("struct Particle {{\n{}\n}}", wgsl_lines.join("\n"));
+
+    (gpu_fields, wgsl_struct, None, None, alive_offset, scale_offset)
+}
+
+/// Type info from string for MultiParticle macro
+struct MultiTypeInfo {
+    wgsl_type: &'static str,
+    gpu_type: proc_macro2::TokenStream,
+    size: u32,
+    align: u32,
+    needs_to_array: bool,
+}
+
+fn type_info_from_string(ty: &str) -> MultiTypeInfo {
+    match ty {
+        "Vec3" => MultiTypeInfo {
+            wgsl_type: "vec3<f32>",
+            gpu_type: quote! { [f32; 3] },
+            size: 12,
+            align: 16,
+            needs_to_array: true,
+        },
+        "Vec2" => MultiTypeInfo {
+            wgsl_type: "vec2<f32>",
+            gpu_type: quote! { [f32; 2] },
+            size: 8,
+            align: 8,
+            needs_to_array: true,
+        },
+        "Vec4" => MultiTypeInfo {
+            wgsl_type: "vec4<f32>",
+            gpu_type: quote! { [f32; 4] },
+            size: 16,
+            align: 16,
+            needs_to_array: true,
+        },
+        "f32" => MultiTypeInfo {
+            wgsl_type: "f32",
+            gpu_type: quote! { f32 },
+            size: 4,
+            align: 4,
+            needs_to_array: false,
+        },
+        "u32" => MultiTypeInfo {
+            wgsl_type: "u32",
+            gpu_type: quote! { u32 },
+            size: 4,
+            align: 4,
+            needs_to_array: false,
+        },
+        "i32" => MultiTypeInfo {
+            wgsl_type: "i32",
+            gpu_type: quote! { i32 },
+            size: 4,
+            align: 4,
+            needs_to_array: false,
+        },
+        _ => panic!("Unsupported type in MultiParticle: {}", ty),
+    }
+}
+
+fn zero_value_for_type(ty: &str) -> proc_macro2::TokenStream {
+    match ty {
+        "Vec3" => quote! { [0.0, 0.0, 0.0] },
+        "Vec2" => quote! { [0.0, 0.0] },
+        "Vec4" => quote! { [0.0, 0.0, 0.0, 0.0] },
+        "f32" => quote! { 0.0 },
+        "u32" => quote! { 0 },
+        "i32" => quote! { 0 },
+        _ => quote! { Default::default() },
     }
 }

@@ -373,32 +373,44 @@ const STATE_EATING: u32 = 3;
 <span class="boring">}</span></code></pre></pre>
 <h2 id="communication-information-exchange"><a class="header" href="#communication-information-exchange">Communication: Information Exchange</a></h2>
 <h3 id="inboxes-direct-messages"><a class="header" href="#inboxes-direct-messages">Inboxes (Direct Messages)</a></h3>
-<p>Particles can send targeted messages:</p>
+<p>Particles can send float values to each other via 4 inbox channels:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>#[derive(Particle, Clone)]
-struct Messenger {
-    position: Vec3,
-    velocity: Vec3,
-    inbox: u32,  // Receives messages here
-}
+</span>.with_inbox()  // Enable inbox system
+.with_spatial_config(0.2, 32)
 
-.with_inbox("inbox")
+// Send values in neighbor rule
 .with_rule(Rule::NeighborCustom(r#"
-    // Send alert to nearby friends
+    // Send danger signal to nearby friends
     if p.fear_level &gt; 0.8 &amp;&amp; other.particle_type == p.particle_type {
-        send_inbox(other_idx, 1u);  // "Danger!"
+        inbox_send(other_idx, 0u, 1.0);  // Channel 0: danger level
+    }
+
+    // Share energy with neighbors
+    if neighbor_dist &lt; 0.05 {
+        inbox_send(other_idx, 1u, p.energy * 0.1);  // Channel 1: energy transfer
     }
 "#.into()))
 
+// Receive accumulated values
 .with_rule(Rule::Custom(r#"
-    // React to received messages
-    if p.inbox == 1u {
+    // React to danger signals (channel 0)
+    let danger = inbox_receive_at(index, 0u);
+    if danger &gt; 0.5 {
         p.fear_level = max(p.fear_level, 0.5);
-        p.inbox = 0u;  // Clear inbox
     }
+
+    // Receive transferred energy (channel 1)
+    p.energy += inbox_receive_at(index, 1u);
 "#.into()))
 <span class="boring">}</span></code></pre></pre>
+<p><strong>Inbox details:</strong></p>
+<ul>
+<li>4 channels per particle (vec4)</li>
+<li>Values are accumulated atomically across all senders</li>
+<li>Cleared each frame</li>
+<li>~0.00001 precision in range ±32768</li>
+</ul>
 <h3 id="fields-broadcast"><a class="header" href="#fields-broadcast">Fields (Broadcast)</a></h3>
 <p>Write to fields for area-of-effect communication:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -563,7 +575,7 @@ const REST: u32 = 3;
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../concepts/multi_types.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -577,7 +589,7 @@ const REST: u32 = 3;
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../concepts/multi_types.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

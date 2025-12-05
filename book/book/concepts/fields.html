@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Emitters - RDPE - Reaction Diffusion Particle Engine</title>
+        <title>Fields - RDPE - Reaction Diffusion Particle Engine</title>
 
 
         <!-- Custom HTML head -->
@@ -175,198 +175,17 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="emitters"><a class="header" href="#emitters">Emitters</a></h1>
-<p>Emitters continuously spawn new particles into the simulation, replacing dead particles. They enable effects like fountains, explosions, rain, and any other continuous particle generation.</p>
-<h2 id="how-emitters-work"><a class="header" href="#how-emitters-work">How Emitters Work</a></h2>
-<p>When you add an emitter, RDPE:</p>
-<ol>
-<li>Finds dead particles (those with <code>alive == 0</code>)</li>
-<li>Respawns them based on the emitter's rate and position</li>
-<li>Sets initial velocity according to the emitter type</li>
-</ol>
-<p>Emitters work best with lifecycle rules:</p>
-<ul>
-<li><code>Rule::Age</code> - increments particle age each frame</li>
-<li><code>Rule::Lifetime(seconds)</code> - kills particles after a duration</li>
-</ul>
-<h2 id="emitter-types"><a class="header" href="#emitter-types">Emitter Types</a></h2>
-<h3 id="point"><a class="header" href="#point">Point</a></h3>
-<p>Emits particles from a single point in all directions.</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Point {
-    position: Vec3::ZERO,
-    rate: 500.0,    // particles per second
-    speed: 1.0,     // initial speed (0 = random)
-})
-<span class="boring">}</span></code></pre></pre>
-<h3 id="burst"><a class="header" href="#burst">Burst</a></h3>
-<p>One-time explosion of particles. Fires once at simulation start.</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Burst {
-    position: Vec3::new(0.0, 0.5, 0.0),
-    count: 1000,    // total particles to spawn
-    speed: 3.0,     // outward speed
-})
-<span class="boring">}</span></code></pre></pre>
-<h3 id="cone"><a class="header" href="#cone">Cone</a></h3>
-<p>Directional emission in a cone shape. Great for fountains, jets, and thrusters.</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Cone {
-    position: Vec3::new(0.0, -0.5, 0.0),
-    direction: Vec3::Y,     // points up
-    speed: 2.5,
-    spread: 0.3,            // cone half-angle in radians
-    rate: 800.0,
-})
-<span class="boring">}</span></code></pre></pre>
-<p>The <code>spread</code> parameter controls the cone width:</p>
-<ul>
-<li><code>0.0</code> = laser beam (no spread)</li>
-<li><code>0.3</code> = tight cone (~17 degrees)</li>
-<li><code>PI/4</code> = 45-degree cone</li>
-<li><code>PI/2</code> = hemisphere</li>
-</ul>
-<h3 id="sphere"><a class="header" href="#sphere">Sphere</a></h3>
-<p>Spawns particles on a sphere surface, moving outward (or inward).</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Sphere {
-    center: Vec3::ZERO,
-    radius: 0.5,
-    speed: 1.0,     // positive = outward, negative = inward
-    rate: 1000.0,
-})
-<span class="boring">}</span></code></pre></pre>
-<h3 id="box"><a class="header" href="#box">Box</a></h3>
-<p>Spawns particles at random positions within a box volume.</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>.with_emitter(Emitter::Box {
-    min: Vec3::new(-1.0, 1.0, -1.0),
-    max: Vec3::new(1.0, 1.2, 1.0),
-    velocity: Vec3::new(0.0, -2.0, 0.0),  // falling rain
-    rate: 2000.0,
-})
-<span class="boring">}</span></code></pre></pre>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<p>Here's a fountain that continuously emits particles:</p>
-<pre><pre class="playground"><code class="language-rust">use rdpe::prelude::*;
-
-#[derive(Particle, Clone)]
-struct Drop {
-    position: Vec3,
-    velocity: Vec3,
-    #[color]
-    color: Vec3,
-}
-
-fn main() {
-    Simulation::&lt;Drop&gt;::new()
-        .with_particle_count(10_000)
-        .with_bounds(2.0)
-        // Start all particles dead - emitter will spawn them
-        .with_spawner(|_, _| Drop {
-            position: Vec3::ZERO,
-            velocity: Vec3::ZERO,
-            color: Vec3::new(0.3, 0.6, 1.0),
-        })
-        // Cone emitter shooting upward
-        .with_emitter(Emitter::Cone {
-            position: Vec3::new(0.0, -0.8, 0.0),
-            direction: Vec3::Y,
-            speed: 3.0,
-            spread: 0.2,
-            rate: 1000.0,
-        })
-        // Lifecycle management
-        .with_rule(Rule::Age)
-        .with_rule(Rule::Lifetime(2.0))
-        // Physics
-        .with_rule(Rule::Gravity(4.0))
-        .with_rule(Rule::Drag(0.3))
-        .with_rule(Rule::BounceWalls)
-        .run();
-}</code></pre></pre>
-<h2 id="multiple-emitters"><a class="header" href="#multiple-emitters">Multiple Emitters</a></h2>
-<p>You can add multiple emitters to create complex effects:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Twin fountains
-.with_emitter(Emitter::Cone {
-    position: Vec3::new(-0.5, -0.8, 0.0),
-    direction: Vec3::Y,
-    speed: 3.0,
-    spread: 0.15,
-    rate: 500.0,
-})
-.with_emitter(Emitter::Cone {
-    position: Vec3::new(0.5, -0.8, 0.0),
-    direction: Vec3::Y,
-    speed: 3.0,
-    spread: 0.15,
-    rate: 500.0,
-})
-<span class="boring">}</span></code></pre></pre>
-<h2 id="tips"><a class="header" href="#tips">Tips</a></h2>
-<ul>
-<li><strong>Rate tuning</strong>: Match your rate to particle count and lifetime. If <code>rate * lifetime &gt; particle_count</code>, you'll run out of dead particles to respawn.</li>
-<li><strong>Dead start</strong>: When using emitters, initialize particles as dead in your spawner (they'll be spawned by the emitter).</li>
-<li><strong>Burst timing</strong>: Burst emitters fire at <code>time &lt; 0.1</code>, so they work immediately on startup.</li>
-</ul>
-<h2 id="sub-emitters"><a class="header" href="#sub-emitters">Sub-Emitters</a></h2>
-<p>Sub-emitters spawn child particles when parent particles die. This enables fireworks, explosions, chain reactions, and biological reproduction.</p>
-<h3 id="basic-sub-emitter"><a class="header" href="#basic-sub-emitter">Basic Sub-Emitter</a></h3>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[derive(ParticleType)]
-enum Firework {
-    Rocket,
-    Spark,
-}
-
-Simulation::&lt;Particle&gt;::new()
-    .with_sub_emitter(SubEmitter::new(
-        Firework::Rocket.into(),  // Parent type
-        Firework::Spark.into(),   // Child type
-    )
-    .count(30)                    // Children per death
-    .speed(1.0..3.0)              // Random speed range
-    .spread(std::f32::consts::PI) // Hemisphere
-    .inherit_velocity(0.3))       // 30% of parent velocity
-    .run();
-<span class="boring">}</span></code></pre></pre>
-<h3 id="sub-emitter-options"><a class="header" href="#sub-emitter-options">Sub-Emitter Options</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Method</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>.count(n)</code></td><td>Number of children per parent death</td></tr>
-<tr><td><code>.speed(min..max)</code></td><td>Random speed range</td></tr>
-<tr><td><code>.spread(radians)</code></td><td>0 = laser, PI = hemisphere, TAU = full sphere</td></tr>
-<tr><td><code>.inherit_velocity(factor)</code></td><td>0.0 to 1.0, how much parent velocity children get</td></tr>
-<tr><td><code>.child_lifetime(secs)</code></td><td>Override lifetime for children</td></tr>
-<tr><td><code>.child_color(Vec3)</code></td><td>Override color for children</td></tr>
-<tr><td><code>.spawn_radius(r)</code></td><td>Random offset from parent position</td></tr>
-</tbody></table>
-</div>
-<h3 id="chaining-sub-emitters"><a class="header" href="#chaining-sub-emitters">Chaining Sub-Emitters</a></h3>
-<p>Create multi-stage effects:</p>
-<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Rockets → Sparks → Embers
-.with_sub_emitter(SubEmitter::new(Rocket.into(), Spark.into()).count(30))
-.with_sub_emitter(SubEmitter::new(Spark.into(), Ember.into()).count(5))
-<span class="boring">}</span></code></pre></pre>
+                        <h1 id="fields"><a class="header" href="#fields">Fields</a></h1>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../basics/visuals.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../concepts/multi_types.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../basics/typed-interactions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -376,11 +195,11 @@ Simulation::&lt;Particle&gt;::new()
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../basics/visuals.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../concepts/multi_types.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../basics/typed-interactions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../advanced/spatial-hashing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

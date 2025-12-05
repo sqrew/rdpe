@@ -194,8 +194,8 @@
 <h3 id="2-radix-sort"><a class="header" href="#2-radix-sort">2. Radix Sort</a></h3>
 <p>Particles are sorted by their Morton code using GPU radix sort:</p>
 <ul>
-<li>8 passes (4 bits per pass for 32-bit keys)</li>
-<li>Each pass: histogram → prefix sum → scatter</li>
+<li>Dynamic pass count based on grid resolution (e.g., 32³ grid = 15 bits needed = 4 passes)</li>
+<li>Each pass processes 4 bits: histogram → prefix sum → scatter</li>
 <li>Result: particles ordered by spatial cell</li>
 </ul>
 <h3 id="3-cell-table"><a class="header" href="#3-cell-table">3. Cell Table</a></h3>
@@ -212,6 +212,13 @@ cell_end[morton_code] = one past last particle index
     }
 }
 </code></pre>
+<h3 id="max-neighbors-limit"><a class="header" href="#max-neighbors-limit">Max Neighbors Limit</a></h3>
+<p>For dense clusters, you can cap how many neighbors each particle processes:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.with_max_neighbors(48)  // Stop after 48 neighbors
+<span class="boring">}</span></code></pre></pre>
+<p>This provides an early-exit from the neighbor loop, trading accuracy for performance in pathological cases where particles cluster tightly.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>Configure spatial hashing with:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
@@ -291,7 +298,7 @@ cell_end[morton_code] = one past last particle index
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../concepts/agents.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../concepts/fields.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -305,7 +312,7 @@ cell_end[morton_code] = one past last particle index
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../concepts/agents.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../concepts/fields.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 

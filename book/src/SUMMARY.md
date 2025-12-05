@@ -16,6 +16,7 @@
 # Concepts
 
 - [Particles as Agents](./concepts/agents.md)
+- [Multi-Particle Types](./concepts/multi_types.md)
 - [Fields](./concepts/fields.md)
 
 # Advanced

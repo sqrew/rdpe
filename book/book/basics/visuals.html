@@ -190,6 +190,32 @@
     .run();
 <span class="boring">}</span></code></pre></pre>
 <h2 id="options"><a class="header" href="#options">Options</a></h2>
+<h3 id="particle-shapes"><a class="header" href="#particle-shapes">Particle Shapes</a></h3>
+<p>Control the visual shape of each particle:</p>
+<pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>v.shape(ParticleShape::Circle);      // Soft circle with smooth falloff (default)
+v.shape(ParticleShape::CircleHard);  // Hard-edged circle
+v.shape(ParticleShape::Square);      // Square/rectangle
+v.shape(ParticleShape::Ring);        // Ring/donut shape
+v.shape(ParticleShape::Star);        // 5-pointed star
+v.shape(ParticleShape::Triangle);    // Equilateral triangle
+v.shape(ParticleShape::Hexagon);     // Regular hexagon
+v.shape(ParticleShape::Diamond);     // Diamond/rhombus
+v.shape(ParticleShape::Point);       // Single pixel (fastest)
+<span class="boring">}</span></code></pre></pre>
+<div class="table-wrapper"><table><thead><tr><th>Shape</th><th>Best For</th></tr></thead><tbody>
+<tr><td><code>Circle</code></td><td>General purpose, soft edges</td></tr>
+<tr><td><code>CircleHard</code></td><td>Sharp particles, dots</td></tr>
+<tr><td><code>Square</code></td><td>Pixels, grid-based simulations</td></tr>
+<tr><td><code>Ring</code></td><td>Bubbles, force fields</td></tr>
+<tr><td><code>Star</code></td><td>Magic effects, sparkles</td></tr>
+<tr><td><code>Triangle</code></td><td>Arrows, directional particles</td></tr>
+<tr><td><code>Hexagon</code></td><td>Cells, tiles, molecules</td></tr>
+<tr><td><code>Diamond</code></td><td>Crystals, gems</td></tr>
+<tr><td><code>Point</code></td><td>Maximum performance, retro aesthetic</td></tr>
+</tbody></table>
+</div>
 <h3 id="background-color"><a class="header" href="#background-color">Background Color</a></h3>
 <p>Set the scene backdrop:</p>
 <pre><pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
