@@ -17,6 +17,34 @@ Simulation::<MyParticle>::new()
 
 ## Options
 
+### Particle Shapes
+
+Control the visual shape of each particle:
+
+```rust
+v.shape(ParticleShape::Circle);      // Soft circle with smooth falloff (default)
+v.shape(ParticleShape::CircleHard);  // Hard-edged circle
+v.shape(ParticleShape::Square);      // Square/rectangle
+v.shape(ParticleShape::Ring);        // Ring/donut shape
+v.shape(ParticleShape::Star);        // 5-pointed star
+v.shape(ParticleShape::Triangle);    // Equilateral triangle
+v.shape(ParticleShape::Hexagon);     // Regular hexagon
+v.shape(ParticleShape::Diamond);     // Diamond/rhombus
+v.shape(ParticleShape::Point);       // Single pixel (fastest)
+```
+
+| Shape | Best For |
+|-------|----------|
+| `Circle` | General purpose, soft edges |
+| `CircleHard` | Sharp particles, dots |
+| `Square` | Pixels, grid-based simulations |
+| `Ring` | Bubbles, force fields |
+| `Star` | Magic effects, sparkles |
+| `Triangle` | Arrows, directional particles |
+| `Hexagon` | Cells, tiles, molecules |
+| `Diamond` | Crystals, gems |
+| `Point` | Maximum performance, retro aesthetic |
+
 ### Background Color
 
 Set the scene backdrop:

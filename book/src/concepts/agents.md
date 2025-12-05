@@ -225,32 +225,43 @@ Simple if/else logic:
 
 ### Inboxes (Direct Messages)
 
-Particles can send targeted messages:
+Particles can send float values to each other via 4 inbox channels:
 
 ```rust
-#[derive(Particle, Clone)]
-struct Messenger {
-    position: Vec3,
-    velocity: Vec3,
-    inbox: u32,  // Receives messages here
-}
+.with_inbox()  // Enable inbox system
+.with_spatial_config(0.2, 32)
 
-.with_inbox("inbox")
+// Send values in neighbor rule
 .with_rule(Rule::NeighborCustom(r#"
-    // Send alert to nearby friends
+    // Send danger signal to nearby friends
     if p.fear_level > 0.8 && other.particle_type == p.particle_type {
-        send_inbox(other_idx, 1u);  // "Danger!"
+        inbox_send(other_idx, 0u, 1.0);  // Channel 0: danger level
+    }
+
+    // Share energy with neighbors
+    if neighbor_dist < 0.05 {
+        inbox_send(other_idx, 1u, p.energy * 0.1);  // Channel 1: energy transfer
     }
 "#.into()))
 
+// Receive accumulated values
 .with_rule(Rule::Custom(r#"
-    // React to received messages
-    if p.inbox == 1u {
+    // React to danger signals (channel 0)
+    let danger = inbox_receive_at(index, 0u);
+    if danger > 0.5 {
         p.fear_level = max(p.fear_level, 0.5);
-        p.inbox = 0u;  // Clear inbox
     }
+
+    // Receive transferred energy (channel 1)
+    p.energy += inbox_receive_at(index, 1u);
 "#.into()))
 ```
+
+**Inbox details:**
+- 4 channels per particle (vec4)
+- Values are accumulated atomically across all senders
+- Cleared each frame
+- ~0.00001 precision in range ±32768
 
 ### Fields (Broadcast)
 

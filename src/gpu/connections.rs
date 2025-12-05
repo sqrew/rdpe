@@ -403,7 +403,7 @@ struct SpatialParams {{
     cell_size: f32,
     grid_resolution: u32,
     num_particles: u32,
-    _pad: u32,
+    max_neighbors: u32,
 }};
 
 fn morton_encode_10bit(x: u32, y: u32, z: u32) -> u32 {{

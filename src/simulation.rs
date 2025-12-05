@@ -441,6 +441,29 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Set maximum neighbors to process per particle.
+    ///
+    /// This can significantly improve performance in dense simulations by limiting
+    /// the number of neighbor interactions per particle. Use values like 32-64 for
+    /// boids-style simulations.
+    ///
+    /// # Arguments
+    ///
+    /// * `max` - Maximum neighbors to process (0 = unlimited, default)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Boid>::new()
+    ///     .with_spatial_config(0.1, 32)
+    ///     .with_max_neighbors(48)  // Process at most 48 neighbors
+    ///     .with_rule(Rule::Separate { radius: 0.05, strength: 2.0 })
+    /// ```
+    pub fn with_max_neighbors(mut self, max: u32) -> Self {
+        self.spatial_config.max_neighbors = max;
+        self
+    }
+
     /// Enable particle-to-particle communication via inbox buffers.
     ///
     /// When enabled, particles can send values to other particles' "inbox"
@@ -1329,7 +1352,7 @@ struct SpatialParams {{
     cell_size: f32,
     grid_resolution: u32,
     num_particles: u32,
-    _pad: u32,
+    max_neighbors: u32,
 }};
 
 @group(0) @binding(0)
@@ -1376,8 +1399,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     let my_cell = pos_to_cell(my_pos, spatial.cell_size, spatial.grid_resolution);
 
 {accumulator_vars}
-    // Neighbor iteration
+    // Neighbor iteration with optional max limit
+    var neighbor_count = 0u;
+    let max_neighbors = spatial.max_neighbors;
     for (var offset_idx = 0u; offset_idx < 27u; offset_idx++) {{
+        // Early exit if max neighbors reached (0 = unlimited)
+        if max_neighbors > 0u && neighbor_count >= max_neighbors {{
+            break;
+        }}
+
         let neighbor_morton = neighbor_cell_morton(my_cell, offset_idx, spatial.grid_resolution);
 
         if neighbor_morton == 0xFFFFFFFFu {{
@@ -1392,6 +1422,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
         }}
 
         for (var j = start; j < end; j++) {{
+            // Early exit if max neighbors reached
+            if max_neighbors > 0u && neighbor_count >= max_neighbors {{
+                break;
+            }}
+
             let other_idx = sorted_indices[j];
 
             if other_idx == index {{
@@ -1410,6 +1445,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             let diff = my_pos - neighbor_pos;
             let neighbor_dist = length(diff);
             let neighbor_dir = select(vec3<f32>(0.0), diff / neighbor_dist, neighbor_dist > 0.0001);
+
+            neighbor_count += 1u;
 
 {neighbor_rules_code}
         }}
@@ -1597,12 +1634,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 }}
 "#,
             particle_size = self.particle_size,
-            fragment_body = self.custom_fragment_shader.as_deref().unwrap_or(r#"    let dist = length(in.uv);
-    if dist > 1.0 {
-        discard;
-    }
-    let alpha = 1.0 - smoothstep(0.5, 1.0, dist);
-    return vec4<f32>(in.color, alpha);"#)
+            fragment_body = self.custom_fragment_shader.as_deref()
+                .unwrap_or_else(|| self.visual_config.shape.to_wgsl_fragment())
         )
     }
 

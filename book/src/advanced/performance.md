@@ -4,16 +4,13 @@ RDPE runs on the GPU, but performance still varies based on configuration.
 
 ## Particle Count
 
-The GPU handles particles in parallel, but there are limits:
+The GPU handles particles in parallel, but performance depends on what you're simulating:
 
-| Particles | Typical Performance |
-|-----------|---------------------|
-| 1,000 | Extremely fast |
-| 10,000 | Very fast |
-| 50,000 | Fast |
-| 100,000 | Good |
-| 500,000 | May drop frames |
-| 1,000,000+ | Depends on GPU |
+| Scenario | Particles | Typical FPS |
+|----------|-----------|-------------|
+| No neighbors (gravity, drag, etc.) | 500,000 | 60+ |
+| Full boids (separate, cohere, align) | 50,000 | 20+ |
+| Spatial fields | 100,000 | 30+ |
 
 ### Tips
 
@@ -55,6 +52,16 @@ Higher resolution = more cells = more memory, but potentially fewer particles pe
 - **Many particles, small interaction radius** - Huge win
 - **Few particles** - Overhead may not be worth it
 - **Large interaction radius** - Less benefit (checking many neighbors anyway)
+
+### Max Neighbors Limit
+
+In dense clusters, particles may have hundreds of neighbors. Cap the iteration:
+
+```rust
+.with_max_neighbors(48)  // Stop after processing 48 neighbors
+```
+
+This trades some accuracy for a significant performance boost (2x or more in pathological cases). Values of 32-64 work well for most simulations.
 
 ## Rule Complexity
 

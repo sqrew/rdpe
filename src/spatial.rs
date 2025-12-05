@@ -10,6 +10,8 @@ pub struct SpatialConfig {
     pub cell_size: f32,
     /// Number of cells per dimension (grid is cell_count^3)
     pub grid_resolution: u32,
+    /// Maximum neighbors to process per particle (0 = unlimited)
+    pub max_neighbors: u32,
 }
 
 impl Default for SpatialConfig {
@@ -17,6 +19,7 @@ impl Default for SpatialConfig {
         Self {
             cell_size: 0.1,
             grid_resolution: 64, // 64^3 = 262144 cells, fits in 18-bit Morton code
+            max_neighbors: 0,    // 0 = unlimited
         }
     }
 }
@@ -25,7 +28,7 @@ impl SpatialConfig {
     pub fn new(cell_size: f32, grid_resolution: u32) -> Self {
         assert!(grid_resolution.is_power_of_two(), "Grid resolution must be power of 2");
         assert!(grid_resolution <= 1024, "Grid resolution must be <= 1024 for 30-bit Morton codes");
-        Self { cell_size, grid_resolution }
+        Self { cell_size, grid_resolution, max_neighbors: 0 }
     }
 
     /// Total number of cells in the grid

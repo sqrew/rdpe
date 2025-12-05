@@ -1,6 +1,6 @@
 # Introduction
 
-**RDPE** (Reaction Diffusion Particle Engine) is a GPU-accelerated particle simulation library for Rust. It lets you create complex, interactive particle systems with minimal code by combining simple, composable rules.
+**RDPE** (Realtime Data Presentation Engine) is a GPU-accelerated particle simulation library for Rust. It lets you create complex, interactive particle systems with minimal code by combining simple, composable rules.
 
 ## What Can You Build?
 

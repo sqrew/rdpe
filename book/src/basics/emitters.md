@@ -156,3 +156,50 @@ You can add multiple emitters to create complex effects:
 - **Rate tuning**: Match your rate to particle count and lifetime. If `rate * lifetime > particle_count`, you'll run out of dead particles to respawn.
 - **Dead start**: When using emitters, initialize particles as dead in your spawner (they'll be spawned by the emitter).
 - **Burst timing**: Burst emitters fire at `time < 0.1`, so they work immediately on startup.
+
+## Sub-Emitters
+
+Sub-emitters spawn child particles when parent particles die. This enables fireworks, explosions, chain reactions, and biological reproduction.
+
+### Basic Sub-Emitter
+
+```rust
+#[derive(ParticleType)]
+enum Firework {
+    Rocket,
+    Spark,
+}
+
+Simulation::<Particle>::new()
+    .with_sub_emitter(SubEmitter::new(
+        Firework::Rocket.into(),  // Parent type
+        Firework::Spark.into(),   // Child type
+    )
+    .count(30)                    // Children per death
+    .speed(1.0..3.0)              // Random speed range
+    .spread(std::f32::consts::PI) // Hemisphere
+    .inherit_velocity(0.3))       // 30% of parent velocity
+    .run();
+```
+
+### Sub-Emitter Options
+
+| Method | Description |
+|--------|-------------|
+| `.count(n)` | Number of children per parent death |
+| `.speed(min..max)` | Random speed range |
+| `.spread(radians)` | 0 = laser, PI = hemisphere, TAU = full sphere |
+| `.inherit_velocity(factor)` | 0.0 to 1.0, how much parent velocity children get |
+| `.child_lifetime(secs)` | Override lifetime for children |
+| `.child_color(Vec3)` | Override color for children |
+| `.spawn_radius(r)` | Random offset from parent position |
+
+### Chaining Sub-Emitters
+
+Create multi-stage effects:
+
+```rust
+// Rockets → Sparks → Embers
+.with_sub_emitter(SubEmitter::new(Rocket.into(), Spark.into()).count(30))
+.with_sub_emitter(SubEmitter::new(Spark.into(), Ember.into()).count(5))
+```

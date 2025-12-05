@@ -192,9 +192,9 @@ impl FieldSystemGpu {
             let components = field.config.field_type.components();
             let buffer_elements = total_cells * components;
             // Workgroups for merge/clear (process buffer elements)
-            let element_workgroups = (buffer_elements + 255) / 256;
+            let element_workgroups = buffer_elements.div_ceil(256);
             // Workgroups for blur (process cells, loop over components internally)
-            let cell_workgroups = (total_cells + 255) / 256;
+            let cell_workgroups = total_cells.div_ceil(256);
 
             // Create params for this field
             let params = FieldParamsGpu {

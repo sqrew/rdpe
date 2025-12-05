@@ -28,8 +28,8 @@ Morton codes preserve spatial locality - nearby cells have similar codes.
 
 Particles are sorted by their Morton code using GPU radix sort:
 
-- 8 passes (4 bits per pass for 32-bit keys)
-- Each pass: histogram → prefix sum → scatter
+- Dynamic pass count based on grid resolution (e.g., 32³ grid = 15 bits needed = 4 passes)
+- Each pass processes 4 bits: histogram → prefix sum → scatter
 - Result: particles ordered by spatial cell
 
 ### 3. Cell Table
@@ -53,6 +53,16 @@ for offset in 0..27 {
     }
 }
 ```
+
+### Max Neighbors Limit
+
+For dense clusters, you can cap how many neighbors each particle processes:
+
+```rust
+.with_max_neighbors(48)  // Stop after 48 neighbors
+```
+
+This provides an early-exit from the neighbor loop, trading accuracy for performance in pathological cases where particles cluster tightly.
 
 ## Configuration
 

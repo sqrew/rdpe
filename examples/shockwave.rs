@@ -55,7 +55,7 @@ fn main() {
         .with_spawner(|i, total| {
             // Spawn in a spherical shell
             let phi = (i as f32 / total as f32) * std::f32::consts::PI * 2.0 * 100.0;
-            let theta = ((i as f32 * 0.618033988749895) % 1.0) * std::f32::consts::PI;
+            let theta = ((i as f32 * 0.618_034) % 1.0) * std::f32::consts::PI;
             let r = 0.3 + (i as f32 * 0.381966) % 0.4;
 
             let x = r * theta.sin() * phi.cos();

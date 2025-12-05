@@ -10,7 +10,17 @@ use crate::spatial::{SpatialConfig, MORTON_WGSL};
 const WORKGROUP_SIZE: u32 = 256;
 const RADIX_BITS: u32 = 4;
 const RADIX_SIZE: u32 = 16; // 2^4
-const SORT_PASSES: u32 = 8; // 32 bits / 4 bits per pass
+
+/// Calculate number of sort passes needed based on grid resolution.
+/// Morton codes use 3 * log2(grid_resolution) bits.
+/// Always returns an even number so final result is in buffer A (for build_cells bind group).
+fn calculate_sort_passes(grid_resolution: u32) -> u32 {
+    let bits_per_axis = (grid_resolution as f32).log2().ceil() as u32;
+    let total_bits = bits_per_axis * 3; // Morton code interleaves 3 axes
+    let passes = total_bits.div_ceil(RADIX_BITS);
+    // Round up to even number so result ends in buffer A
+    if passes % 2 == 1 { passes + 1 } else { passes }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -18,7 +28,7 @@ pub struct SpatialParams {
     pub cell_size: f32,
     pub grid_resolution: u32,
     pub num_particles: u32,
-    pub _pad: u32,
+    pub max_neighbors: u32,
 }
 
 #[repr(C)]
@@ -66,6 +76,7 @@ pub struct SpatialGpu {
 
     pub config: SpatialConfig,
     num_particles: u32,
+    sort_passes: u32,
 }
 
 impl SpatialGpu {
@@ -135,7 +146,7 @@ impl SpatialGpu {
             cell_size: config.cell_size,
             grid_resolution: config.grid_resolution,
             num_particles,
-            _pad: 0,
+            max_neighbors: config.max_neighbors,
         };
 
         let spatial_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -239,6 +250,8 @@ impl SpatialGpu {
             total_cells,
         );
 
+        let sort_passes = calculate_sort_passes(config.grid_resolution);
+
         Self {
             morton_codes_a,
             morton_codes_b,
@@ -267,6 +280,7 @@ impl SpatialGpu {
             clear_cells_bind_group,
             config,
             num_particles,
+            sort_passes,
         }
     }
 
@@ -285,10 +299,10 @@ impl SpatialGpu {
             pass.dispatch_workgroups(workgroups, 1, 1);
         }
 
-        // Step 2: Radix sort (8 passes for 32-bit keys)
+        // Step 2: Radix sort (dynamic passes based on grid resolution)
         let mut source_is_a = true;
 
-        for pass_idx in 0..SORT_PASSES {
+        for pass_idx in 0..self.sort_passes {
             let bit_offset = pass_idx * RADIX_BITS;
 
             // Update sort params
@@ -403,7 +417,7 @@ struct SpatialParams {{
     cell_size: f32,
     grid_resolution: u32,
     num_particles: u32,
-    _pad: u32,
+    max_neighbors: u32,
 }};
 
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
@@ -552,7 +566,7 @@ struct SpatialParams {
     cell_size: f32,
     grid_resolution: u32,
     num_particles: u32,
-    _pad: u32,
+    max_neighbors: u32,
 };
 
 @group(0) @binding(0) var<storage, read> sorted_morton: array<u32>;

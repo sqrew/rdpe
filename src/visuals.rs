@@ -234,27 +234,134 @@ pub enum BlendMode {
 
 /// Particle shape for rendering.
 ///
-/// Controls the visual shape of each particle.
+/// Controls the visual shape of each particle. All shapes use the UV coordinate
+/// system where (-1, -1) is bottom-left and (1, 1) is top-right of the particle quad.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ParticleShape {
     /// Soft circle with smooth falloff (default).
     #[default]
     Circle,
 
-    /// Hard-edged circle.
+    /// Hard-edged circle with no falloff.
     CircleHard,
 
-    /// Square shape.
+    /// Square/rectangle shape.
     Square,
 
     /// Ring/donut shape.
     Ring,
 
-    /// Star shape.
+    /// 5-pointed star.
     Star,
 
-    /// Point (single pixel, fastest).
+    /// Equilateral triangle pointing up.
+    Triangle,
+
+    /// Regular hexagon.
+    Hexagon,
+
+    /// Diamond/rhombus shape.
+    Diamond,
+
+    /// Single pixel point (fastest, no shape calculation).
     Point,
+}
+
+impl ParticleShape {
+    /// Generate the WGSL fragment shader body for this shape.
+    ///
+    /// The shader receives `in.uv` as vec2 in range [-1, 1] and `in.color` as vec3.
+    /// It should return a vec4 color with alpha.
+    pub fn to_wgsl_fragment(&self) -> &'static str {
+        match self {
+            ParticleShape::Circle => r#"    let dist = length(in.uv);
+    if dist > 1.0 {
+        discard;
+    }
+    let alpha = 1.0 - smoothstep(0.5, 1.0, dist);
+    return vec4<f32>(in.color, alpha);"#,
+
+            ParticleShape::CircleHard => r#"    let dist = length(in.uv);
+    if dist > 1.0 {
+        discard;
+    }
+    return vec4<f32>(in.color, 1.0);"#,
+
+            ParticleShape::Square => r#"    return vec4<f32>(in.color, 1.0);"#,
+
+            ParticleShape::Ring => r#"    let dist = length(in.uv);
+    if dist > 1.0 || dist < 0.6 {
+        discard;
+    }
+    let alpha = 1.0 - smoothstep(0.85, 1.0, dist);
+    return vec4<f32>(in.color, alpha);"#,
+
+            ParticleShape::Star => r#"    // 5-pointed star using polar coordinates
+    let angle = atan2(in.uv.y, in.uv.x);
+    let dist = length(in.uv);
+
+    // Star shape: varies radius based on angle (5 points)
+    let points = 5.0;
+    let star_angle = angle + 3.14159 / 2.0; // Rotate so point faces up
+    let star_factor = cos(star_angle * points) * 0.4 + 0.6;
+
+    if dist > star_factor {
+        discard;
+    }
+    return vec4<f32>(in.color, 1.0);"#,
+
+            ParticleShape::Triangle => r#"    // Equilateral triangle pointing up
+    let p = in.uv;
+
+    // Triangle: use simple half-plane tests
+    // Top vertex at (0, 0.8), bottom edge at y = -0.6
+    // Left edge: from (-0.8, -0.6) to (0, 0.8)
+    // Right edge: from (0.8, -0.6) to (0, 0.8)
+
+    // Bottom edge
+    if p.y < -0.6 {
+        discard;
+    }
+
+    // Left edge: points right of line from (-0.8, -0.6) to (0, 0.8)
+    // Line equation: 1.4x - 0.8y + 0.64 > 0 for inside
+    let left = 1.4 * p.x - 0.8 * p.y + 0.64;
+    if left < 0.0 {
+        discard;
+    }
+
+    // Right edge: points left of line from (0.8, -0.6) to (0, 0.8)
+    // Line equation: -1.4x - 0.8y + 0.64 > 0 for inside
+    let right = -1.4 * p.x - 0.8 * p.y + 0.64;
+    if right < 0.0 {
+        discard;
+    }
+
+    return vec4<f32>(in.color, 1.0);"#,
+
+            ParticleShape::Hexagon => r#"    // Regular hexagon using max of 3 axes
+    let p = abs(in.uv);
+
+    // Hexagon distance: check against 3 edge normals
+    // Pointy-top hexagon
+    let hex_dist = max(p.x * 0.866025 + p.y * 0.5, p.y);
+
+    if hex_dist > 0.9 {
+        discard;
+    }
+    return vec4<f32>(in.color, 1.0);"#,
+
+            ParticleShape::Diamond => r#"    // Diamond/rhombus: Manhattan distance
+    let dist = abs(in.uv.x) + abs(in.uv.y);
+    if dist > 1.0 {
+        discard;
+    }
+    return vec4<f32>(in.color, 1.0);"#,
+
+            ParticleShape::Point => r#"    // Single pixel - no shape calculation needed
+    return vec4<f32>(in.color, 1.0);"#,
+        }
+    }
 }
 
 /// Configuration for particle visuals.

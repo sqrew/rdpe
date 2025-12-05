@@ -16,6 +16,7 @@
 # Concepts
 
 - [Particles as Agents](./concepts/agents.md)
+- [Fields](./concepts/fields.md)
 
 # Advanced
 

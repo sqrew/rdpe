@@ -381,8 +381,11 @@ fn test_scale_offset_valid() {
 }
 
 #[test]
+#[allow(clippy::assertions_on_constants)]
 fn test_scale_offset_after_alive_offset() {
     // Scale should come after alive in memory layout
+    // These are compile-time-known, but we keep them as runtime asserts
+    // to catch derive macro bugs
     assert!(MinimalParticle::SCALE_OFFSET > MinimalParticle::ALIVE_OFFSET);
     assert!(ColoredParticle::SCALE_OFFSET > ColoredParticle::ALIVE_OFFSET);
 }

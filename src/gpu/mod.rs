@@ -644,7 +644,7 @@ impl GpuState {
         };
 
         // Create volume render state if configured and fields exist
-        let volume_render = if let (Some(ref config), Some(ref fs)) = (&volume_config, &field_system) {
+        let volume_render = if let (Some(config), Some(ref fs)) = (&volume_config, &field_system) {
             Some(VolumeRenderState::new(&device, fs, config, surface_format))
         } else {
             None
@@ -1004,7 +1004,7 @@ impl GpuState {
             let mut combined = base_bytes.to_vec();
             // Pad to 16-byte alignment before appending custom uniforms
             // This ensures vec3/vec4 custom uniforms are properly aligned
-            while combined.len() % 16 != 0 {
+            while !combined.len().is_multiple_of(16) {
                 combined.push(0);
             }
             combined.extend_from_slice(custom_bytes);

@@ -310,7 +310,7 @@ impl FieldRegistry {
             ));
             binding += 1;
 
-            code.push_str("\n");
+            code.push('\n');
         }
 
         // Generate field parameters struct (must match FieldParamsGpu in field_gpu.rs)

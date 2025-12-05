@@ -25,7 +25,7 @@ fn main() {
     println!("=== RDPE Neighbor Benchmark ===");
     println!("Particles: {}", count);
     println!("Rules: Separate, Cohere, Align, Collide, Drag, BounceWalls");
-    println!("Spatial hashing: ON (cell_size=0.1, resolution=32)");
+    println!("Spatial hashing: ON (cell_size=0.1, resolution=32, max_neighbors=48)");
     println!();
     println!("Watch the window title for FPS...");
 
@@ -53,6 +53,7 @@ fn main() {
         .with_bounds(1.0)
         .with_spawner(move |i, _| particles[i as usize].clone())
         .with_spatial_config(0.1, 32)
+        .with_max_neighbors(48) // Limit neighbors for performance
         // Full boids rules - heavy neighbor usage
         .with_rule(Rule::Separate {
             radius: 0.05,

@@ -85,7 +85,7 @@ Manages all GPU resources:
 When rules need neighbor queries, RDPE builds a spatial hash:
 
 1. **Morton encoding** - Convert 3D position to 1D cell index
-2. **Radix sort** - Sort particles by cell (8 passes, 4 bits each)
+2. **Radix sort** - Sort particles by cell (dynamic passes based on grid resolution)
 3. **Cell table** - Build start/end indices for each cell
 
 This accelerates neighbor queries from O(n²) to O(n × average_neighbors).

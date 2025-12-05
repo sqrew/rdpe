@@ -4606,7 +4606,7 @@ impl Rule {
 
                     // Close the if-else chain with newline
                     if !sorted_transitions.is_empty() {
-                        code.push_str("\n");
+                        code.push('\n');
                     }
                     code.push_str("        }\n");
                 }
