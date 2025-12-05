@@ -74,6 +74,7 @@ impl SpatialGpu {
         particle_buffer: &wgpu::Buffer,
         num_particles: u32,
         config: SpatialConfig,
+        particle_wgsl_struct: &str,
     ) -> Self {
         // Create buffers
         let buffer_size = (num_particles as usize * std::mem::size_of::<u32>()) as u64;
@@ -159,7 +160,7 @@ impl SpatialGpu {
             build_cells_pipeline,
             clear_histogram_pipeline,
             clear_cells_pipeline,
-        ) = create_pipelines(device);
+        ) = create_pipelines(device, particle_wgsl_struct);
 
         // Create bind groups
         let morton_bind_group = create_morton_bind_group(
@@ -382,6 +383,7 @@ impl SpatialGpu {
 
 fn create_pipelines(
     device: &wgpu::Device,
+    particle_wgsl_struct: &str,
 ) -> (
     wgpu::ComputePipeline,
     wgpu::ComputePipeline,
@@ -391,24 +393,18 @@ fn create_pipelines(
     wgpu::ComputePipeline,
     wgpu::ComputePipeline,
 ) {
-    // Morton code computation shader
+    // Morton code computation shader - uses actual particle struct for correct stride
     let morton_shader_src = format!(
-        "{}\n{}",
-        MORTON_WGSL,
-        r#"
-struct Particle {
-    position: vec3<f32>,
-    _pad0: f32,
-    velocity: vec3<f32>,
-    _pad1: f32,
-};
+        r#"{}
 
-struct SpatialParams {
+{}
+
+struct SpatialParams {{
     cell_size: f32,
     grid_resolution: u32,
     num_particles: u32,
     _pad: u32,
-};
+}};
 
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
 @group(0) @binding(1) var<storage, read_write> morton_codes: array<u32>;
@@ -416,17 +412,19 @@ struct SpatialParams {
 @group(0) @binding(3) var<uniform> params: SpatialParams;
 
 @compute @workgroup_size(256)
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     let idx = global_id.x;
-    if idx >= params.num_particles {
+    if idx >= params.num_particles {{
         return;
-    }
+    }}
 
     let pos = particles[idx].position;
     morton_codes[idx] = pos_to_morton(pos, params.cell_size, params.grid_resolution);
     particle_indices[idx] = idx;
-}
-"#
+}}
+"#,
+        MORTON_WGSL,
+        particle_wgsl_struct
     );
 
     let morton_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {

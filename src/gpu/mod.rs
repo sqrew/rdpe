@@ -263,7 +263,13 @@ impl GpuState {
 
         // Create spatial hashing if needed
         let spatial = if has_neighbors {
-            Some(SpatialGpu::new(&device, &particle_buffer, num_particles, spatial_config))
+            Some(SpatialGpu::new(
+                &device,
+                &particle_buffer,
+                num_particles,
+                spatial_config,
+                particle_wgsl_struct,
+            ))
         } else {
             None
         };

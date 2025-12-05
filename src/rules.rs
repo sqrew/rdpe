@@ -68,6 +68,120 @@ impl Falloff {
     }
 }
 
+/// A transition between agent states.
+///
+/// Transitions are checked in order of priority (highest first).
+/// The first transition whose condition evaluates to true is taken.
+#[derive(Clone, Debug)]
+pub struct Transition {
+    /// Target state ID to transition to.
+    pub to: u32,
+    /// WGSL boolean expression that triggers this transition.
+    /// Has access to `p` (particle), `uniforms.time`, `uniforms.delta_time`, etc.
+    pub condition: String,
+    /// Priority (higher = checked first). Default: 0.
+    pub priority: i32,
+}
+
+impl Transition {
+    /// Create a new transition with default priority.
+    pub fn new(to: u32, condition: impl Into<String>) -> Self {
+        Self {
+            to,
+            condition: condition.into(),
+            priority: 0,
+        }
+    }
+
+    /// Create a transition with explicit priority.
+    pub fn with_priority(to: u32, condition: impl Into<String>, priority: i32) -> Self {
+        Self {
+            to,
+            condition: condition.into(),
+            priority,
+        }
+    }
+}
+
+/// A state in an agent state machine.
+///
+/// Each state can have:
+/// - Entry action: runs once when entering this state
+/// - Update action: runs every frame while in this state
+/// - Exit action: runs once when leaving this state
+/// - Transitions: conditions that trigger moving to other states
+#[derive(Clone, Debug)]
+pub struct AgentState {
+    /// Unique state identifier (matches the particle's state field value).
+    pub id: u32,
+    /// Optional name for debugging/documentation.
+    pub name: Option<String>,
+    /// WGSL code to execute when entering this state.
+    pub on_enter: Option<String>,
+    /// WGSL code to execute every frame while in this state.
+    pub on_update: Option<String>,
+    /// WGSL code to execute when leaving this state.
+    pub on_exit: Option<String>,
+    /// Transitions to other states.
+    pub transitions: Vec<Transition>,
+}
+
+impl AgentState {
+    /// Create a new state with the given ID.
+    pub fn new(id: u32) -> Self {
+        Self {
+            id,
+            name: None,
+            on_enter: None,
+            on_update: None,
+            on_exit: None,
+            transitions: Vec::new(),
+        }
+    }
+
+    /// Set a name for this state (for documentation).
+    pub fn named(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Set the entry action (runs once when entering).
+    pub fn on_enter(mut self, code: impl Into<String>) -> Self {
+        self.on_enter = Some(code.into());
+        self
+    }
+
+    /// Set the update action (runs every frame while in this state).
+    pub fn on_update(mut self, code: impl Into<String>) -> Self {
+        self.on_update = Some(code.into());
+        self
+    }
+
+    /// Set the exit action (runs once when leaving).
+    pub fn on_exit(mut self, code: impl Into<String>) -> Self {
+        self.on_exit = Some(code.into());
+        self
+    }
+
+    /// Add a transition to another state.
+    pub fn transition(mut self, to: u32, condition: impl Into<String>) -> Self {
+        self.transitions.push(Transition::new(to, condition));
+        self
+    }
+
+    /// Add a transition with explicit priority.
+    pub fn transition_priority(
+        mut self,
+        to: u32,
+        condition: impl Into<String>,
+        priority: i32,
+    ) -> Self {
+        self.transitions
+            .push(Transition::with_priority(to, condition, priority));
+        self
+    }
+}
+
 /// Rules that define particle behavior.
 ///
 /// Rules are applied every frame in the order they are added. Each rule
@@ -2410,6 +2524,97 @@ pub enum Rule {
         transitions: Vec<(u32, u32, String)>,
     },
 
+    /// Full-featured agent state machine.
+    ///
+    /// A more powerful alternative to [`Rule::State`] that supports:
+    /// - Entry actions (run once when entering a state)
+    /// - Update actions (run every frame while in a state)
+    /// - Exit actions (run once when leaving a state)
+    /// - Priority-based transitions
+    /// - Optional state duration tracking
+    ///
+    /// # Particle Requirements
+    ///
+    /// Your particle must have:
+    /// - A `u32` field to store the current state (specified by `state_field`)
+    /// - A `u32` field to store the previous state for edge detection (`prev_state_field`)
+    /// - Optionally, a `f32` field to track time in current state (`state_timer_field`)
+    ///
+    /// # Example: Predator behavior
+    ///
+    /// ```ignore
+    /// #[derive(Particle, Clone)]
+    /// struct Predator {
+    ///     position: Vec3,
+    ///     velocity: Vec3,
+    ///     state: u32,        // 0=roaming, 1=chasing, 2=eating, 3=resting
+    ///     prev_state: u32,
+    ///     state_timer: f32,
+    ///     energy: f32,
+    ///     target_dist: f32,
+    /// }
+    ///
+    /// Rule::Agent {
+    ///     state_field: "state".into(),
+    ///     prev_state_field: "prev_state".into(),
+    ///     state_timer_field: Some("state_timer".into()),
+    ///     states: vec![
+    ///         AgentState::new(0)
+    ///             .named("roaming")
+    ///             .on_update("p.velocity += rand_sphere(index) * 0.1;")
+    ///             .transition(1, "p.target_dist < 0.5")     // See prey → chase
+    ///             .transition(3, "p.energy < 0.2"),         // Tired → rest
+    ///
+    ///         AgentState::new(1)
+    ///             .named("chasing")
+    ///             .on_enter("p.color = vec3<f32>(1.0, 0.0, 0.0);")  // Turn red
+    ///             .on_update("p.energy -= 0.01 * uniforms.delta_time;")
+    ///             .transition(2, "p.target_dist < 0.05")    // Caught → eat
+    ///             .transition(0, "p.target_dist > 1.0"),    // Lost prey → roam
+    ///
+    ///         AgentState::new(2)
+    ///             .named("eating")
+    ///             .on_enter("p.velocity = vec3<f32>(0.0);")
+    ///             .on_update("p.energy += 0.1 * uniforms.delta_time;")
+    ///             .transition(0, "p.state_timer > 2.0"),    // Done eating → roam
+    ///
+    ///         AgentState::new(3)
+    ///             .named("resting")
+    ///             .on_enter("p.color = vec3<f32>(0.5, 0.5, 0.5);")
+    ///             .on_update("p.energy += 0.05 * uniforms.delta_time;")
+    ///             .transition(0, "p.energy > 0.8"),         // Rested → roam
+    ///     ],
+    /// }
+    /// ```
+    ///
+    /// # How It Works
+    ///
+    /// Each frame, for each particle:
+    /// 1. If state changed since last frame, run the exit action of the old state
+    ///    and the entry action of the new state
+    /// 2. Run the update action for the current state
+    /// 3. Increment the state timer (if configured)
+    /// 4. Check transitions in priority order; first matching transition wins
+    /// 5. If a transition fires, update the state field (entry/exit run next frame)
+    ///
+    /// # Note
+    ///
+    /// - State timer resets to 0 when the state changes
+    /// - Transitions are sorted by priority (highest first) at compile time
+    /// - Use `prev_state_field` to detect state changes and run entry/exit actions
+    Agent {
+        /// Particle field storing current state (u32).
+        state_field: String,
+        /// Particle field storing previous frame's state (u32).
+        /// Used to detect state changes and trigger entry/exit actions.
+        prev_state_field: String,
+        /// Optional field to track time in current state (f32).
+        /// Resets to 0 on state change.
+        state_timer_field: Option<String>,
+        /// The state definitions.
+        states: Vec<AgentState>,
+    },
+
     /// Grow or shrink particle scale over time.
     ///
     /// Changes `p.scale` at a constant rate, clamped to min/max bounds.
@@ -4255,6 +4460,158 @@ impl Rule {
                         "    if p.{field} == {from}u && {condition} {{ p.{field} = {to}u; }}\n"
                     ));
                 }
+                code
+            }
+
+            Rule::Agent {
+                state_field,
+                prev_state_field,
+                state_timer_field,
+                states,
+            } => {
+                let mut code = String::from("    // Agent state machine\n    {\n");
+
+                // Check if state changed (for entry/exit actions)
+                code.push_str(&format!(
+                    "        let state_changed = p.{state_field} != p.{prev_state_field};\n"
+                ));
+
+                // Handle state timer reset on state change
+                if let Some(timer_field) = state_timer_field {
+                    code.push_str(&format!(
+                        "        if state_changed {{ p.{timer_field} = 0.0; }}\n"
+                    ));
+                }
+
+                // Generate exit actions (run when leaving a state)
+                let has_exit_actions = states.iter().any(|s| s.on_exit.is_some());
+                if has_exit_actions {
+                    code.push_str("\n        // Exit actions (previous state)\n");
+                    code.push_str("        if state_changed {\n");
+                    for state in states.iter() {
+                        if let Some(exit_code) = &state.on_exit {
+                            let state_id = state.id;
+                            let name_comment = state
+                                .name
+                                .as_ref()
+                                .map(|n| format!(" // {}", n))
+                                .unwrap_or_default();
+                            code.push_str(&format!(
+                                "            if p.{prev_state_field} == {state_id}u {{{name_comment}\n"
+                            ));
+                            for line in exit_code.lines() {
+                                code.push_str(&format!("                {}\n", line.trim()));
+                            }
+                            code.push_str("            }\n");
+                        }
+                    }
+                    code.push_str("        }\n");
+                }
+
+                // Generate entry actions (run when entering a state)
+                let has_entry_actions = states.iter().any(|s| s.on_enter.is_some());
+                if has_entry_actions {
+                    code.push_str("\n        // Entry actions (current state)\n");
+                    code.push_str("        if state_changed {\n");
+                    for state in states.iter() {
+                        if let Some(enter_code) = &state.on_enter {
+                            let state_id = state.id;
+                            let name_comment = state
+                                .name
+                                .as_ref()
+                                .map(|n| format!(" // {}", n))
+                                .unwrap_or_default();
+                            code.push_str(&format!(
+                                "            if p.{state_field} == {state_id}u {{{name_comment}\n"
+                            ));
+                            for line in enter_code.lines() {
+                                code.push_str(&format!("                {}\n", line.trim()));
+                            }
+                            code.push_str("            }\n");
+                        }
+                    }
+                    code.push_str("        }\n");
+                }
+
+                // Update prev_state AFTER entry/exit actions (so transitions can trigger them next frame)
+                code.push_str(&format!(
+                    "\n        // Mark state change as processed\n        p.{prev_state_field} = p.{state_field};\n"
+                ));
+
+                // Generate update actions (run every frame for current state)
+                let has_update_actions = states.iter().any(|s| s.on_update.is_some());
+                if has_update_actions {
+                    code.push_str("\n        // Update actions (current state)\n");
+                    for state in states.iter() {
+                        if let Some(update_code) = &state.on_update {
+                            let state_id = state.id;
+                            let name_comment = state
+                                .name
+                                .as_ref()
+                                .map(|n| format!(" // {}", n))
+                                .unwrap_or_default();
+                            code.push_str(&format!(
+                                "        if p.{state_field} == {state_id}u {{{name_comment}\n"
+                            ));
+                            for line in update_code.lines() {
+                                code.push_str(&format!("            {}\n", line.trim()));
+                            }
+                            code.push_str("        }\n");
+                        }
+                    }
+                }
+
+                // Increment state timer
+                if let Some(timer_field) = state_timer_field {
+                    code.push_str(&format!(
+                        "\n        // Increment state timer\n        p.{timer_field} += uniforms.delta_time;\n"
+                    ));
+                }
+
+                // Generate transitions (sorted by priority, highest first)
+                code.push_str("\n        // State transitions\n");
+                for state in states.iter() {
+                    if state.transitions.is_empty() {
+                        continue;
+                    }
+
+                    let state_id = state.id;
+                    let name_comment = state
+                        .name
+                        .as_ref()
+                        .map(|n| format!(" // from {}", n))
+                        .unwrap_or_default();
+
+                    // Sort transitions by priority (highest first)
+                    let mut sorted_transitions = state.transitions.clone();
+                    sorted_transitions.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+                    code.push_str(&format!(
+                        "        if p.{state_field} == {state_id}u {{{name_comment}\n"
+                    ));
+
+                    for (i, transition) in sorted_transitions.iter().enumerate() {
+                        let condition = &transition.condition;
+                        let to_state = transition.to;
+                        if i == 0 {
+                            code.push_str(&format!(
+                                "            if {condition} {{\n                p.{state_field} = {to_state}u;\n            }}"
+                            ));
+                        } else {
+                            code.push_str(&format!(
+                                " else if {condition} {{\n                p.{state_field} = {to_state}u;\n            }}"
+                            ));
+                        }
+                    }
+
+                    // Close the if-else chain with newline
+                    if !sorted_transitions.is_empty() {
+                        code.push_str("\n");
+                    }
+                    code.push_str("        }\n");
+                }
+
+                code.push_str("    }\n");
                 code
             }
 

@@ -90,7 +90,7 @@ fn main() {
         .collect();
 
     Simulation::<FluidParticle>::new()
-        .with_particle_count(15_000)
+        .with_particle_count(150_00)
         .with_particle_size(0.012)
         .with_bounds(1.0)
         .with_spawner(move |i, _| particles[i as usize].clone())

@@ -242,6 +242,10 @@ path = "examples/signal_swarm.rs"
 required-features = ["egui"]
 
 [[example]]
-name = "compute_demo"
-path = "examples/compute_demo.rs"
-required-features = ["egui"]
+name = "agent_demo"
+path = "examples/agent_demo.rs"
+
+[[example]]
+name = "chemistry"
+path = "examples/chemistry.rs"
+
