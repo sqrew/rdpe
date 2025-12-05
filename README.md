@@ -198,13 +198,14 @@ cargo run --example <name> --features egui  # for UI controls
 
 All logic runs on GPU compute shaders.
 
-| Scenario | Particles | FPS |
-|----------|-----------|-----|
-| No neighbors (gravity, drag, etc.) | 500,000 | 60+ |
-| Full boids (separate, cohere, align) | 50,000 | 20+ |
-| Spatial fields | 100,000 | 30+ |
+| Scenario                             | Particles | FPS |
+|--------------------------------------|-----------|-----|
+| No neighbors (gravity, drag, etc.)   | 500,000   | 60+ |
+| Full boids (separate, cohere, align) | 50,000    | 20+ |
+| Spatial fields                       | 100,000   | 30+ |
 
 Tested on mid-range hardware. Your mileage may vary.
+My i6500 integrated graphics card performance isn't very good.
 
 **Tuning tips:**
 - Increase `cell_size` if interaction radii are large
