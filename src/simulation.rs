@@ -1264,6 +1264,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
             let needs_surface_tension = self.rules.iter().any(|r| r.needs_surface_tension_accumulator());
             let needs_avoid = self.rules.iter().any(|r| r.needs_avoid_accumulator());
             let needs_diffuse = self.rules.iter().any(|r| r.needs_diffuse_accumulator());
+            let needs_accumulate = self.rules.iter().any(|r| r.needs_accumulate_accumulator());
+            let needs_signal = self.rules.iter().any(|r| r.needs_signal_accumulator());
+            let needs_absorb = self.rules.iter().any(|r| r.needs_absorb_accumulator());
 
             // Generate interaction matrix code if present
             let (interaction_init, interaction_neighbor, interaction_post) =
@@ -1305,6 +1308,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
                 }
                 if needs_diffuse {
                     vars.push_str("    var diffuse_sum = 0.0;\n    var diffuse_count = 0.0;\n");
+                }
+                if needs_accumulate {
+                    vars.push_str("    var accumulate_sum = 0.0;\n    var accumulate_weight = 0.0;\n    var accumulate_value = 0.0;\n");
+                }
+                if needs_signal {
+                    vars.push_str("    var signal_sum = 0.0;\n    var signal_count = 0.0;\n");
+                }
+                if needs_absorb {
+                    vars.push_str("    var absorb_sum = 0.0;\n    var absorb_found = false;\n    var absorb_target_idx = 0u;\n");
                 }
                 // Add interaction matrix init
                 if !interaction_init.is_empty() {
@@ -1825,6 +1837,8 @@ struct App<P: ParticleTrait> {
     time: Time,
     // Grid opacity change requested by update callback (None = no change)
     pending_grid_opacity: Option<f32>,
+    // CPU readback - stores data from previous frame's readback request
+    readback_data: Option<Vec<u8>>,
 }
 
 impl<P: ParticleTrait + 'static> App<P> {
@@ -1866,6 +1880,7 @@ impl<P: ParticleTrait + 'static> App<P> {
             ui_callback,
             time: Time::new(),
             pending_grid_opacity: None,
+            readback_data: None,
         }
     }
 }
@@ -1997,6 +2012,10 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                     }
                 }
 
+                // Reset readback_requested flag before callback
+                // (it will be set to true by the callback if needed)
+                let mut pending_readback = false;
+
                 // Call update callback if present
                 if let Some(ref mut callback) = self.update_callback {
                     let mut ctx = UpdateContext::new(
@@ -2005,6 +2024,8 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                         time,
                         delta_time,
                         &mut self.pending_grid_opacity,
+                        &mut pending_readback,
+                        self.readback_data.as_deref(),
                     );
                     callback(&mut ctx);
                 }
@@ -2036,7 +2057,12 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                     let result = gpu_state.render(time, delta_time, bytes_ref);
 
                     match result {
-                        Ok(_) => {}
+                        Ok(_) => {
+                            // Perform readback after successful render if requested
+                            if pending_readback {
+                                self.readback_data = Some(gpu_state.read_particles_sync());
+                            }
+                        }
                         Err(wgpu::SurfaceError::Lost) => {
                             gpu_state.resize(winit::dpi::PhysicalSize {
                                 width: gpu_state.config.width,

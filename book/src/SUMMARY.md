@@ -23,6 +23,7 @@
 
 - [Spatial Hashing](./advanced/spatial-hashing.md)
 - [3D Spatial Fields](./advanced/fields.md)
+- [Agent State Machines](./advanced/agent-state-machines.md)
 - [Custom Rules](./advanced/custom-rules.md)
 - [Fragment Shaders](./advanced/fragment-shaders.md)
 - [Textures](./advanced/textures.md)

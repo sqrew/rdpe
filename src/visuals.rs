@@ -393,6 +393,10 @@ pub struct VisualConfig {
     pub post_process_shader: Option<String>,
     /// Spatial grid visualization opacity (0.0 = off, 1.0 = full).
     pub spatial_grid_opacity: f32,
+    /// Wireframe mesh for 3D particle shapes (None = use billboard shapes).
+    pub wireframe_mesh: Option<WireframeMesh>,
+    /// Line thickness for wireframe rendering (in clip space, ~0.001-0.01).
+    pub wireframe_thickness: f32,
 }
 
 impl Default for VisualConfig {
@@ -410,6 +414,8 @@ impl Default for VisualConfig {
             background_color: Vec3::new(0.02, 0.02, 0.05), // Dark blue-black
             post_process_shader: None,
             spatial_grid_opacity: 0.0, // Off by default
+            wireframe_mesh: None,
+            wireframe_thickness: 0.003, // Default line thickness
         }
     }
 }
@@ -612,5 +618,306 @@ impl VisualConfig {
     pub fn post_process(&mut self, wgsl_code: &str) -> &mut Self {
         self.post_process_shader = Some(wgsl_code.to_string());
         self
+    }
+
+    /// Set a wireframe mesh for 3D particle shapes.
+    ///
+    /// Instead of rendering particles as billboards (flat shapes facing the camera),
+    /// this renders each particle as a 3D wireframe mesh. The mesh is scaled by
+    /// the particle's scale and colored by its color.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.wireframe(WireframeMesh::cube(), 0.002); // Cube with 0.002 line thickness
+    /// })
+    /// ```
+    pub fn wireframe(&mut self, mesh: WireframeMesh, line_thickness: f32) -> &mut Self {
+        self.wireframe_mesh = Some(mesh);
+        self.wireframe_thickness = line_thickness;
+        self
+    }
+}
+
+/// A wireframe mesh for 3D particle rendering.
+///
+/// Instead of rendering particles as flat billboards, wireframe meshes render
+/// each particle as a 3D shape made of line segments. This is purely visual -
+/// it doesn't affect the physics simulation.
+///
+/// # Built-in Shapes
+///
+/// Use the constructor methods for common shapes:
+///
+/// ```ignore
+/// WireframeMesh::tetrahedron() // 4 triangular faces
+/// WireframeMesh::cube()        // Classic cube
+/// WireframeMesh::octahedron()  // 8 triangular faces
+/// WireframeMesh::diamond()     // Two pyramids joined at base
+/// WireframeMesh::axes()        // XYZ axis indicator
+/// ```
+///
+/// # Custom Shapes
+///
+/// Create custom wireframes from line segment pairs:
+///
+/// ```ignore
+/// WireframeMesh::custom(vec![
+///     (Vec3::ZERO, Vec3::X),           // Line from origin to +X
+///     (Vec3::ZERO, Vec3::Y),           // Line from origin to +Y
+///     (Vec3::X, Vec3::new(1.0, 1.0, 0.0)), // Diagonal
+/// ])
+/// ```
+#[derive(Debug, Clone)]
+pub struct WireframeMesh {
+    /// Line segments as pairs of endpoints (start, end).
+    pub lines: Vec<(Vec3, Vec3)>,
+}
+
+impl WireframeMesh {
+    /// Create a custom wireframe from line segments.
+    pub fn custom(lines: Vec<(Vec3, Vec3)>) -> Self {
+        Self { lines }
+    }
+
+    /// Tetrahedron (4 triangular faces, 6 edges).
+    pub fn tetrahedron() -> Self {
+        let s = 0.5;
+        // Vertices of a regular tetrahedron
+        let v0 = Vec3::new(s, s, s);
+        let v1 = Vec3::new(s, -s, -s);
+        let v2 = Vec3::new(-s, s, -s);
+        let v3 = Vec3::new(-s, -s, s);
+
+        Self {
+            lines: vec![
+                (v0, v1),
+                (v0, v2),
+                (v0, v3),
+                (v1, v2),
+                (v1, v3),
+                (v2, v3),
+            ],
+        }
+    }
+
+    /// Cube (6 faces, 12 edges).
+    pub fn cube() -> Self {
+        let s = 0.5;
+        // 8 vertices of a cube
+        let v000 = Vec3::new(-s, -s, -s);
+        let v001 = Vec3::new(-s, -s, s);
+        let v010 = Vec3::new(-s, s, -s);
+        let v011 = Vec3::new(-s, s, s);
+        let v100 = Vec3::new(s, -s, -s);
+        let v101 = Vec3::new(s, -s, s);
+        let v110 = Vec3::new(s, s, -s);
+        let v111 = Vec3::new(s, s, s);
+
+        Self {
+            lines: vec![
+                // Bottom face
+                (v000, v100),
+                (v100, v101),
+                (v101, v001),
+                (v001, v000),
+                // Top face
+                (v010, v110),
+                (v110, v111),
+                (v111, v011),
+                (v011, v010),
+                // Vertical edges
+                (v000, v010),
+                (v100, v110),
+                (v101, v111),
+                (v001, v011),
+            ],
+        }
+    }
+
+    /// Octahedron (8 triangular faces, 12 edges).
+    pub fn octahedron() -> Self {
+        let s = 0.5;
+        // 6 vertices at axis extremes
+        let px = Vec3::new(s, 0.0, 0.0);
+        let nx = Vec3::new(-s, 0.0, 0.0);
+        let py = Vec3::new(0.0, s, 0.0);
+        let ny = Vec3::new(0.0, -s, 0.0);
+        let pz = Vec3::new(0.0, 0.0, s);
+        let nz = Vec3::new(0.0, 0.0, -s);
+
+        Self {
+            lines: vec![
+                // Top pyramid
+                (py, px),
+                (py, nx),
+                (py, pz),
+                (py, nz),
+                // Bottom pyramid
+                (ny, px),
+                (ny, nx),
+                (ny, pz),
+                (ny, nz),
+                // Equator
+                (px, pz),
+                (pz, nx),
+                (nx, nz),
+                (nz, px),
+            ],
+        }
+    }
+
+    /// Diamond shape (two pyramids joined at base, 8 edges).
+    pub fn diamond() -> Self {
+        let s = 0.5;
+        let h = 0.7; // Height of each pyramid half
+
+        // 6 vertices: top, bottom, and 4 at equator
+        let top = Vec3::new(0.0, h, 0.0);
+        let bot = Vec3::new(0.0, -h, 0.0);
+        let e0 = Vec3::new(s, 0.0, 0.0);
+        let e1 = Vec3::new(0.0, 0.0, s);
+        let e2 = Vec3::new(-s, 0.0, 0.0);
+        let e3 = Vec3::new(0.0, 0.0, -s);
+
+        Self {
+            lines: vec![
+                // Top to equator
+                (top, e0),
+                (top, e1),
+                (top, e2),
+                (top, e3),
+                // Bottom to equator
+                (bot, e0),
+                (bot, e1),
+                (bot, e2),
+                (bot, e3),
+            ],
+        }
+    }
+
+    /// Icosahedron (20 triangular faces, 30 edges).
+    pub fn icosahedron() -> Self {
+        // Golden ratio
+        let phi = (1.0 + 5.0_f32.sqrt()) / 2.0;
+        let s = 0.3; // Scale down to fit
+
+        // 12 vertices
+        let vertices = [
+            Vec3::new(-1.0, phi, 0.0) * s,
+            Vec3::new(1.0, phi, 0.0) * s,
+            Vec3::new(-1.0, -phi, 0.0) * s,
+            Vec3::new(1.0, -phi, 0.0) * s,
+            Vec3::new(0.0, -1.0, phi) * s,
+            Vec3::new(0.0, 1.0, phi) * s,
+            Vec3::new(0.0, -1.0, -phi) * s,
+            Vec3::new(0.0, 1.0, -phi) * s,
+            Vec3::new(phi, 0.0, -1.0) * s,
+            Vec3::new(phi, 0.0, 1.0) * s,
+            Vec3::new(-phi, 0.0, -1.0) * s,
+            Vec3::new(-phi, 0.0, 1.0) * s,
+        ];
+
+        // 30 edges (each unique edge of the icosahedron)
+        let edges = [
+            (0, 1), (0, 5), (0, 7), (0, 10), (0, 11),
+            (1, 5), (1, 7), (1, 8), (1, 9),
+            (2, 3), (2, 4), (2, 6), (2, 10), (2, 11),
+            (3, 4), (3, 6), (3, 8), (3, 9),
+            (4, 5), (4, 9), (4, 11),
+            (5, 9), (5, 11),
+            (6, 7), (6, 8), (6, 10),
+            (7, 8), (7, 10),
+            (8, 9),
+            (10, 11),
+        ];
+
+        Self {
+            lines: edges.iter().map(|(i, j)| (vertices[*i], vertices[*j])).collect(),
+        }
+    }
+
+    /// XYZ axes indicator.
+    pub fn axes() -> Self {
+        let s = 0.5;
+        Self {
+            lines: vec![
+                (Vec3::ZERO, Vec3::new(s, 0.0, 0.0)),  // X axis
+                (Vec3::ZERO, Vec3::new(0.0, s, 0.0)),  // Y axis
+                (Vec3::ZERO, Vec3::new(0.0, 0.0, s)),  // Z axis
+            ],
+        }
+    }
+
+    /// Star shape (spiky, 6 points).
+    pub fn star() -> Self {
+        let inner = 0.2;
+        let outer = 0.5;
+        let points = 6;
+
+        let mut lines = Vec::new();
+        for i in 0..points {
+            let angle = (i as f32 / points as f32) * std::f32::consts::TAU;
+            let outer_point = Vec3::new(angle.cos() * outer, angle.sin() * outer, 0.0);
+
+            // Connect to center
+            lines.push((Vec3::ZERO, outer_point));
+
+            // Connect to adjacent inner points
+            let angle_prev = ((i as f32 - 0.5) / points as f32) * std::f32::consts::TAU;
+            let angle_next = ((i as f32 + 0.5) / points as f32) * std::f32::consts::TAU;
+            let inner_prev = Vec3::new(angle_prev.cos() * inner, angle_prev.sin() * inner, 0.0);
+            let inner_next = Vec3::new(angle_next.cos() * inner, angle_next.sin() * inner, 0.0);
+
+            lines.push((outer_point, inner_prev));
+            lines.push((outer_point, inner_next));
+        }
+
+        Self { lines }
+    }
+
+    /// Spiral shape.
+    pub fn spiral(turns: f32, segments: u32) -> Self {
+        let mut lines = Vec::new();
+        let height = 0.5;
+        let radius = 0.3;
+
+        for i in 0..segments {
+            let t0 = i as f32 / segments as f32;
+            let t1 = (i + 1) as f32 / segments as f32;
+
+            let angle0 = t0 * turns * std::f32::consts::TAU;
+            let angle1 = t1 * turns * std::f32::consts::TAU;
+
+            let p0 = Vec3::new(
+                angle0.cos() * radius,
+                t0 * height - height / 2.0,
+                angle0.sin() * radius,
+            );
+            let p1 = Vec3::new(
+                angle1.cos() * radius,
+                t1 * height - height / 2.0,
+                angle1.sin() * radius,
+            );
+
+            lines.push((p0, p1));
+        }
+
+        Self { lines }
+    }
+
+    /// Get the total number of line segments.
+    pub fn line_count(&self) -> u32 {
+        self.lines.len() as u32
+    }
+
+    /// Get vertices as flat f32 array for GPU buffer.
+    /// Each line is 6 floats: [x0, y0, z0, x1, y1, z1]
+    pub fn to_vertices(&self) -> Vec<f32> {
+        self.lines
+            .iter()
+            .flat_map(|(a, b)| [a.x, a.y, a.z, b.x, b.y, b.z])
+            .collect()
     }
 }

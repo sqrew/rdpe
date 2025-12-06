@@ -234,6 +234,25 @@ impl CustomUniforms {
 ///     let delta = ctx.input.mouse_delta();
 /// })
 /// ```
+///
+/// # CPU Readback
+///
+/// You can request GPU particle data to be read back to the CPU:
+///
+/// ```ignore
+/// .with_update(|ctx| {
+///     // Request readback every second
+///     if ctx.time() as u32 != (ctx.time() - ctx.delta_time()) as u32 {
+///         ctx.request_readback();
+///     }
+///
+///     // Access previous frame's readback data (if available)
+///     if let Some(bytes) = ctx.particles_raw() {
+///         let particles: &[MyParticleGpu] = bytemuck::cast_slice(bytes);
+///         println!("First particle position: {:?}", particles[0].position);
+///     }
+/// })
+/// ```
 pub struct UpdateContext<'a> {
     /// Custom uniforms that can be modified.
     pub(crate) uniforms: &'a mut CustomUniforms,
@@ -245,6 +264,10 @@ pub struct UpdateContext<'a> {
     pub(crate) delta_time: f32,
     /// Grid opacity to set (None = no change).
     pub(crate) grid_opacity: &'a mut Option<f32>,
+    /// Whether to perform readback after this frame.
+    pub(crate) readback_requested: &'a mut bool,
+    /// Previous frame's readback data (if any).
+    pub(crate) readback_data: Option<&'a [u8]>,
 }
 
 impl<'a> UpdateContext<'a> {
@@ -255,6 +278,8 @@ impl<'a> UpdateContext<'a> {
         time: f32,
         delta_time: f32,
         grid_opacity: &'a mut Option<f32>,
+        readback_requested: &'a mut bool,
+        readback_data: Option<&'a [u8]>,
     ) -> Self {
         Self {
             uniforms,
@@ -262,6 +287,8 @@ impl<'a> UpdateContext<'a> {
             time,
             delta_time,
             grid_opacity,
+            readback_requested,
+            readback_data,
         }
     }
 
@@ -325,5 +352,88 @@ impl<'a> UpdateContext<'a> {
     /// The change takes effect on the next frame.
     pub fn set_grid_opacity(&mut self, opacity: f32) {
         *self.grid_opacity = Some(opacity.clamp(0.0, 1.0));
+    }
+
+    // ========== CPU Readback methods ==========
+
+    /// Request particle data to be read back from GPU after this frame.
+    ///
+    /// The data will be available via `particles_raw()` on the next frame.
+    /// This is an expensive operation that stalls the GPU pipeline.
+    /// Use sparingly (e.g., once per second, or on user request).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_update(|ctx| {
+    ///     // Request readback when space is pressed
+    ///     if ctx.key_pressed(KeyCode::Space) {
+    ///         ctx.request_readback();
+    ///     }
+    /// })
+    /// ```
+    pub fn request_readback(&mut self) {
+        *self.readback_requested = true;
+    }
+
+    /// Get the raw bytes of particle data from the previous readback request.
+    ///
+    /// Returns `None` if no readback was requested on the previous frame.
+    /// The bytes can be cast to your particle's GPU type using `bytemuck::cast_slice`.
+    ///
+    /// **Note:** This returns a reference, so you cannot call `ctx.set()` while
+    /// holding the returned slice. Use `with_particles()` for the common pattern
+    /// of reading data and then updating uniforms.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_update(|ctx| {
+    ///     if let Some(bytes) = ctx.particles_raw() {
+    ///         let particles: &[MyParticleGpu] = bytemuck::cast_slice(bytes);
+    ///         for p in particles.iter().take(10) {
+    ///             println!("Position: {:?}", p.position);
+    ///         }
+    ///     }
+    /// })
+    /// ```
+    pub fn particles_raw(&self) -> Option<&[u8]> {
+        self.readback_data
+    }
+
+    /// Process particle data and return a result, handling borrow scope automatically.
+    ///
+    /// This is the recommended way to read particle data when you also need to
+    /// update uniforms based on the results. The closure receives the raw bytes
+    /// and returns any value you need; after the closure completes, you can
+    /// freely call `ctx.set()` with the results.
+    ///
+    /// Returns `None` if no readback data is available.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_update(|ctx| {
+    ///     // Compute stats from particles
+    ///     if let Some((center, count)) = ctx.with_particles(|bytes| {
+    ///         let particles: &[MyParticleGpu] = bytemuck::cast_slice(bytes);
+    ///         let sum: Vec3 = particles.iter()
+    ///             .map(|p| Vec3::from_array(p.position))
+    ///             .sum();
+    ///         let count = particles.len();
+    ///         (sum / count as f32, count)
+    ///     }) {
+    ///         // Now we can update uniforms with the results
+    ///         ctx.set("center_x", center.x);
+    ///         ctx.set("center_y", center.y);
+    ///         ctx.set("particle_count", count as f32);
+    ///     }
+    /// })
+    /// ```
+    pub fn with_particles<T, F>(&self, f: F) -> Option<T>
+    where
+        F: FnOnce(&[u8]) -> T,
+    {
+        self.readback_data.map(f)
     }
 }

@@ -45,7 +45,35 @@
 use glam::Vec3;
 use std::ops::Range;
 
-/// Configuration for a sub-emitter that spawns children when parents die.
+/// Trigger condition for when a sub-emitter spawns children.
+#[derive(Clone, Debug)]
+pub enum SpawnTrigger {
+    /// Spawn when the parent particle dies (default).
+    /// This is the classic sub-emitter behavior for effects like fireworks.
+    OnDeath,
+
+    /// Spawn when a custom WGSL condition evaluates to true.
+    /// The condition has access to `p` (current particle) and `uniforms`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Spawn when energy is high
+    /// SpawnTrigger::OnCondition("p.energy > 0.9".into())
+    ///
+    /// // Spawn periodically (every ~1 second)
+    /// SpawnTrigger::OnCondition("fract(p.age) < uniforms.delta_time".into())
+    /// ```
+    OnCondition(String),
+}
+
+impl Default for SpawnTrigger {
+    fn default() -> Self {
+        Self::OnDeath
+    }
+}
+
+/// Configuration for a sub-emitter that spawns children when triggered.
 ///
 /// # Example
 ///
@@ -60,11 +88,11 @@ use std::ops::Range;
 /// ```
 #[derive(Clone, Debug)]
 pub struct SubEmitter {
-    /// Parent particle type that triggers sub-emission on death.
+    /// Parent particle type that triggers sub-emission.
     pub parent_type: u32,
     /// Child particle type to spawn.
     pub child_type: u32,
-    /// Number of children to spawn per parent death.
+    /// Number of children to spawn per trigger event.
     pub count: u32,
     /// Speed range for children (random within range).
     pub speed_min: f32,
@@ -79,20 +107,31 @@ pub struct SubEmitter {
     pub child_color: Option<Vec3>,
     /// Spawn radius around parent position.
     pub spawn_radius: f32,
+    /// What triggers this sub-emitter (death, condition, etc.).
+    pub trigger: SpawnTrigger,
 }
 
 impl SubEmitter {
     /// Create a new sub-emitter configuration.
     ///
+    /// By default, triggers on parent death. Use `.on_condition()` to trigger
+    /// on a custom WGSL condition instead.
+    ///
     /// # Arguments
     ///
-    /// * `parent_type` - Type of particle that triggers sub-emission on death
+    /// * `parent_type` - Type of particle that triggers sub-emission
     /// * `child_type` - Type of particle to spawn as children
     ///
     /// # Example
     ///
     /// ```ignore
+    /// // Classic death-triggered spawning (fireworks)
     /// SubEmitter::new(Firework::Rocket.into(), Firework::Spark.into())
+    ///
+    /// // Condition-triggered spawning (cell division)
+    /// SubEmitter::new(Cell::Parent.into(), Cell::Child.into())
+    ///     .on_condition("p.energy > 1.5")
+    ///     .count(2)
     /// ```
     pub fn new(parent_type: u32, child_type: u32) -> Self {
         Self {
@@ -106,7 +145,54 @@ impl SubEmitter {
             child_lifetime: None,
             child_color: None,
             spawn_radius: 0.0,
+            trigger: SpawnTrigger::OnDeath,
         }
+    }
+
+    /// Set the trigger to a custom WGSL condition.
+    ///
+    /// The condition is a WGSL boolean expression with access to:
+    /// - `p` - The current particle
+    /// - `uniforms.time` - Total elapsed time
+    /// - `uniforms.delta_time` - Frame delta time
+    ///
+    /// When the condition evaluates to true, spawn events are recorded
+    /// and children are spawned in a secondary pass.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Spawn when energy exceeds threshold
+    /// SubEmitter::new(Parent, Child)
+    ///     .on_condition("p.energy > 0.9")
+    ///     .count(3)
+    ///
+    /// // Periodic spawning (approximately every second)
+    /// SubEmitter::new(Parent, Child)
+    ///     .on_condition("fract(p.age) < uniforms.delta_time")
+    ///     .count(1)
+    ///
+    /// // Spawn near the origin
+    /// SubEmitter::new(Parent, Child)
+    ///     .on_condition("length(p.position) < 0.2")
+    ///     .count(2)
+    /// ```
+    pub fn on_condition(mut self, condition: impl Into<String>) -> Self {
+        self.trigger = SpawnTrigger::OnCondition(condition.into());
+        self
+    }
+
+    /// Set the trigger type explicitly.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// SubEmitter::new(Parent, Child)
+    ///     .trigger(SpawnTrigger::OnDeath)
+    /// ```
+    pub fn trigger(mut self, trigger: SpawnTrigger) -> Self {
+        self.trigger = trigger;
+        self
     }
 
     /// Set the number of children to spawn per parent death.

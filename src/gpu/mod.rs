@@ -133,6 +133,9 @@ pub struct GpuState {
     sub_emitter: Option<SubEmitterGpu>,
     // Spatial grid visualization
     spatial_grid_viz: Option<SpatialGridViz>,
+    // CPU readback support
+    particle_stride: usize,
+    readback_staging: Option<wgpu::Buffer>,
 }
 
 impl GpuState {
@@ -228,7 +231,7 @@ impl GpuState {
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
             contents: particle_data,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         });
 
         let camera = Camera::new();
@@ -926,6 +929,8 @@ impl GpuState {
             window,
             sub_emitter,
             spatial_grid_viz,
+            particle_stride,
+            readback_staging: None,
         }
     }
 
@@ -956,6 +961,74 @@ impl GpuState {
         if let Some(ref mut grid) = self.spatial_grid_viz {
             grid.set_opacity(&self.queue, opacity);
         }
+    }
+
+    /// Read particle data from GPU to CPU synchronously.
+    ///
+    /// This is an expensive operation that stalls the GPU pipeline.
+    /// Use sparingly (e.g., once per second, or on user request).
+    ///
+    /// Returns raw bytes that can be cast to your particle's GPU type:
+    /// ```ignore
+    /// let bytes = gpu_state.read_particles_sync();
+    /// let particles: &[MyParticleGpu] = bytemuck::cast_slice(&bytes);
+    /// ```
+    pub fn read_particles_sync(&mut self) -> Vec<u8> {
+        let buffer_size = (self.num_particles as usize) * self.particle_stride;
+
+        // Create or reuse staging buffer
+        if self.readback_staging.is_none() {
+            self.readback_staging = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Readback Staging Buffer"),
+                size: buffer_size as u64,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }));
+        }
+
+        let staging = self.readback_staging.as_ref().unwrap();
+
+        // Copy particle buffer to staging
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Readback Encoder"),
+        });
+        encoder.copy_buffer_to_buffer(
+            &self.particle_buffer,
+            0,
+            staging,
+            0,
+            buffer_size as u64,
+        );
+        self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Map and read
+        let buffer_slice = staging.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            tx.send(result).unwrap();
+        });
+
+        // Wait for mapping to complete
+        self.device.poll(wgpu::Maintain::Wait);
+        rx.recv().unwrap().expect("Failed to map readback buffer");
+
+        // Copy data
+        let data = buffer_slice.get_mapped_range();
+        let result = data.to_vec();
+        drop(data);
+        staging.unmap();
+
+        result
+    }
+
+    /// Get the number of particles.
+    pub fn num_particles(&self) -> u32 {
+        self.num_particles
+    }
+
+    /// Get the particle stride (bytes per particle).
+    pub fn particle_stride(&self) -> usize {
+        self.particle_stride
     }
 
     /// Process a winit event through egui.

@@ -71,6 +71,7 @@ fn main() {
         .with_visuals(|v| {
             v.palette(Palette::Ocean, ColorMapping::Distance { max_dist: 1.5 });
             v.blend_mode(BlendMode::Additive);
+            v.trails(10);
         })
         // Repeating shockwave every 3 seconds
         .with_rule(Rule::Shockwave {
@@ -85,12 +86,12 @@ fn main() {
             point: Vec3::ZERO,
             strength: 0.5,
             frequency: 0.3,
-            radius: 0.0,  // Unlimited
+            radius: 0.0, // Unlimited
         })
         // Soft attraction back to center
         .with_rule(Rule::Radial {
             point: Vec3::ZERO,
-            strength: -0.8,  // Negative = inward
+            strength: -0.8, // Negative = inward
             radius: 2.0,
             falloff: Falloff::Linear,
         })

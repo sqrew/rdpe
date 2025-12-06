@@ -333,6 +333,106 @@ pub enum Rule {
         radius: f32,
     },
 
+    /// Steering behavior: seek a target point.
+    ///
+    /// Applies a steering force toward a target, adjusting velocity smoothly
+    /// rather than setting it directly. Core autonomous agent behavior.
+    ///
+    /// # Fields
+    ///
+    /// - `target` - Position to seek toward
+    /// - `max_speed` - Maximum velocity magnitude
+    /// - `max_force` - Maximum steering force (lower = smoother turns)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rule::Seek {
+    ///     target: Vec3::new(0.5, 0.0, 0.0),
+    ///     max_speed: 2.0,
+    ///     max_force: 0.5,
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// For dynamic targets (like mouse position), use `Rule::Custom` with
+    /// uniforms or combine with fields.
+    Seek {
+        /// Target position to seek.
+        target: Vec3,
+        /// Maximum speed.
+        max_speed: f32,
+        /// Maximum steering force.
+        max_force: f32,
+    },
+
+    /// Steering behavior: flee from a point.
+    ///
+    /// Opposite of Seek - applies steering force away from a point.
+    /// The panic_radius controls when fleeing kicks in.
+    ///
+    /// # Fields
+    ///
+    /// - `target` - Position to flee from
+    /// - `max_speed` - Maximum velocity magnitude
+    /// - `max_force` - Maximum steering force
+    /// - `panic_radius` - Distance at which fleeing activates (0 = always flee)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rule::Flee {
+    ///     target: Vec3::ZERO,
+    ///     max_speed: 3.0,
+    ///     max_force: 1.0,
+    ///     panic_radius: 0.5,  // Only flee when close
+    /// }
+    /// ```
+    Flee {
+        /// Position to flee from.
+        target: Vec3,
+        /// Maximum speed.
+        max_speed: f32,
+        /// Maximum steering force.
+        max_force: f32,
+        /// Radius within which to flee (0 = always flee).
+        panic_radius: f32,
+    },
+
+    /// Steering behavior: arrive at a target with deceleration.
+    ///
+    /// Like Seek but slows down as it approaches the target, coming to a
+    /// smooth stop. Essential for realistic goal-seeking behavior.
+    ///
+    /// # Fields
+    ///
+    /// - `target` - Position to arrive at
+    /// - `max_speed` - Maximum velocity magnitude
+    /// - `max_force` - Maximum steering force
+    /// - `slowing_radius` - Distance at which deceleration begins
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rule::Arrive {
+    ///     target: Vec3::ZERO,
+    ///     max_speed: 2.0,
+    ///     max_force: 0.5,
+    ///     slowing_radius: 0.3,  // Start slowing at 0.3 units away
+    /// }
+    /// ```
+    Arrive {
+        /// Target position to arrive at.
+        target: Vec3,
+        /// Maximum speed.
+        max_speed: f32,
+        /// Maximum steering force.
+        max_force: f32,
+        /// Distance at which to start slowing down.
+        slowing_radius: f32,
+    },
+
     /// Rotational force around an axis (vortex/whirlpool effect).
     ///
     /// Creates tangential motion around a line through `center` along `axis`.
@@ -785,6 +885,86 @@ pub enum Rule {
         softening: f32,
         /// Maximum interaction radius.
         radius: f32,
+    },
+
+    /// Lennard-Jones potential for molecular dynamics.
+    ///
+    /// **Requires spatial hashing.** Creates realistic molecular interactions:
+    /// strong repulsion at close range (Pauli exclusion) and weak attraction
+    /// at medium range (Van der Waals). Perfect for crystal formation,
+    /// liquid simulations, and soft matter physics.
+    ///
+    /// # Fields
+    ///
+    /// - `epsilon` - Well depth (strength of attraction at equilibrium)
+    /// - `sigma` - Zero-crossing distance (particle diameter)
+    /// - `cutoff` - Maximum interaction range (typically 2.5 * sigma)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_spatial_config(0.3, 32)
+    /// .with_rule(Rule::LennardJones {
+    ///     epsilon: 1.0,          // Attraction strength
+    ///     sigma: 0.1,            // Particle "size"
+    ///     cutoff: 0.25,          // 2.5 * sigma
+    /// })
+    /// ```
+    ///
+    /// # Physics Note
+    ///
+    /// The potential is V(r) = 4ε[(σ/r)¹² - (σ/r)⁶]. Particles settle at
+    /// r ≈ 1.12σ (the equilibrium distance). Combine with temperature-based
+    /// velocity initialization for molecular dynamics simulations.
+    LennardJones {
+        /// Well depth (attraction strength at equilibrium).
+        epsilon: f32,
+        /// Zero-crossing distance (effective particle diameter).
+        sigma: f32,
+        /// Cutoff radius for interaction (typically 2.5 * sigma).
+        cutoff: f32,
+    },
+
+    /// Diffusion-Limited Aggregation (DLA) for fractal growth.
+    ///
+    /// **Requires spatial hashing.** Particles perform random walks until
+    /// they contact a "seed" particle (type 0 by default), at which point
+    /// they stick and become part of the growing structure. Creates beautiful
+    /// fractal patterns like snowflakes, coral, lightning, and mineral deposits.
+    ///
+    /// # Fields
+    ///
+    /// - `seed_type` - Particle type that acts as the seed/structure
+    /// - `mobile_type` - Particle type that diffuses and sticks
+    /// - `stick_radius` - Distance at which particles stick
+    /// - `diffusion_strength` - Random walk intensity
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_spatial_config(0.1, 32)
+    /// .with_rule(Rule::DLA {
+    ///     seed_type: 0,
+    ///     mobile_type: 1,
+    ///     stick_radius: 0.05,
+    ///     diffusion_strength: 0.5,
+    /// })
+    /// ```
+    ///
+    /// # Physics Note
+    ///
+    /// Real DLA requires very slow aggregation for proper fractal dimension.
+    /// For visual effect, higher diffusion works fine. Initialize with one
+    /// seed particle (type 0) at center and many mobile particles (type 1).
+    DLA {
+        /// Particle type that forms the structure (immobile once stuck).
+        seed_type: u32,
+        /// Particle type that diffuses until it sticks.
+        mobile_type: u32,
+        /// Contact radius for sticking.
+        stick_radius: f32,
+        /// Brownian motion intensity.
+        diffusion_strength: f32,
     },
 
     /// Velocity smoothing with nearby particles (fluid viscosity).
@@ -2767,6 +2947,354 @@ pub enum Rule {
         radius: f32,
     },
 
+    /// Accumulate a value from neighbors into a target field.
+    ///
+    /// Gathers values from nearby particles and combines them using the
+    /// specified operation. Useful for sensing neighbor properties like
+    /// density, average temperature, maximum threat, etc.
+    ///
+    /// # Fields
+    ///
+    /// - `source` - Field to read from neighbors (f32)
+    /// - `target` - Field to write the result to (f32)
+    /// - `radius` - Neighbor detection radius
+    /// - `operation` - How to combine values: "sum", "average", "max", "min"
+    /// - `falloff` - Optional distance falloff for weighting
+    ///
+    /// # Example: Sense neighbor density
+    ///
+    /// ```ignore
+    /// Rule::Accumulate {
+    ///     source: "mass".into(),
+    ///     target: "sensed_density".into(),
+    ///     radius: 0.2,
+    ///     operation: "sum".into(),
+    ///     falloff: Some(Falloff::Linear),
+    /// }
+    /// ```
+    ///
+    /// # Example: Find hottest neighbor
+    ///
+    /// ```ignore
+    /// Rule::Accumulate {
+    ///     source: "temperature".into(),
+    ///     target: "max_nearby_temp".into(),
+    ///     radius: 0.15,
+    ///     operation: "max".into(),
+    ///     falloff: None,
+    /// }
+    /// ```
+    ///
+    /// # Example: Average neighbor energy
+    ///
+    /// ```ignore
+    /// Rule::Accumulate {
+    ///     source: "energy".into(),
+    ///     target: "local_energy".into(),
+    ///     radius: 0.1,
+    ///     operation: "average".into(),
+    ///     falloff: Some(Falloff::InverseSquare),
+    /// }
+    /// ```
+    Accumulate {
+        /// Field to read from neighbors (f32).
+        source: String,
+        /// Field to write result to (f32).
+        target: String,
+        /// Neighbor detection radius.
+        radius: f32,
+        /// How to combine values: "sum", "average", "max", "min".
+        operation: String,
+        /// Optional distance-based weighting.
+        falloff: Option<Falloff>,
+    },
+
+    /// Deposit a particle value into a 3D field at the particle's position.
+    ///
+    /// Particles leave a trail or accumulate influence in a spatial field.
+    /// Useful for pheromone trails, heat maps, density fields, etc.
+    ///
+    /// # Fields
+    ///
+    /// - `field_index` - Index of the 3D field to write to (0, 1, 2...)
+    /// - `source` - Particle field to read value from (f32)
+    /// - `amount` - Multiplier for the deposited value
+    ///
+    /// # Example: Pheromone trail
+    ///
+    /// ```ignore
+    /// // Ants deposit pheromones as they walk
+    /// Rule::Deposit {
+    ///     field_index: 0,
+    ///     source: "pheromone_strength".into(),
+    ///     amount: 0.1,
+    /// }
+    /// ```
+    ///
+    /// # Example: Heat emission
+    ///
+    /// ```ignore
+    /// // Hot particles warm the field around them
+    /// Rule::Deposit {
+    ///     field_index: 0,  // heat field
+    ///     source: "temperature".into(),
+    ///     amount: 0.05,
+    /// }
+    /// ```
+    Deposit {
+        /// Index of the 3D field (registered via with_field).
+        field_index: u32,
+        /// Particle field to read value from.
+        source: String,
+        /// Amount multiplier (scales the deposited value).
+        amount: f32,
+    },
+
+    /// Read a value from a 3D field at the particle's position.
+    ///
+    /// Particles sample the field and store the result in a particle property.
+    /// Use with field_gradient for chemotaxis-style behavior.
+    ///
+    /// # Fields
+    ///
+    /// - `field_index` - Index of the 3D field to read from
+    /// - `target` - Particle field to store the value in (f32)
+    ///
+    /// # Example: Sense pheromones
+    ///
+    /// ```ignore
+    /// // Read pheromone concentration into particle
+    /// Rule::Sense {
+    ///     field_index: 0,
+    ///     target: "sensed_pheromone".into(),
+    /// }
+    /// ```
+    Sense {
+        /// Index of the 3D field to read from.
+        field_index: u32,
+        /// Particle field to store the sensed value.
+        target: String,
+    },
+
+    /// Read and consume value from a 3D field (depletes the field).
+    ///
+    /// Particles extract resources from the field, reducing its value.
+    /// The consumed amount is stored in a particle field.
+    ///
+    /// # Fields
+    ///
+    /// - `field_index` - Index of the 3D field to consume from
+    /// - `target` - Particle field to store consumed amount
+    /// - `rate` - Maximum consumption rate per frame
+    ///
+    /// # Example: Eating food
+    ///
+    /// ```ignore
+    /// // Consume food from field, gain energy
+    /// Rule::Consume {
+    ///     field_index: 0,  // food field
+    ///     target: "energy".into(),
+    ///     rate: 0.1,
+    /// }
+    /// ```
+    Consume {
+        /// Index of the 3D field to consume from.
+        field_index: u32,
+        /// Particle field to store consumed amount.
+        target: String,
+        /// Maximum consumption rate per frame.
+        rate: f32,
+    },
+
+    /// Broadcast a signal value to nearby particles.
+    ///
+    /// The particle writes its value to all neighbors within radius.
+    /// Neighbors accumulate signals (additive). Useful for communication,
+    /// alarm signals, or influence spreading.
+    ///
+    /// Note: Due to GPU parallelism, signals are accumulated additively.
+    /// For "strongest signal wins", use Rule::Accumulate with operation: "max".
+    ///
+    /// # Fields
+    ///
+    /// - `source` - Particle field containing the signal to broadcast
+    /// - `target` - Particle field on neighbors to receive the signal
+    /// - `radius` - Broadcast radius
+    /// - `strength` - Signal strength multiplier
+    /// - `falloff` - Optional distance-based attenuation
+    ///
+    /// # Example: Alarm signal
+    ///
+    /// ```ignore
+    /// // Frightened particles broadcast alarm to neighbors
+    /// Rule::Signal {
+    ///     source: "alarm".into(),
+    ///     target: "received_alarm".into(),
+    ///     radius: 0.5,
+    ///     strength: 1.0,
+    ///     falloff: Some(Falloff::InverseSquare),
+    /// }
+    /// ```
+    Signal {
+        /// Particle field containing the signal value.
+        source: String,
+        /// Particle field on neighbors to write to.
+        target: String,
+        /// Broadcast radius.
+        radius: f32,
+        /// Signal strength multiplier.
+        strength: f32,
+        /// Optional distance-based falloff.
+        falloff: Option<Falloff>,
+    },
+
+    /// Absorb nearby particles of a matching type.
+    ///
+    /// When particles are within range, the absorber kills them and
+    /// accumulates their properties (mass, energy, etc.).
+    ///
+    /// # Fields
+    ///
+    /// - `target_type` - Type of particles to absorb (None = any type)
+    /// - `radius` - Absorption radius
+    /// - `source_field` - Field to absorb from dying particles
+    /// - `target_field` - Field to accumulate absorbed values into
+    ///
+    /// # Example: Predator eating prey
+    ///
+    /// ```ignore
+    /// Rule::Absorb {
+    ///     target_type: Some(Species::Prey.into()),
+    ///     radius: 0.1,
+    ///     source_field: "energy".into(),
+    ///     target_field: "energy".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Black hole absorbing mass
+    ///
+    /// ```ignore
+    /// Rule::Typed {
+    ///     self_type: ParticleType::BlackHole.into(),
+    ///     rule: Box::new(Rule::Absorb {
+    ///         target_type: None,  // absorb anything
+    ///         radius: 0.05,
+    ///         source_field: "mass".into(),
+    ///         target_field: "mass".into(),
+    ///     }),
+    /// }
+    /// ```
+    Absorb {
+        /// Type of particles to absorb (None = any type).
+        target_type: Option<u32>,
+        /// Absorption radius.
+        radius: f32,
+        /// Field to read from absorbed particles.
+        source_field: String,
+        /// Field to accumulate absorbed values into.
+        target_field: String,
+    },
+
+    /// Switch between two rules based on a condition.
+    ///
+    /// Evaluates a WGSL condition and applies either the `then` rule
+    /// or the `else` rule. Useful for state-dependent behavior.
+    ///
+    /// # Fields
+    ///
+    /// - `condition` - WGSL boolean expression
+    /// - `then_rule` - Rule to apply when condition is true
+    /// - `else_rule` - Optional rule to apply when condition is false
+    ///
+    /// # Example: Flee when low health
+    ///
+    /// ```ignore
+    /// Rule::Switch {
+    ///     condition: "p.health < 0.3".into(),
+    ///     then_rule: Box::new(Rule::Evade { ... }),
+    ///     else_rule: Some(Box::new(Rule::Chase { ... })),
+    /// }
+    /// ```
+    ///
+    /// # Example: Different behavior by type
+    ///
+    /// ```ignore
+    /// Rule::Switch {
+    ///     condition: "p.particle_type == 0u".into(),
+    ///     then_rule: Box::new(Rule::Gravity(9.8)),
+    ///     else_rule: Some(Box::new(Rule::Gravity(-5.0))),
+    /// }
+    /// ```
+    Switch {
+        /// WGSL boolean condition (has access to `p`, `uniforms`).
+        condition: String,
+        /// Rule to apply when condition is true.
+        then_rule: Box<Rule>,
+        /// Optional rule to apply when condition is false.
+        else_rule: Option<Box<Rule>>,
+    },
+
+    /// Divide a particle when a condition is met.
+    ///
+    /// When the condition evaluates to true, the particle spawns offspring
+    /// and optionally consumes resources (e.g., energy, mass). Uses the
+    /// sub-emitter system for spawning.
+    ///
+    /// # Fields
+    ///
+    /// - `condition` - WGSL boolean expression (has access to `p`, `uniforms`)
+    /// - `offspring_count` - Number of offspring to spawn (1-10)
+    /// - `offspring_type` - Particle type for offspring (same as parent if None)
+    /// - `resource_field` - Optional field to consume when splitting
+    /// - `resource_cost` - Amount of resource consumed per split
+    /// - `spread` - Velocity spread angle in radians (default: PI/4)
+    /// - `speed` - Speed range for offspring velocity
+    ///
+    /// # Example: Cell Division
+    ///
+    /// ```ignore
+    /// Rule::Split {
+    ///     condition: "p.energy > 1.5".into(),
+    ///     offspring_count: 2,
+    ///     offspring_type: None,  // Same type as parent
+    ///     resource_field: Some("energy".into()),
+    ///     resource_cost: 0.8,
+    ///     spread: std::f32::consts::PI / 4.0,
+    ///     speed: 0.1..0.3,
+    /// }
+    /// ```
+    ///
+    /// # Example: Fragmentation
+    ///
+    /// ```ignore
+    /// Rule::Split {
+    ///     condition: "p.health < 0.1".into(),
+    ///     offspring_count: 5,
+    ///     offspring_type: Some(FragmentType.into()),
+    ///     resource_field: None,
+    ///     resource_cost: 0.0,
+    ///     spread: std::f32::consts::TAU,  // Full sphere
+    ///     speed: 0.5..1.5,
+    /// }
+    /// ```
+    Split {
+        /// WGSL boolean condition that triggers splitting.
+        condition: String,
+        /// Number of offspring particles to spawn.
+        offspring_count: u32,
+        /// Particle type for offspring (None = same as parent).
+        offspring_type: Option<u32>,
+        /// Optional particle field to consume when splitting.
+        resource_field: Option<String>,
+        /// Amount of resource consumed per split.
+        resource_cost: f32,
+        /// Spread angle for offspring velocity (radians).
+        spread: f32,
+        /// Speed range for offspring (min, max).
+        speed_min: f32,
+        speed_max: f32,
+    },
+
     /// Scale accelerations by inverse mass (F=ma → a=F/m).
     ///
     /// Makes heavy particles sluggish and light particles responsive.
@@ -3487,6 +4015,8 @@ impl Rule {
             Rule::Collide { .. }
             | Rule::OnCollision { .. }
             | Rule::NBodyGravity { .. }
+            | Rule::LennardJones { .. }
+            | Rule::DLA { .. }
             | Rule::Viscosity { .. }
             | Rule::Pressure { .. }
             | Rule::Magnetism { .. }
@@ -3500,8 +4030,15 @@ impl Rule {
             | Rule::Chase { .. }
             | Rule::Evade { .. }
             | Rule::Diffuse { .. }
+            | Rule::Accumulate { .. }
+            | Rule::Signal { .. }
+            | Rule::Absorb { .. }
             | Rule::NeighborCustom(_) => true,
             Rule::Typed { rule, .. } => rule.requires_neighbors(),
+            Rule::Switch { then_rule, else_rule, .. } => {
+                then_rule.requires_neighbors()
+                    || else_rule.as_ref().map(|r| r.requires_neighbors()).unwrap_or(false)
+            }
             _ => false,
         }
     }
@@ -3583,6 +4120,33 @@ impl Rule {
         match self {
             Rule::Diffuse { .. } => true,
             Rule::Typed { rule, .. } => rule.needs_diffuse_accumulator(),
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if this rule uses accumulate accumulators.
+    pub(crate) fn needs_accumulate_accumulator(&self) -> bool {
+        match self {
+            Rule::Accumulate { .. } => true,
+            Rule::Typed { rule, .. } => rule.needs_accumulate_accumulator(),
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if this rule uses signal accumulators.
+    pub(crate) fn needs_signal_accumulator(&self) -> bool {
+        match self {
+            Rule::Signal { .. } => true,
+            Rule::Typed { rule, .. } => rule.needs_signal_accumulator(),
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if this rule uses absorb accumulators.
+    pub(crate) fn needs_absorb_accumulator(&self) -> bool {
+        match self {
+            Rule::Absorb { .. } => true,
+            Rule::Typed { rule, .. } => rule.needs_absorb_accumulator(),
             _ => false,
         }
     }
@@ -3678,6 +4242,76 @@ impl Rule {
         }}
     }}"#,
                 point.x, point.y, point.z, radius, radius, radius, strength
+            ),
+
+            Rule::Seek { target, max_speed, max_force } => format!(
+                r#"    // Seek: steering toward target
+    {{
+        let seek_target = vec3<f32>({tx}, {ty}, {tz});
+        let desired = seek_target - p.position;
+        let dist = length(desired);
+        if dist > 0.001 {{
+            // Desired velocity at max speed toward target
+            let desired_vel = normalize(desired) * {max_speed};
+            // Steering = desired - current velocity
+            var steering = desired_vel - p.velocity;
+            let steer_mag = length(steering);
+            if steer_mag > {max_force} {{
+                steering = normalize(steering) * {max_force};
+            }}
+            p.velocity += steering * uniforms.delta_time;
+        }}
+    }}"#,
+                tx = target.x, ty = target.y, tz = target.z,
+                max_speed = max_speed, max_force = max_force
+            ),
+
+            Rule::Flee { target, max_speed, max_force, panic_radius } => format!(
+                r#"    // Flee: steering away from target
+    {{
+        let flee_target = vec3<f32>({tx}, {ty}, {tz});
+        let away = p.position - flee_target;
+        let dist = length(away);
+        let should_flee = {panic_radius} <= 0.0 || dist < {panic_radius};
+        if should_flee && dist > 0.001 {{
+            // Desired velocity at max speed away from target
+            let desired_vel = normalize(away) * {max_speed};
+            // Steering = desired - current velocity
+            var steering = desired_vel - p.velocity;
+            let steer_mag = length(steering);
+            if steer_mag > {max_force} {{
+                steering = normalize(steering) * {max_force};
+            }}
+            p.velocity += steering * uniforms.delta_time;
+        }}
+    }}"#,
+                tx = target.x, ty = target.y, tz = target.z,
+                max_speed = max_speed, max_force = max_force, panic_radius = panic_radius
+            ),
+
+            Rule::Arrive { target, max_speed, max_force, slowing_radius } => format!(
+                r#"    // Arrive: seek with deceleration
+    {{
+        let arrive_target = vec3<f32>({tx}, {ty}, {tz});
+        let desired = arrive_target - p.position;
+        let dist = length(desired);
+        if dist > 0.001 {{
+            // Scale desired speed based on distance
+            var target_speed = {max_speed};
+            if dist < {slowing_radius} {{
+                target_speed = {max_speed} * (dist / {slowing_radius});
+            }}
+            let desired_vel = normalize(desired) * target_speed;
+            var steering = desired_vel - p.velocity;
+            let steer_mag = length(steering);
+            if steer_mag > {max_force} {{
+                steering = normalize(steering) * {max_force};
+            }}
+            p.velocity += steering * uniforms.delta_time;
+        }}
+    }}"#,
+                tx = target.x, ty = target.y, tz = target.z,
+                max_speed = max_speed, max_force = max_force, slowing_radius = slowing_radius
             ),
 
             Rule::Vortex { center, axis, strength } => {
@@ -4781,6 +5415,8 @@ impl Rule {
             Rule::Collide { .. }
             | Rule::OnCollision { .. }
             | Rule::NBodyGravity { .. }
+            | Rule::LennardJones { .. }
+            | Rule::DLA { .. }
             | Rule::Viscosity { .. }
             | Rule::Pressure { .. }
             | Rule::Magnetism { .. }
@@ -4795,7 +5431,92 @@ impl Rule {
             | Rule::Chase { .. }
             | Rule::Evade { .. }
             | Rule::Diffuse { .. }
+            | Rule::Accumulate { .. }
+            | Rule::Signal { .. }
+            | Rule::Absorb { .. }
             | Rule::NeighborCustom(_) => String::new(),
+
+            Rule::Deposit { field_index, source, amount } => format!(
+                r#"    // Deposit: write particle value to field
+    field_write({field_index}u, p.position, p.{source} * {amount});"#
+            ),
+
+            Rule::Sense { field_index, target } => format!(
+                r#"    // Sense: read field value into particle
+    p.{target} = field_read({field_index}u, p.position);"#
+            ),
+
+            Rule::Consume { field_index, target, rate } => format!(
+                r#"    // Consume: read field value and deplete
+    let consumed_val = min(field_read({field_index}u, p.position), {rate});
+    p.{target} += consumed_val;
+    field_write({field_index}u, p.position, -consumed_val);"#
+            ),
+
+            Rule::Switch { condition, then_rule, else_rule } => {
+                let then_code = then_rule.to_wgsl(bounds);
+                let else_code = else_rule.as_ref().map(|r| r.to_wgsl(bounds)).unwrap_or_default();
+                if else_code.is_empty() {
+                    format!(
+                        r#"    // Switch: conditional rule
+    if {condition} {{
+{then_code}
+    }}"#
+                    )
+                } else {
+                    format!(
+                        r#"    // Switch: conditional rule
+    if {condition} {{
+{then_code}
+    }} else {{
+{else_code}
+    }}"#
+                    )
+                }
+            },
+
+            Rule::Split {
+                condition,
+                offspring_count,
+                offspring_type,
+                resource_field,
+                resource_cost,
+                spread,
+                speed_min,
+                speed_max,
+            } => {
+                let resource_check = if let Some(field) = resource_field {
+                    format!(" && p.{field} >= {resource_cost}")
+                } else {
+                    String::new()
+                };
+
+                let resource_deduct = if let Some(field) = resource_field {
+                    format!("\n        p.{field} -= {resource_cost};")
+                } else {
+                    String::new()
+                };
+
+                let child_type = offspring_type
+                    .map(|t| format!("{t}u"))
+                    .unwrap_or_else(|| "p.particle_type".to_string());
+
+                format!(
+                    r#"    // Split: spawn offspring when condition met
+    if ({condition}){resource_check} {{
+        // Record split event for sub-emitter processing
+        let split_idx = atomicAdd(&death_count, 1u);
+        if split_idx < arrayLength(&death_buffer) {{
+            death_buffer[split_idx].position = p.position;
+            death_buffer[split_idx].velocity = p.velocity;
+            death_buffer[split_idx].color = p.color;
+            death_buffer[split_idx].parent_type = {child_type};
+            // Store spawn parameters in padding fields
+            // offspring_count={offspring_count}, spread={spread}, speed_min={speed_min}, speed_max={speed_max}
+        }}{resource_deduct}
+    }}"#
+                )
+            },
         }
     }
 
@@ -4841,6 +5562,46 @@ impl Rule {
                 let force = {strength} / dist_sq;
                 // Attract toward neighbor (opposite of neighbor_dir)
                 p.velocity -= neighbor_dir * force * uniforms.delta_time;
+            }}"#
+            ),
+
+            Rule::LennardJones { epsilon, sigma, cutoff } => format!(
+                r#"            // Lennard-Jones potential
+            if neighbor_dist < {cutoff} && neighbor_dist > 0.0001 {{
+                // LJ potential: V(r) = 4ε[(σ/r)^12 - (σ/r)^6]
+                // Force: F(r) = 24ε/r * [2(σ/r)^12 - (σ/r)^6]
+                let sr = {sigma} / neighbor_dist;
+                let sr6 = sr * sr * sr * sr * sr * sr;
+                let sr12 = sr6 * sr6;
+                // Force magnitude (positive = repulsive, negative = attractive)
+                let force_mag = 24.0 * {epsilon} / neighbor_dist * (2.0 * sr12 - sr6);
+                // Apply force along neighbor direction (positive pushes away)
+                p.velocity += neighbor_dir * force_mag * uniforms.delta_time;
+            }}"#
+            ),
+
+            Rule::DLA { seed_type, mobile_type, stick_radius, diffusion_strength } => format!(
+                r#"            // Diffusion-Limited Aggregation
+            // Mobile particles stick to seed particles on contact
+            if p.particle_type == {mobile_type}u && other.particle_type == {seed_type}u {{
+                if neighbor_dist < {stick_radius} {{
+                    // Stick: become part of the structure
+                    p.particle_type = {seed_type}u;
+                    p.velocity = vec3<f32>(0.0, 0.0, 0.0);
+                }}
+            }}
+            // Apply diffusion (random walk) to mobile particles
+            if p.particle_type == {mobile_type}u {{
+                let diff_seed = index * 1103515245u + u32(uniforms.time * 1000.0);
+                let hx = (diff_seed ^ (diff_seed >> 15u)) * 0x45d9f3bu;
+                let hy = ((diff_seed + 1u) ^ ((diff_seed + 1u) >> 15u)) * 0x45d9f3bu;
+                let hz = ((diff_seed + 2u) ^ ((diff_seed + 2u) >> 15u)) * 0x45d9f3bu;
+                let diff_force = vec3<f32>(
+                    f32(hx & 0xFFFFu) / 32768.0 - 1.0,
+                    f32(hy & 0xFFFFu) / 32768.0 - 1.0,
+                    f32(hz & 0xFFFFu) / 32768.0 - 1.0
+                );
+                p.velocity += diff_force * {diffusion_strength} * uniforms.delta_time;
             }}"#
             ),
 
@@ -5001,6 +5762,72 @@ impl Rule {
             }}"#
             ),
 
+            Rule::Accumulate { source, radius, falloff, operation, .. } => {
+                let weight_expr = if let Some(f) = falloff {
+                    // Falloff expressions expect `dist` and `radius` in scope
+                    format!(
+                        "let dist = neighbor_dist;\n                let radius = {radius};\n                let acc_weight = {};",
+                        f.to_wgsl_expr()
+                    )
+                } else {
+                    "let acc_weight = 1.0;".to_string()
+                };
+
+                let update_expr = match operation.as_str() {
+                    "max" => format!("accumulate_value = max(accumulate_value, other.{source} * acc_weight);"),
+                    "min" => format!("accumulate_value = min(accumulate_value, other.{source} * acc_weight);"),
+                    _ => format!("accumulate_sum += other.{source} * acc_weight;\n                accumulate_weight += acc_weight;"),
+                };
+
+                format!(
+                    r#"            // Accumulate: gather from neighbors
+            if neighbor_dist < {radius} {{
+                {weight_expr}
+                {update_expr}
+            }}"#
+                )
+            },
+
+            Rule::Signal { source, target: _, radius, strength, falloff } => {
+                let falloff_expr = if let Some(f) = falloff {
+                    format!(
+                        "let dist = neighbor_dist;\n                let radius = {radius};\n                let signal_strength = {} * {strength};",
+                        f.to_wgsl_expr()
+                    )
+                } else {
+                    format!("let signal_strength = {strength};")
+                };
+
+                format!(
+                    r#"            // Signal: receive broadcast from neighbors
+            if neighbor_dist < {radius} {{
+                {falloff_expr}
+                signal_sum += other.{source} * signal_strength;
+                signal_count += 1.0;
+            }}"#
+                )
+            },
+
+            Rule::Absorb { target_type, radius, source_field, target_field: _ } => {
+                let type_check = if let Some(t) = target_type {
+                    format!("other.particle_type == {t}u && ")
+                } else {
+                    String::new()
+                };
+
+                format!(
+                    r#"            // Absorb: consume nearby particles
+            if {type_check}neighbor_dist < {radius} && other.alive == 1u {{
+                absorb_sum += other.{source_field};
+                // Mark neighbor for absorption (will be killed)
+                if !absorb_found {{
+                    absorb_found = true;
+                    absorb_target_idx = other_idx;
+                }}
+            }}"#
+                )
+            },
+
             _ => String::new(),
         }
     }
@@ -5126,6 +5953,39 @@ impl Rule {
     if diffuse_count > 0.0 {{
         let avg_value = diffuse_sum / diffuse_count;
         p.{field} = mix(p.{field}, avg_value, {rate} * uniforms.delta_time);
+    }}"#
+            ),
+
+            Rule::Accumulate { target, operation, .. } => {
+                let assign_expr = match operation.as_str() {
+                    "max" => format!("p.{target} = accumulate_value;"),
+                    "min" => format!("p.{target} = accumulate_value;"),
+                    "average" => format!(
+                        "if accumulate_weight > 0.0 {{\n        p.{target} = accumulate_sum / accumulate_weight;\n    }}"
+                    ),
+                    // "sum" and default
+                    _ => format!("p.{target} = accumulate_sum;"),
+                };
+
+                format!(
+                    r#"    // Apply accumulated value
+    {assign_expr}"#
+                )
+            },
+
+            Rule::Signal { target, .. } => format!(
+                r#"    // Apply received signal
+    if signal_count > 0.0 {{
+        p.{target} += signal_sum / signal_count;
+    }}"#
+            ),
+
+            Rule::Absorb { target_field, .. } => format!(
+                r#"    // Apply absorption result
+    if absorb_found {{
+        p.{target_field} += absorb_sum;
+        // Kill the absorbed particle (must be done via storage access)
+        // Note: Actual kill happens via particles_out[absorb_target_idx].alive = 0u;
     }}"#
             ),
 

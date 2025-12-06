@@ -35,89 +35,15 @@ naga = { version = "24.0", features = ["wgsl-in"] }
 name = "shader_gen"
 harness = false
 
-[[example]]
-name = "boids"
-path = "examples/boids.rs"
-
-[[example]]
-name = "predator_prey"
-path = "examples/predator_prey.rs"
-
-[[example]]
-name = "infection"
-path = "examples/infection.rs"
-
-[[example]]
-name = "lifecycle_demo"
-path = "examples/lifecycle_demo.rs"
-
-# Single-rule examples in rules/ subdirectory
-[[example]]
-name = "bounce_walls"
-path = "examples/rules/bounce_walls.rs"
-
-[[example]]
-name = "vortex"
-path = "examples/rules/vortex.rs"
-
-[[example]]
-name = "curl"
-path = "examples/rules/curl.rs"
-
-[[example]]
-name = "turbulence"
-path = "examples/rules/turbulence.rs"
-
-[[example]]
-name = "orbit"
-path = "examples/rules/orbit.rs"
-
-[[example]]
-name = "neighbors"
-path = "examples/rules/neighbors.rs"
-
-[[example]]
-name = "nbody"
-path = "examples/rules/nbody.rs"
-
-[[example]]
-name = "fluid"
-path = "examples/rules/fluid.rs"
-
-[[example]]
-name = "magnetism"
-path = "examples/rules/magnetism.rs"
-
-[[example]]
-name = "point_gravity"
-path = "examples/rules/point_gravity.rs"
-
-[[example]]
-name = "spring"
-path = "examples/rules/spring.rs"
-
-[[example]]
-name = "oscillate"
-path = "examples/rules/oscillate.rs"
-
 # Benchmarks
-[[example]]
+[[bench]]
 name = "bench_simple"
-path = "examples/bench_simple.rs"
+path = "bench/bench_simple.rs"
 
-[[example]]
+[[bench]]
 name = "bench_neighbors"
-path = "examples/bench_neighbors.rs"
+path = "bench/bench_neighbors.rs"
 
-# Inbox (particle communication) examples
-[[example]]
-name = "inbox"
-path = "examples/inbox.rs"
-
-[[example]]
-name = "slime_mold"
-path = "examples/slime_mold.rs"
-required-features = ["egui"]
 
 [[example]]
 name = "particle_life_interactive"
@@ -153,10 +79,6 @@ path = "examples/experimental/mycelial_network_interactive.rs"
 required-features = ["egui"]
 
 [[example]]
-name = "lorenz_attractor"
-path = "examples/experimental/lorenz_attractor.rs"
-
-[[example]]
 name = "lorenz_attractor_interactive"
 path = "examples/experimental/lorenz_attractor_interactive.rs"
 required-features = ["egui"]
@@ -169,46 +91,12 @@ required-features = ["egui"]
 # Egui examples (require --features egui)
 [[example]]
 name = "egui_controls"
-path = "examples/egui_controls.rs"
+path = "examples/experimental/egui_controls.rs"
 required-features = ["egui"]
 
 [[example]]
 name = "egui_interactive"
-path = "examples/egui_interactive.rs"
-required-features = ["egui"]
-
-[[example]]
-name = "custom_shader"
-path = "examples/custom_shader.rs"
-
-[[example]]
-name = "post_process"
-path = "examples/post_process.rs"
-
-[[example]]
-name = "texture_example"
-path = "examples/texture_example.rs"
-
-[[example]]
-name = "slime_mold_field"
-path = "examples/slime_mold_field.rs"
-required-features = ["egui"]
-
-[[example]]
-name = "multi_field"
-path = "examples/multi_field.rs"
-
-[[example]]
-name = "volume_render"
-path = "examples/volume_render.rs"
-
-[[example]]
-name = "spatial_grid_demo"
-path = "examples/spatial_grid_demo.rs"
-
-[[example]]
-name = "gravity_visualizer"
-path = "examples/gravity_visualizer.rs"
+path = "examples/experimental/egui_interactive.rs"
 required-features = ["egui"]
 
 [[example]]
@@ -217,18 +105,8 @@ path = "examples/experimental/aurora.rs"
 required-features = ["egui"]
 
 [[example]]
-name = "density_fluids"
-path = "examples/density_fluids.rs"
-required-features = ["egui"]
-
-[[example]]
-name = "wave_field"
-path = "examples/wave_field.rs"
-required-features = ["egui"]
-
-[[example]]
-name = "fireflies"
-path = "examples/fireflies.rs"
+name = "gravity_visualizer"
+path = "examples/gravity_visualizer.rs"
 required-features = ["egui"]
 
 [[example]]
@@ -237,15 +115,11 @@ path = "examples/neural_network.rs"
 required-features = ["egui"]
 
 [[example]]
-name = "signal_swarm"
-path = "examples/signal_swarm.rs"
+name = "slime_mold_field"
+path = "examples/slime_mold_field.rs"
 required-features = ["egui"]
 
 [[example]]
-name = "agent_demo"
-path = "examples/agent_demo.rs"
-
-[[example]]
-name = "chemistry"
-path = "examples/chemistry.rs"
-
+name = "wave_field"
+path = "examples/wave_field.rs"
+required-features = ["egui"]

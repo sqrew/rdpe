@@ -359,37 +359,77 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     )
 }
 
-/// Generate WGSL code for death recording in main compute shader.
+/// Generate WGSL code for spawn event recording in main compute shader.
+///
+/// This handles both death-triggered and condition-triggered sub-emitters:
+/// - `OnDeath`: Records when `was_alive == 1u && p.alive == 0u`
+/// - `OnCondition`: Records when the custom WGSL condition is true
 pub fn death_recording_wgsl(sub_emitters: &[SubEmitter]) -> String {
+    use crate::sub_emitter::SpawnTrigger;
+
     if sub_emitters.is_empty() {
         return String::new();
     }
 
-    // Build list of parent types
-    let parent_types: Vec<u32> = sub_emitters.iter().map(|se| se.parent_type).collect();
-    let type_checks: Vec<String> = parent_types
-        .iter()
-        .map(|t| format!("p.particle_type == {}u", t))
-        .collect();
-    let type_condition = type_checks.join(" || ");
+    let mut code = String::new();
+    code.push_str("\n    // Sub-emitter spawn event recording\n");
 
-    format!(
-        r#"
-    // Sub-emitter death recording
-    // Record death if particle was alive at frame start but is now dead
+    // Collect death-triggered emitters (group by parent type)
+    let death_emitters: Vec<_> = sub_emitters
+        .iter()
+        .filter(|se| matches!(se.trigger, SpawnTrigger::OnDeath))
+        .collect();
+
+    if !death_emitters.is_empty() {
+        let type_checks: Vec<String> = death_emitters
+            .iter()
+            .map(|se| format!("p.particle_type == {}u", se.parent_type))
+            .collect();
+        let type_condition = type_checks.join(" || ");
+
+        code.push_str(&format!(
+            r#"    // Death-triggered spawn recording
     if was_alive == 1u && p.alive == 0u && ({type_condition}) {{
-        let death_idx = atomicAdd(&sub_emitter_death_count, 1u);
-        if death_idx < {max_deaths}u {{
-            sub_emitter_death_buffer[death_idx].position = p.position;
-            sub_emitter_death_buffer[death_idx].velocity = p.velocity;
-            sub_emitter_death_buffer[death_idx].color = p.color;
-            sub_emitter_death_buffer[death_idx].parent_type = p.particle_type;
+        let spawn_idx = atomicAdd(&sub_emitter_death_count, 1u);
+        if spawn_idx < {max_events}u {{
+            sub_emitter_death_buffer[spawn_idx].position = p.position;
+            sub_emitter_death_buffer[spawn_idx].velocity = p.velocity;
+            sub_emitter_death_buffer[spawn_idx].color = p.color;
+            sub_emitter_death_buffer[spawn_idx].parent_type = p.particle_type;
         }}
     }}
 "#,
-        type_condition = type_condition,
-        max_deaths = MAX_DEATH_EVENTS,
-    )
+            type_condition = type_condition,
+            max_events = MAX_DEATH_EVENTS,
+        ));
+    }
+
+    // Handle condition-triggered emitters (each gets its own check)
+    for (i, se) in sub_emitters.iter().enumerate() {
+        if let SpawnTrigger::OnCondition(condition) = &se.trigger {
+            code.push_str(&format!(
+                r#"
+    // Condition-triggered spawn recording (sub-emitter {i})
+    // Condition: {condition}
+    if p.particle_type == {parent_type}u && ({condition}) {{
+        let spawn_idx = atomicAdd(&sub_emitter_death_count, 1u);
+        if spawn_idx < {max_events}u {{
+            sub_emitter_death_buffer[spawn_idx].position = p.position;
+            sub_emitter_death_buffer[spawn_idx].velocity = p.velocity;
+            sub_emitter_death_buffer[spawn_idx].color = p.color;
+            sub_emitter_death_buffer[spawn_idx].parent_type = p.particle_type;
+        }}
+    }}
+"#,
+                i = i,
+                condition = condition,
+                parent_type = se.parent_type,
+                max_events = MAX_DEATH_EVENTS,
+            ));
+        }
+    }
+
+    code
 }
 
 /// Generate WGSL bindings for death buffer (to include in main compute shader).
