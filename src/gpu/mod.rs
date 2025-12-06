@@ -7,6 +7,7 @@ mod spatial_grid_viz;
 pub mod sub_emitter_gpu;
 mod trails;
 mod volume_render;
+mod wireframe;
 
 #[cfg(feature = "egui")]
 mod egui_integration;
@@ -20,6 +21,7 @@ pub use spatial_grid_viz::SpatialGridViz;
 pub use sub_emitter_gpu::SubEmitterGpu;
 pub use trails::TrailState;
 pub use volume_render::{VolumeConfig, VolumeRenderState};
+pub use wireframe::WireframeState;
 
 use crate::field::FieldRegistry;
 
@@ -133,6 +135,8 @@ pub struct GpuState {
     sub_emitter: Option<SubEmitterGpu>,
     // Spatial grid visualization
     spatial_grid_viz: Option<SpatialGridViz>,
+    // Wireframe mesh rendering
+    wireframe_state: Option<WireframeState>,
     // CPU readback support
     particle_stride: usize,
     readback_staging: Option<wgpu::Buffer>,
@@ -173,6 +177,8 @@ impl GpuState {
         sub_emitters: &[crate::sub_emitter::SubEmitter],
         spatial_grid_opacity: f32,
         particle_wgsl_struct: &str,
+        wireframe_mesh: Option<&crate::visuals::WireframeMesh>,
+        wireframe_thickness: f32,
         #[cfg(feature = "egui")] egui_enabled: bool,
     ) -> Self {
         let size = window.inner_size();
@@ -889,6 +895,27 @@ impl GpuState {
             surface_format,
         ));
 
+        // Wireframe mesh rendering (if configured)
+        let wireframe_state = if let Some(mesh) = wireframe_mesh {
+            Some(WireframeState::new(
+                &device,
+                &particle_buffer,
+                &uniform_buffer,
+                mesh,
+                wireframe_thickness,
+                particle_size,
+                num_particles,
+                particle_stride,
+                color_offset,
+                alive_offset,
+                scale_offset,
+                blend_mode,
+                surface_format,
+            ))
+        } else {
+            None
+        };
+
         Self {
             surface,
             device,
@@ -929,6 +956,7 @@ impl GpuState {
             window,
             sub_emitter,
             spatial_grid_viz,
+            wireframe_state,
             particle_stride,
             readback_staging: None,
         }
@@ -1346,15 +1374,24 @@ impl GpuState {
                 render_pass.draw(0..6, 0..total_trail_instances);
             }
 
-            // Draw particles on top
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            // Bind textures if available
-            if let Some(ref tex_bind_group) = self.texture_bind_group {
-                render_pass.set_bind_group(1, tex_bind_group, &[]);
+            // Draw particles on top (or wireframe if configured)
+            if let Some(ref wireframe) = self.wireframe_state {
+                // Render as wireframe meshes
+                render_pass.set_pipeline(wireframe.pipeline());
+                render_pass.set_bind_group(0, wireframe.bind_group(), &[]);
+                // 6 vertices per line quad, total_line_count instances
+                render_pass.draw(0..6, 0..wireframe.total_line_count());
+            } else {
+                // Render as billboards
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                // Bind textures if available
+                if let Some(ref tex_bind_group) = self.texture_bind_group {
+                    render_pass.set_bind_group(1, tex_bind_group, &[]);
+                }
+                render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
+                render_pass.draw(0..6, 0..self.num_particles);
             }
-            render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
-            render_pass.draw(0..6, 0..self.num_particles);
         }
 
         // Volume render pass (if enabled) - renders field as volumetric fog/glow
@@ -1653,15 +1690,24 @@ impl GpuState {
                 render_pass.draw(0..6, 0..total_trail_instances);
             }
 
-            // Draw particles on top
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-            // Bind textures if available
-            if let Some(ref tex_bind_group) = self.texture_bind_group {
-                render_pass.set_bind_group(1, tex_bind_group, &[]);
+            // Draw particles on top (or wireframe if configured)
+            if let Some(ref wireframe) = self.wireframe_state {
+                // Render as wireframe meshes
+                render_pass.set_pipeline(wireframe.pipeline());
+                render_pass.set_bind_group(0, wireframe.bind_group(), &[]);
+                // 6 vertices per line quad, total_line_count instances
+                render_pass.draw(0..6, 0..wireframe.total_line_count());
+            } else {
+                // Render as billboards
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                // Bind textures if available
+                if let Some(ref tex_bind_group) = self.texture_bind_group {
+                    render_pass.set_bind_group(1, tex_bind_group, &[]);
+                }
+                render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
+                render_pass.draw(0..6, 0..self.num_particles);
             }
-            render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
-            render_pass.draw(0..6, 0..self.num_particles);
         }
 
         // Volume render pass (if enabled) - renders field as volumetric fog/glow

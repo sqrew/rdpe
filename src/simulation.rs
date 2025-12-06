@@ -59,7 +59,7 @@ use crate::spatial::{SpatialConfig, MORTON_WGSL, NEIGHBOR_UTILS_WGSL};
 use crate::textures::{TextureConfig, TextureRegistry};
 use crate::time::Time;
 use crate::uniforms::{CustomUniforms, UniformValue, UpdateContext};
-use crate::visuals::VisualConfig;
+use crate::visuals::{VertexEffect, VisualConfig};
 use crate::ParticleTrait;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -167,6 +167,10 @@ pub struct Simulation<P: ParticleTrait> {
     volume_config: Option<crate::gpu::VolumeConfig>,
     /// Custom fragment shader code (replaces default fragment body).
     custom_fragment_shader: Option<String>,
+    /// Custom vertex shader code (replaces default vertex body).
+    custom_vertex_shader: Option<String>,
+    /// Pre-built vertex effects (composable).
+    vertex_effects: Vec<VertexEffect>,
     /// Whether egui UI is enabled.
     #[cfg(feature = "egui")]
     egui_enabled: bool,
@@ -213,6 +217,8 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             field_registry: FieldRegistry::new(),
             volume_config: None,
             custom_fragment_shader: None,
+            custom_vertex_shader: None,
+            vertex_effects: Vec::new(),
             #[cfg(feature = "egui")]
             egui_enabled: false,
             #[cfg(feature = "egui")]
@@ -612,6 +618,102 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// - **Custom shapes**: Discard fragments with `discard;` to cut out shapes
     pub fn with_fragment_shader(mut self, wgsl_code: &str) -> Self {
         self.custom_fragment_shader = Some(wgsl_code.to_string());
+        self
+    }
+
+    /// Set a custom vertex shader for particle rendering.
+    ///
+    /// The custom shader code replaces the default vertex shader body. Your code
+    /// has access to:
+    ///
+    /// **Inputs:**
+    /// - `vertex_index: u32` - Which vertex of the quad (0-5)
+    /// - `instance_index: u32` - Which particle (0 to particle_count-1)
+    /// - `particle_pos: vec3<f32>` - Particle world position
+    /// - `particle_color: vec3<f32>` - Particle color (if color field exists)
+    /// - `scale: f32` - Per-particle scale multiplier
+    /// - `quad_pos: vec2<f32>` - Quad vertex offset (-1 to 1)
+    /// - `base_size: f32` - Base particle size from config
+    /// - `particle_size: f32` - Computed size (base_size * scale)
+    /// - `uniforms.view_proj` - View-projection matrix
+    /// - `uniforms.time` - Current simulation time
+    /// - `uniforms.delta_time` - Time since last frame
+    ///
+    /// **Must set:**
+    /// - `out.clip_position: vec4<f32>` - Final clip-space position
+    /// - `out.color: vec3<f32>` - Color to pass to fragment shader
+    /// - `out.uv: vec2<f32>` - UV coordinates for fragment shader
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_vertex_shader(r#"
+    ///         // Wobbling particles
+    ///         let wobble = sin(uniforms.time * 5.0 + f32(instance_index) * 0.1) * 0.05;
+    ///         let offset_pos = particle_pos + vec3<f32>(wobble, 0.0, 0.0);
+    ///
+    ///         let world_pos = vec4<f32>(offset_pos, 1.0);
+    ///         var clip_pos = uniforms.view_proj * world_pos;
+    ///         clip_pos.x += quad_pos.x * particle_size * clip_pos.w;
+    ///         clip_pos.y += quad_pos.y * particle_size * clip_pos.w;
+    ///
+    ///         out.clip_position = clip_pos;
+    ///         out.color = particle_color;
+    ///         out.uv = quad_pos;
+    ///     "#)
+    ///     .run();
+    /// ```
+    ///
+    /// # Effects you can create
+    ///
+    /// - **Wobble/Wave**: Offset position with `sin(time + index)`
+    /// - **Rotation**: Rotate `quad_pos` before applying to clip position
+    /// - **Size pulsing**: Multiply `particle_size` by time-based factor
+    /// - **Billboarding variants**: Custom billboard orientation
+    /// - **Screen-space effects**: Modify clip position directly
+    pub fn with_vertex_shader(mut self, wgsl_code: &str) -> Self {
+        self.custom_vertex_shader = Some(wgsl_code.to_string());
+        self
+    }
+
+    /// Add a pre-built vertex effect.
+    ///
+    /// Vertex effects are composable transformations applied to particle rendering.
+    /// Multiple effects can be stacked and are applied in order.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_vertex_effect(VertexEffect::Rotate { speed: 2.0 })
+    ///     .with_vertex_effect(VertexEffect::Wobble {
+    ///         frequency: 3.0,
+    ///         amplitude: 0.05,
+    ///     })
+    ///     .with_vertex_effect(VertexEffect::Pulse {
+    ///         frequency: 4.0,
+    ///         amplitude: 0.3,
+    ///     })
+    ///     .run();
+    /// ```
+    ///
+    /// # Available Effects
+    ///
+    /// - [`VertexEffect::Rotate`] - Spin particles around their facing axis
+    /// - [`VertexEffect::Wobble`] - Sinusoidal position offset
+    /// - [`VertexEffect::Pulse`] - Size oscillation
+    /// - [`VertexEffect::Wave`] - Coordinated wave across particles
+    /// - [`VertexEffect::Jitter`] - Random shake
+    /// - [`VertexEffect::ScaleByDistance`] - Size based on distance from point
+    /// - [`VertexEffect::FadeByDistance`] - Opacity based on distance
+    ///
+    /// # Note
+    ///
+    /// If both `with_vertex_effect()` and `with_vertex_shader()` are used,
+    /// vertex effects are ignored and the custom shader takes precedence.
+    pub fn with_vertex_effect(mut self, effect: VertexEffect) -> Self {
+        self.vertex_effects.push(effect);
         self
     }
 
@@ -1485,7 +1587,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     /// Generate the render shader WGSL code.
     fn generate_render_shader(&self) -> String {
-        use crate::visuals::{ColorMapping, Palette};
+        use crate::visuals::{combine_vertex_effects, ColorMapping, Palette};
 
         // Determine if we're using a palette
         let use_palette = !matches!(self.visual_config.palette, Palette::None);
@@ -1578,6 +1680,30 @@ fn sample_palette(t: f32) -> vec3<f32> {{
         // Generate texture declarations
         let texture_declarations = self.texture_registry.to_wgsl_declarations(0);
 
+        // Determine vertex shader body:
+        // 1. Custom vertex shader takes precedence
+        // 2. Composed vertex effects if any
+        // 3. Default vertex body
+        let vertex_body = if let Some(ref custom) = self.custom_vertex_shader {
+            custom.clone()
+        } else if !self.vertex_effects.is_empty() {
+            combine_vertex_effects(&self.vertex_effects, &color_expr)
+        } else {
+            format!(
+                r#"    let world_pos = vec4<f32>(particle_pos, 1.0);
+    var clip_pos = uniforms.view_proj * world_pos;
+
+    clip_pos.x += quad_pos.x * particle_size * clip_pos.w;
+    clip_pos.y += quad_pos.y * particle_size * clip_pos.w;
+
+    out.clip_position = clip_pos;
+    out.color = {color_expr};
+    out.uv = quad_pos;
+
+    return out;"#
+            )
+        };
+
         format!(
             r#"struct Uniforms {{
     view_proj: mat4x4<f32>,
@@ -1630,17 +1756,8 @@ fn vs_main(
     let base_size = {particle_size};
     let particle_size = base_size * scale;
 
-    let world_pos = vec4<f32>(particle_pos, 1.0);
-    var clip_pos = uniforms.view_proj * world_pos;
-
-    clip_pos.x += quad_pos.x * particle_size * clip_pos.w;
-    clip_pos.y += quad_pos.y * particle_size * clip_pos.w;
-
-    out.clip_position = clip_pos;
-    out.color = {color_expr};
-    out.uv = quad_pos;
-
-    return out;
+    // Custom or default vertex transformation
+{vertex_body}
 }}
 
 @fragment
@@ -1649,6 +1766,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 }}
 "#,
             particle_size = self.particle_size,
+            vertex_body = vertex_body,
             fragment_body = self.custom_fragment_shader.as_deref()
                 .unwrap_or_else(|| self.visual_config.shape.to_wgsl_fragment())
         )
@@ -1925,6 +2043,8 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 &self.config.sub_emitters,
                 self.config.visual_config.spatial_grid_opacity,
                 &self.config.particle_wgsl_struct,
+                self.config.visual_config.wireframe_mesh.as_ref(),
+                self.config.visual_config.wireframe_thickness,
                 #[cfg(feature = "egui")]
                 self.config.egui_enabled,
             )));

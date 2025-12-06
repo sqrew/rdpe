@@ -921,3 +921,293 @@ impl WireframeMesh {
             .collect()
     }
 }
+
+/// Vertex shader effects for particle rendering.
+///
+/// Pre-built, composable effects that modify particle vertex transformations.
+/// Effects stack together and generate optimized WGSL code. Use these instead
+/// of raw [`Simulation::with_vertex_shader`] for common effects.
+///
+/// # Example
+///
+/// ```ignore
+/// Simulation::<Ball>::new()
+///     .with_vertex_effect(VertexEffect::Rotate { speed: 2.0 })
+///     .with_vertex_effect(VertexEffect::Wobble {
+///         frequency: 3.0,
+///         amplitude: 0.05,
+///     })
+///     .with_vertex_effect(VertexEffect::Pulse {
+///         frequency: 4.0,
+///         amplitude: 0.3,
+///     })
+///     .run();
+/// ```
+///
+/// Effects are applied in order and compose naturally.
+#[derive(Debug, Clone)]
+pub enum VertexEffect {
+    /// Rotate particles around their facing axis.
+    ///
+    /// Each particle spins at the specified speed, with a per-particle
+    /// phase offset based on instance index for variety.
+    Rotate {
+        /// Rotation speed in radians per second.
+        speed: f32,
+    },
+
+    /// Wobble particles with sinusoidal position offset.
+    ///
+    /// Creates a gentle floating/swaying motion.
+    Wobble {
+        /// Oscillation frequency (higher = faster wobble).
+        frequency: f32,
+        /// Maximum offset distance.
+        amplitude: f32,
+    },
+
+    /// Pulse particle size over time.
+    ///
+    /// Particles grow and shrink rhythmically.
+    Pulse {
+        /// Pulse frequency (higher = faster pulsing).
+        frequency: f32,
+        /// Pulse amplitude (0.3 = +/- 30% size variation).
+        amplitude: f32,
+    },
+
+    /// Wave effect coordinated across particles.
+    ///
+    /// Creates a wave pattern that travels through the particle field.
+    Wave {
+        /// Wave direction (normalized).
+        direction: Vec3,
+        /// Wave frequency (spatial).
+        frequency: f32,
+        /// Wave speed (temporal).
+        speed: f32,
+        /// Wave amplitude (offset distance).
+        amplitude: f32,
+    },
+
+    /// Random per-frame jitter/shake.
+    ///
+    /// Adds noise-like motion to particles.
+    Jitter {
+        /// Maximum jitter offset.
+        amplitude: f32,
+    },
+
+    /// Stretch particles in their velocity direction.
+    ///
+    /// Requires velocity data passed to vertex shader.
+    /// Note: This is a visual hint only - actual velocity stretching
+    /// requires velocity in the vertex attributes.
+    StretchToVelocity {
+        /// Maximum stretch multiplier.
+        max_stretch: f32,
+    },
+
+    /// Scale particles based on distance from a point.
+    ///
+    /// Particles closer to the point are larger.
+    ScaleByDistance {
+        /// Center point.
+        center: Vec3,
+        /// Scale at center (closest).
+        min_scale: f32,
+        /// Scale at max_distance (farthest).
+        max_scale: f32,
+        /// Distance at which max_scale is reached.
+        max_distance: f32,
+    },
+
+    /// Fade particles based on distance from camera/origin.
+    ///
+    /// Modifies alpha based on distance for depth-based fading.
+    FadeByDistance {
+        /// Distance at which particles are fully visible.
+        near: f32,
+        /// Distance at which particles are fully transparent.
+        far: f32,
+    },
+}
+
+impl VertexEffect {
+    /// Generate WGSL code that modifies transformation variables.
+    ///
+    /// Available variables to read/modify:
+    /// - `pos_offset: vec3<f32>` - position offset (starts at 0)
+    /// - `rotated_quad: vec2<f32>` - quad coordinates (starts at quad_pos)
+    /// - `size_mult: f32` - size multiplier (starts at 1.0)
+    /// - `color_mod: vec3<f32>` - color modifier (starts at particle_color)
+    ///
+    /// Also available (read-only):
+    /// - `particle_pos`, `particle_size`, `scale`
+    /// - `uniforms.time`, `instance_index`, `vertex_index`
+    pub fn to_wgsl(&self) -> String {
+        match self {
+            VertexEffect::Rotate { speed } => format!(
+                r#"
+    // Rotate effect
+    {{
+        let rot_speed = {speed}f;
+        let rot_angle = uniforms.time * rot_speed + f32(instance_index) * 0.1;
+        let cos_a = cos(rot_angle);
+        let sin_a = sin(rot_angle);
+        let rx = rotated_quad.x;
+        let ry = rotated_quad.y;
+        rotated_quad = vec2<f32>(
+            rx * cos_a - ry * sin_a,
+            rx * sin_a + ry * cos_a
+        );
+    }}"#
+            ),
+
+            VertexEffect::Wobble { frequency, amplitude } => format!(
+                r#"
+    // Wobble effect
+    {{
+        let wobble_freq = {frequency}f;
+        let wobble_amp = {amplitude}f;
+        let phase = f32(instance_index) * 0.5;
+        pos_offset += vec3<f32>(
+            sin(uniforms.time * wobble_freq + phase) * wobble_amp,
+            cos(uniforms.time * wobble_freq * 1.3 + phase * 0.7) * wobble_amp,
+            sin(uniforms.time * wobble_freq * 0.7 + phase * 0.3) * wobble_amp
+        );
+    }}"#
+            ),
+
+            VertexEffect::Pulse { frequency, amplitude } => format!(
+                r#"
+    // Pulse effect
+    {{
+        let pulse_freq = {frequency}f;
+        let pulse_amp = {amplitude}f;
+        let phase = f32(instance_index) * 0.2;
+        size_mult *= 1.0 + sin(uniforms.time * pulse_freq + phase) * pulse_amp;
+    }}"#
+            ),
+
+            VertexEffect::Wave { direction, frequency, speed, amplitude } => format!(
+                r#"
+    // Wave effect
+    {{
+        let wave_dir = vec3<f32>({}f, {}f, {}f);
+        let wave_freq = {frequency}f;
+        let wave_speed = {speed}f;
+        let wave_amp = {amplitude}f;
+        let wave_phase = dot(particle_pos, wave_dir) * wave_freq - uniforms.time * wave_speed;
+        pos_offset += wave_dir * sin(wave_phase) * wave_amp;
+    }}"#,
+                direction.x, direction.y, direction.z
+            ),
+
+            VertexEffect::Jitter { amplitude } => format!(
+                r#"
+    // Jitter effect
+    {{
+        let jitter_amp = {amplitude}f;
+        let seed = u32(uniforms.time * 60.0) + instance_index * 12345u;
+        let jx = fract(sin(f32(seed) * 12.9898) * 43758.5453) * 2.0 - 1.0;
+        let jy = fract(sin(f32(seed + 1u) * 12.9898) * 43758.5453) * 2.0 - 1.0;
+        let jz = fract(sin(f32(seed + 2u) * 12.9898) * 43758.5453) * 2.0 - 1.0;
+        pos_offset += vec3<f32>(jx, jy, jz) * jitter_amp;
+    }}"#
+            ),
+
+            VertexEffect::StretchToVelocity { max_stretch } => format!(
+                r#"
+    // Stretch to velocity effect (approximated from position delta)
+    {{
+        let stretch_max = {max_stretch}f;
+        // Note: This is a visual approximation. For true velocity stretching,
+        // use with_vertex_shader() with velocity passed as attribute.
+        let stretch_dir = normalize(particle_pos + vec3<f32>(0.001, 0.001, 0.001));
+        let stretch_factor = 1.0 + length(particle_pos) * (stretch_max - 1.0);
+        // Stretch quad in the direction of motion
+        let stretch_dot = dot(normalize(rotated_quad), stretch_dir.xy);
+        size_mult *= mix(1.0, stretch_factor, abs(stretch_dot));
+    }}"#
+            ),
+
+            VertexEffect::ScaleByDistance { center, min_scale, max_scale, max_distance } => format!(
+                r#"
+    // Scale by distance effect
+    {{
+        let scale_center = vec3<f32>({}f, {}f, {}f);
+        let scale_min = {min_scale}f;
+        let scale_max = {max_scale}f;
+        let scale_max_dist = {max_distance}f;
+        let dist = length(particle_pos - scale_center);
+        let t = clamp(dist / scale_max_dist, 0.0, 1.0);
+        size_mult *= mix(scale_min, scale_max, t);
+    }}"#,
+                center.x, center.y, center.z
+            ),
+
+            VertexEffect::FadeByDistance { near, far } => format!(
+                r#"
+    // Fade by distance effect
+    {{
+        let fade_near = {near}f;
+        let fade_far = {far}f;
+        let dist = length(particle_pos);
+        let fade = 1.0 - clamp((dist - fade_near) / (fade_far - fade_near), 0.0, 1.0);
+        color_mod *= fade;
+    }}"#
+            ),
+        }
+    }
+}
+
+/// Combine multiple vertex effects into a single WGSL vertex shader body.
+pub fn combine_vertex_effects(effects: &[VertexEffect], color_expr: &str) -> String {
+    if effects.is_empty() {
+        // Default vertex body when no effects
+        return format!(
+            r#"    let world_pos = vec4<f32>(particle_pos, 1.0);
+    var clip_pos = uniforms.view_proj * world_pos;
+
+    clip_pos.x += quad_pos.x * particle_size * clip_pos.w;
+    clip_pos.y += quad_pos.y * particle_size * clip_pos.w;
+
+    out.clip_position = clip_pos;
+    out.color = {color_expr};
+    out.uv = quad_pos;
+
+    return out;"#
+        );
+    }
+
+    // Generate effect code
+    let effects_code: String = effects.iter().map(|e| e.to_wgsl()).collect();
+
+    format!(
+        r#"    // Initialize effect variables
+    var pos_offset = vec3<f32>(0.0);
+    var rotated_quad = quad_pos;
+    var size_mult = 1.0;
+    var color_mod = {color_expr};
+
+    // Apply vertex effects
+{effects_code}
+
+    // Final transformation
+    let final_pos = particle_pos + pos_offset;
+    let final_size = particle_size * size_mult;
+
+    let world_pos = vec4<f32>(final_pos, 1.0);
+    var clip_pos = uniforms.view_proj * world_pos;
+
+    clip_pos.x += rotated_quad.x * final_size * clip_pos.w;
+    clip_pos.y += rotated_quad.y * final_size * clip_pos.w;
+
+    out.clip_position = clip_pos;
+    out.color = color_mod;
+    out.uv = rotated_quad;
+
+    return out;"#
+    )
+}
