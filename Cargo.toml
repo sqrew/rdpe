@@ -128,3 +128,8 @@ required-features = ["egui"]
 name = "particle_inspector"
 path = "examples/particle_inspector.rs"
 required-features = ["egui"]
+
+[[example]]
+name = "boids"
+path = "examples/boids.rs"
+required-features = ["egui"]

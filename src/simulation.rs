@@ -422,8 +422,8 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// # See Also
     ///
     /// See [`Rule`] for all available rules and their parameters.
-    pub fn with_rule(mut self, rule: Rule) -> Self {
-        self.rules.push(rule);
+    pub fn with_rule(mut self, rule: impl Into<Rule>) -> Self {
+        self.rules.push(rule.into());
         self
     }
 
@@ -1229,6 +1229,12 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Stub for when egui feature is not enabled - provides IDE visibility.
+    #[cfg(not(feature = "egui"))]
+    pub fn with_particle_inspector(self) -> Self {
+        panic!("with_particle_inspector requires the `egui` feature. Enable it in Cargo.toml: rdpe = {{ features = [\"egui\"] }}")
+    }
+
     /// Enable the built-in rule inspector panel.
     ///
     /// Displays an egui window showing all rules and their parameters,
@@ -1255,6 +1261,12 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self.egui_enabled = true;
         self.rule_inspector_enabled = true;
         self
+    }
+
+    /// Stub for when egui feature is not enabled - provides IDE visibility.
+    #[cfg(not(feature = "egui"))]
+    pub fn with_rule_inspector(self) -> Self {
+        panic!("with_rule_inspector requires the `egui` feature. Enable it in Cargo.toml: rdpe = {{ features = [\"egui\"] }}")
     }
 
     /// Check if any rules require neighbor queries

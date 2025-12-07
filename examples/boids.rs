@@ -54,16 +54,16 @@ fn main() {
         })
         // The three classic boids rules
         .with_rule(Rule::Separate {
-            radius: 0.05,   // Avoid neighbors within this distance
-            strength: 5.0,  // How hard to push away
+            radius: 0.05,  // Avoid neighbors within this distance
+            strength: 5.0, // How hard to push away
         })
         .with_rule(Rule::Cohere {
-            radius: 0.15,   // Consider neighbors within this distance
-            strength: 1.0,  // How strongly to move toward center
+            radius: 0.15,  // Consider neighbors within this distance
+            strength: 1.0, // How strongly to move toward center
         })
         .with_rule(Rule::Align {
-            radius: 0.1,    // Match velocity of neighbors within this distance
-            strength: 2.0,  // How quickly to align
+            radius: 0.1,   // Match velocity of neighbors within this distance
+            strength: 2.0, // How quickly to align
         })
         // Keep things stable
         .with_rule(Rule::Drag(2.0))

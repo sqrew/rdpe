@@ -1180,8 +1180,6 @@ impl GpuState {
     where
         F: FnOnce(&egui::Context),
     {
-        use egui_integration::EguiFrameOutput;
-
         self.update_uniforms(time, delta_time, custom_uniform_bytes);
 
         let output = self.surface.get_current_texture()?;

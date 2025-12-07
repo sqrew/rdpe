@@ -4269,6 +4269,250 @@ pub enum Rule {
         /// Output field.
         output: String,
     },
+
+    /// Custom WGSL code with dynamic, editable parameters.
+    ///
+    /// Unlike [`Rule::Custom`], this variant allows you to define parameters
+    /// that can be edited at runtime through the rule inspector. Parameters
+    /// are exposed as uniform values.
+    ///
+    /// # Creating Custom Dynamic Rules
+    ///
+    /// Use the builder pattern for ergonomic parameter declaration:
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::custom_dynamic(r#"
+    ///     p.velocity.y += uniforms.bounce_strength * sin(uniforms.time * uniforms.frequency);
+    ///     p.color = mix(p.color, uniforms.target_color, 0.1);
+    /// "#)
+    ///     .with_param("bounce_strength", 2.0)
+    ///     .with_param("frequency", 3.0)
+    ///     .with_param("target_color", Vec3::new(1.0, 0.5, 0.0))
+    /// )
+    /// ```
+    ///
+    /// # Available Variables
+    ///
+    /// Same as [`Rule::Custom`]:
+    /// - `p` - Current particle (read/write)
+    /// - `index` - Particle index (`u32`)
+    /// - `uniforms.time`, `uniforms.delta_time` - Time values
+    /// - `uniforms.your_param_name` - Your custom parameters
+    ///
+    /// # Parameter Types
+    ///
+    /// Supported parameter types:
+    /// - `f32` - Single float (drag value)
+    /// - `u32`, `i32` - Integers
+    /// - `Vec2`, `Vec3`, `Vec4` - Vectors (shown as x/y/z/w components)
+    CustomDynamic {
+        /// The WGSL code to execute.
+        code: String,
+        /// Named parameters that can be edited at runtime.
+        /// Each parameter becomes `uniforms.rule_N_paramname` in the shader.
+        params: Vec<(String, crate::uniforms::UniformValue)>,
+    },
+
+    /// Custom neighbor WGSL code with dynamic, editable parameters.
+    ///
+    /// Like [`Rule::CustomDynamic`] but runs inside the neighbor iteration loop.
+    /// **Requires spatial hashing.**
+    ///
+    /// # Creating Neighbor Custom Dynamic Rules
+    ///
+    /// ```ignore
+    /// .with_spatial_config(0.2, 32)
+    /// .with_rule(Rule::neighbor_custom_dynamic(r#"
+    ///     if neighbor_dist < uniforms.interact_radius {
+    ///         let force = uniforms.interact_strength / (neighbor_dist + 0.01);
+    ///         p.velocity += neighbor_dir * force * uniforms.delta_time;
+    ///     }
+    /// "#)
+    ///     .with_param("interact_radius", 0.15)
+    ///     .with_param("interact_strength", 2.0)
+    /// )
+    /// ```
+    ///
+    /// # Available Variables
+    ///
+    /// Same as [`Rule::NeighborCustom`]:
+    /// - `p` - Current particle (read/write)
+    /// - `other` - Neighbor particle (read-only)
+    /// - `neighbor_dist` - Distance to neighbor (`f32`)
+    /// - `neighbor_dir` - Unit vector from neighbor to self (`vec3<f32>`)
+    /// - `neighbor_pos` - Neighbor position (`vec3<f32>`)
+    /// - `neighbor_vel` - Neighbor velocity (`vec3<f32>`)
+    /// - `index`, `other_idx` - Particle indices
+    /// - `uniforms.your_param_name` - Your custom parameters
+    NeighborCustomDynamic {
+        /// The WGSL code to execute inside the neighbor loop.
+        code: String,
+        /// Named parameters that can be edited at runtime.
+        params: Vec<(String, crate::uniforms::UniformValue)>,
+    },
+
+    /// Custom collision response with dynamic, editable parameters.
+    ///
+    /// Like [`Rule::OnCollision`] but with editable parameters.
+    /// **Requires spatial hashing.**
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::collision_dynamic(r#"
+    ///     p.velocity += neighbor_dir * uniforms.bounce_force;
+    ///     p.color = uniforms.collision_color;
+    /// "#)
+    ///     .with_param("bounce_force", 5.0)
+    ///     .with_param("collision_color", Vec3::new(1.0, 0.0, 0.0))
+    ///     .with_radius(0.05)
+    /// )
+    /// ```
+    OnCollisionDynamic {
+        /// Collision detection radius.
+        radius: f32,
+        /// The WGSL code to execute on collision.
+        response: String,
+        /// Named parameters that can be edited at runtime.
+        params: Vec<(String, crate::uniforms::UniformValue)>,
+    },
+}
+
+/// Builder for creating custom rules with dynamic parameters.
+///
+/// Use [`Rule::custom_dynamic`] or [`Rule::neighbor_custom_dynamic`] to create.
+#[derive(Clone, Debug)]
+pub struct CustomRuleBuilder {
+    code: String,
+    params: Vec<(String, crate::uniforms::UniformValue)>,
+    kind: CustomRuleKind,
+    radius: Option<f32>,
+}
+
+#[derive(Clone, Debug)]
+enum CustomRuleKind {
+    Custom,
+    Neighbor,
+    Collision,
+}
+
+impl CustomRuleBuilder {
+    fn new(code: impl Into<String>, kind: CustomRuleKind) -> Self {
+        Self {
+            code: code.into(),
+            params: vec![],
+            kind,
+            radius: None,
+        }
+    }
+
+    /// Add a parameter that can be edited at runtime.
+    ///
+    /// The parameter will be accessible in WGSL as `uniforms.rule_N_name`
+    /// where N is the rule index.
+    ///
+    /// # Supported Types
+    ///
+    /// - `f32` - Single float
+    /// - `u32`, `i32` - Integers
+    /// - `Vec2`, `Vec3`, `Vec4` - Vectors
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Rule::custom_dynamic("p.velocity.y += uniforms.strength;")
+    ///     .with_param("strength", 2.0)
+    /// ```
+    pub fn with_param<V: Into<crate::uniforms::UniformValue>>(mut self, name: &str, value: V) -> Self {
+        self.params.push((name.to_string(), value.into()));
+        self
+    }
+
+    /// Set the collision radius (only for collision rules).
+    pub fn with_radius(mut self, radius: f32) -> Self {
+        self.radius = Some(radius);
+        self
+    }
+
+    /// Build the rule. Usually not needed as the builder converts automatically.
+    pub fn build(self) -> Rule {
+        match self.kind {
+            CustomRuleKind::Custom => Rule::CustomDynamic {
+                code: self.code,
+                params: self.params,
+            },
+            CustomRuleKind::Neighbor => Rule::NeighborCustomDynamic {
+                code: self.code,
+                params: self.params,
+            },
+            CustomRuleKind::Collision => Rule::OnCollisionDynamic {
+                radius: self.radius.unwrap_or(0.05),
+                response: self.code,
+                params: self.params,
+            },
+        }
+    }
+}
+
+impl From<CustomRuleBuilder> for Rule {
+    fn from(builder: CustomRuleBuilder) -> Self {
+        builder.build()
+    }
+}
+
+impl Rule {
+    /// Create a custom rule with dynamic, editable parameters.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::custom_dynamic(r#"
+    ///     p.velocity.y += uniforms.bounce * sin(uniforms.time);
+    /// "#)
+    ///     .with_param("bounce", 2.0)
+    /// )
+    /// ```
+    pub fn custom_dynamic(code: impl Into<String>) -> CustomRuleBuilder {
+        CustomRuleBuilder::new(code, CustomRuleKind::Custom)
+    }
+
+    /// Create a neighbor custom rule with dynamic, editable parameters.
+    ///
+    /// **Requires spatial hashing.**
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::neighbor_custom_dynamic(r#"
+    ///     if neighbor_dist < uniforms.radius {
+    ///         p.velocity += neighbor_dir * uniforms.force;
+    ///     }
+    /// "#)
+    ///     .with_param("radius", 0.2)
+    ///     .with_param("force", 1.5)
+    /// )
+    /// ```
+    pub fn neighbor_custom_dynamic(code: impl Into<String>) -> CustomRuleBuilder {
+        CustomRuleBuilder::new(code, CustomRuleKind::Neighbor)
+    }
+
+    /// Create a collision rule with dynamic, editable parameters.
+    ///
+    /// **Requires spatial hashing.**
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::collision_dynamic(r#"
+    ///     p.velocity += neighbor_dir * uniforms.bounce;
+    /// "#)
+    ///     .with_param("bounce", 3.0)
+    ///     .with_radius(0.05)
+    /// )
+    /// ```
+    pub fn collision_dynamic(code: impl Into<String>) -> CustomRuleBuilder {
+        CustomRuleBuilder::new(code, CustomRuleKind::Collision)
+    }
 }
 
 impl Rule {
@@ -4738,6 +4982,9 @@ impl Rule {
             ),
 
             Rule::Custom(code) => format!("    // Custom rule\n{}", code),
+
+            // CustomDynamic uses static values when not using rule inspector
+            Rule::CustomDynamic { code, .. } => format!("    // Custom rule (dynamic)\n{}", code),
 
             Rule::OnCondition { condition, action } => format!(
                 r#"    // OnCondition
@@ -5777,8 +6024,10 @@ impl Rule {
             | Rule::Signal { .. }
             | Rule::Absorb { .. }
             | Rule::NeighborCustom(_)
+            | Rule::NeighborCustomDynamic { .. }
+            | Rule::OnCollisionDynamic { .. }
             | Rule::OnDeath { .. }
-            | Rule::OnSpawn { .. } => String::new(), // OnDeath/OnSpawn handled specially
+            | Rule::OnSpawn { .. } => String::new(), // OnDeath/OnSpawn/neighbor rules handled separately
 
             Rule::Deposit { field_index, source, amount } => format!(
                 r#"    // Deposit: write particle value to field
@@ -6098,6 +6347,21 @@ impl Rule {
                 code
             ),
 
+            // Dynamic neighbor rules - static fallback (uses hardcoded param values)
+            Rule::NeighborCustomDynamic { code, .. } => format!(
+                "            // Custom neighbor rule (dynamic)\n{}",
+                code
+            ),
+
+            Rule::OnCollisionDynamic { radius, response, .. } => format!(
+                r#"            // Custom collision response (dynamic)
+            if neighbor_dist < {radius} && neighbor_dist > 0.0001 {{
+                let overlap = {radius} - neighbor_dist;
+                let rel_vel = dot(neighbor_vel - p.velocity, neighbor_dir);
+{response}
+            }}"#
+            ),
+
             Rule::Diffuse { field, radius, .. } => format!(
                 r#"            // Diffuse: accumulate neighbor values
             if neighbor_dist < {radius} {{
@@ -6389,9 +6653,12 @@ impl Rule {
             Rule::ScaleBySpeed { .. } => "Scale By Speed",
             Rule::Custom(_) => "Custom",
             Rule::NeighborCustom(_) => "Neighbor Custom",
+            Rule::CustomDynamic { .. } => "Custom (Dynamic)",
+            Rule::NeighborCustomDynamic { .. } => "Neighbor Custom (Dynamic)",
             Rule::OnDeath { .. } => "On Death",
             Rule::OnSpawn { .. } => "On Spawn",
             Rule::OnCollision { .. } => "On Collision",
+            Rule::OnCollisionDynamic { .. } => "On Collision (Dynamic)",
             Rule::State { .. } => "State",
             Rule::Agent { .. } => "Agent",
             Rule::Signal { .. } => "Signal",
@@ -6656,6 +6923,22 @@ impl Rule {
                 (format!("{}_hub_length", prefix), UniformValue::F32(*hub_length)),
                 (format!("{}_ring_length", prefix), UniformValue::F32(*ring_length)),
             ],
+            // Dynamic custom rules - extract user-defined params
+            Rule::CustomDynamic { params, .. } |
+            Rule::NeighborCustomDynamic { params, .. } => {
+                params.iter().map(|(name, value)| {
+                    (format!("{}_{}", prefix, name), value.clone())
+                }).collect()
+            },
+            Rule::OnCollisionDynamic { radius, params, .. } => {
+                let mut result: Vec<(String, UniformValue)> = vec![
+                    (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                ];
+                result.extend(params.iter().map(|(name, value)| {
+                    (format!("{}_{}", prefix, name), value.clone())
+                }));
+                result
+            },
             // Rules with no numeric params or complex types (strings, closures, etc.)
             // Use catch-all to handle any remaining rules not explicitly matched
             _ => vec![],
@@ -7020,8 +7303,128 @@ impl Rule {
     }}"#
                 )
             },
+            // Dynamic custom rules - transform param references to use rule prefix
+            Rule::CustomDynamic { code, params } => {
+                let mut transformed_code = code.clone();
+                // Replace uniforms.param_name with uniforms.rule_N_param_name
+                for (param_name, _) in params {
+                    transformed_code = transformed_code.replace(
+                        &format!("uniforms.{}", param_name),
+                        &format!("uniforms.{}_{}", prefix, param_name)
+                    );
+                }
+                format!("    // Custom (dynamic)\n{}", transformed_code)
+            },
+            // NeighborCustomDynamic is handled by neighbor_rule_wgsl_dynamic
+            // but we need a placeholder here
+            Rule::NeighborCustomDynamic { .. } => String::new(),
+            // OnCollisionDynamic is handled by neighbor_rule_wgsl_dynamic
+            Rule::OnCollisionDynamic { .. } => String::new(),
             // Fall back to static for complex rules or rules without dynamic support
             _ => self.to_wgsl(bounds),
+        }
+    }
+
+    /// Generate dynamic WGSL code for neighbor rules.
+    ///
+    /// Similar to `neighbor_rule_wgsl` but reads parameters from uniforms
+    /// for runtime editing through the rule inspector.
+    pub fn neighbor_rule_wgsl_dynamic(&self, index: usize) -> String {
+        let prefix = format!("rule_{}", index);
+
+        match self {
+            Rule::NeighborCustomDynamic { code, params } => {
+                let mut transformed_code = code.clone();
+                // Replace uniforms.param_name with uniforms.rule_N_param_name
+                for (param_name, _) in params {
+                    transformed_code = transformed_code.replace(
+                        &format!("uniforms.{}", param_name),
+                        &format!("uniforms.{}_{}", prefix, param_name)
+                    );
+                }
+                transformed_code
+            },
+            Rule::OnCollisionDynamic { response, params, .. } => {
+                let mut transformed_code = response.clone();
+                // Replace uniforms.param_name with uniforms.rule_N_param_name
+                for (param_name, _) in params {
+                    transformed_code = transformed_code.replace(
+                        &format!("uniforms.{}", param_name),
+                        &format!("uniforms.{}_{}", prefix, param_name)
+                    );
+                }
+                format!(
+                    r#"if neighbor_dist < uniforms.{prefix}_radius {{
+        let overlap = uniforms.{prefix}_radius - neighbor_dist;
+        let rel_vel = dot(p.velocity - neighbor_vel, neighbor_dir);
+        {transformed_code}
+    }}"#
+                )
+            },
+            // For other neighbor rules, use dynamic versions if available
+            Rule::Separate { .. } => format!(
+                r#"if neighbor_dist < uniforms.{prefix}_radius && neighbor_dist > 0.001 {{
+        let repel_force = (uniforms.{prefix}_radius - neighbor_dist) / uniforms.{prefix}_radius;
+        p.velocity += neighbor_dir * repel_force * uniforms.{prefix}_strength * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Cohere { .. } => format!(
+                r#"if neighbor_dist < uniforms.{prefix}_radius {{
+        cohere_sum += neighbor_pos;
+        cohere_count += 1.0;
+    }}"#
+            ),
+            Rule::Align { .. } => format!(
+                r#"if neighbor_dist < uniforms.{prefix}_radius {{
+        align_sum += neighbor_vel;
+        align_count += 1.0;
+    }}"#
+            ),
+            Rule::Collide { .. } => format!(
+                r#"if neighbor_dist < uniforms.{prefix}_radius && neighbor_dist > 0.001 {{
+        let overlap = uniforms.{prefix}_radius - neighbor_dist;
+        let rel_vel = dot(p.velocity - neighbor_vel, neighbor_dir);
+        if rel_vel < 0.0 {{
+            p.velocity -= neighbor_dir * rel_vel * (1.0 + uniforms.{prefix}_restitution) * 0.5;
+        }}
+        p.position += neighbor_dir * overlap * 0.5;
+    }}"#
+            ),
+            Rule::Avoid { .. } => format!(
+                r#"if neighbor_dist < uniforms.{prefix}_radius && neighbor_dist > 0.001 {{
+        let urgency = 1.0 - neighbor_dist / uniforms.{prefix}_radius;
+        let tangent = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), neighbor_dir));
+        p.velocity += tangent * urgency * uniforms.{prefix}_strength * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Viscosity { .. } => format!(
+                r#"if neighbor_dist < uniforms.{prefix}_radius {{
+        let weight = 1.0 - neighbor_dist / uniforms.{prefix}_radius;
+        p.velocity = mix(p.velocity, neighbor_vel, weight * uniforms.{prefix}_strength * uniforms.delta_time);
+    }}"#
+            ),
+            Rule::Pressure { .. } => format!(
+                r#"if neighbor_dist < uniforms.{prefix}_radius {{
+        pressure_density += 1.0;
+    }}"#
+            ),
+            Rule::Chase { .. } => format!(
+                r#"if p.particle_type == uniforms.{prefix}_self_type && other.particle_type == uniforms.{prefix}_target_type {{
+        if neighbor_dist < uniforms.{prefix}_radius && (chase_dist < 0.0 || neighbor_dist < chase_dist) {{
+            chase_dist = neighbor_dist;
+            chase_dir = -neighbor_dir;
+        }}
+    }}"#
+            ),
+            Rule::Evade { .. } => format!(
+                r#"if p.particle_type == uniforms.{prefix}_self_type && other.particle_type == uniforms.{prefix}_threat_type {{
+        if neighbor_dist < uniforms.{prefix}_radius && (evade_dist < 0.0 || neighbor_dist < evade_dist) {{
+            evade_dist = neighbor_dist;
+            evade_dir = neighbor_dir;
+        }}
+    }}"#
+            ),
+            _ => self.to_neighbor_wgsl(),
         }
     }
 }

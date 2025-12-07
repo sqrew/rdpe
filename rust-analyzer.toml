@@ -1,0 +1,4 @@
+[cargo]
+# Enable egui feature for full API visibility (inspector methods, etc.)
+features = ["egui"]
+allTargets = true

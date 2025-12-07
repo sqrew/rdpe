@@ -150,5 +150,7 @@ fn main() {
             v.blend_mode(BlendMode::Additive);
         })
         .with_rule(Rule::BounceWalls)
+        .with_rule_inspector()
+        .with_particle_inspector()
         .run();
 }

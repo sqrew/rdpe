@@ -150,5 +150,7 @@ fn main() {
             v.background(Vec3::new(0.2, 0.3, 0.2)); // Earthy green
             v.blend_mode(BlendMode::Additive);
         })
+        .with_rule_inspector()
+        .with_particle_inspector()
         .run();
 }

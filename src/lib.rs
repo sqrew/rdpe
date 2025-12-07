@@ -126,7 +126,7 @@ pub use gpu::VolumeConfig;
 pub use interactions::InteractionMatrix;
 pub use lifecycle::Lifecycle;
 pub use rdpe_derive::{MultiParticle, Particle, ParticleType};
-pub use rules::{AgentState, Falloff, Rule, Transition};
+pub use rules::{AgentState, CustomRuleBuilder, Falloff, Rule, Transition};
 pub use simulation::Simulation;
 pub use spawn::SpawnContext;
 pub use sub_emitter::{SpawnTrigger, SubEmitter};
@@ -262,7 +262,7 @@ pub mod prelude {
     pub use crate::input::{Input, KeyCode, MouseButton};
     pub use crate::interactions::InteractionMatrix;
     pub use crate::lifecycle::Lifecycle;
-    pub use crate::rules::{AgentState, Falloff, Rule, Transition};
+    pub use crate::rules::{AgentState, CustomRuleBuilder, Falloff, Rule, Transition};
     pub use crate::simulation::Simulation;
     pub use crate::spawn::SpawnContext;
     pub use crate::sub_emitter::{SpawnTrigger, SubEmitter};
