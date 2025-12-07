@@ -1,0 +1,43 @@
+{
+  "name": "Untitled",
+  "particle_count": 1100,
+  "bounds": 2.5,
+  "particle_size": 0.023,
+  "spatial_cell_size": 0.1,
+  "spatial_resolution": 32,
+  "spawn": {
+    "shape": {
+      "Cube": {
+        "size": 0.5
+      }
+    },
+    "velocity": {
+      "Inward": {
+        "speed": 1.0
+      }
+    },
+    "mass_range": [
+      1.0,
+      1.0
+    ],
+    "energy_range": [
+      1.0,
+      1.0
+    ],
+    "color_mode": {
+      "RandomHue": {
+        "saturation": 0.8,
+        "value": 0.9
+      }
+    }
+  },
+  "rules": [
+    {
+      "Separate": {
+        "radius": 0.16,
+        "strength": 11.5
+      }
+    },
+    "BounceWalls"
+  ]
+}

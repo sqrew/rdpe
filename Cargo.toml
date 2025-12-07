@@ -10,7 +10,7 @@ members = [".", "rdpe-derive"]
 
 [features]
 default = []
-egui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
+egui = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit", "dep:eframe"]
 
 [dependencies]
 bytemuck = { version = "1.24.0", features = ["derive"] }
@@ -18,6 +18,9 @@ glam = { version = "0.29", features = ["bytemuck"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 pollster = "0.4"
 rand = { version = "0.8", features = ["small_rng"] }
+getrandom = { version = "0.2", features = ["js"] }  # wasm support
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 wgpu = "24.0"
 winit = "0.30.12"
 rdpe-derive = { path = "rdpe-derive" }
@@ -26,6 +29,7 @@ rdpe-derive = { path = "rdpe-derive" }
 egui = { version = "0.31", optional = true }
 egui-wgpu = { version = "0.31", optional = true }
 egui-winit = { version = "0.31", optional = true }
+eframe = { version = "0.31", optional = true }
 
 [dev-dependencies]
 criterion = "0.5"
@@ -132,4 +136,19 @@ required-features = ["egui"]
 [[example]]
 name = "boids"
 path = "examples/boids.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "meta_editor"
+path = "examples/meta_editor.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "editor"
+path = "examples/editor.rs"
+required-features = ["egui"]
+
+[[example]]
+name = "meta_sim"
+path = "examples/meta_sim.rs"
 required-features = ["egui"]

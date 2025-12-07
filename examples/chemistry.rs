@@ -32,10 +32,10 @@ struct Atom {
     #[color]
     color: Vec3,
     particle_type: u32,
-    energy: f32,     // kinetic energy proxy / temperature
-    charge: f32,     // slight charge for electromagnetic effects
-    mass: f32,       // affects how forces move it
-    bonds: f32,      // how many bonds this atom has (affects reactivity)
+    energy: f32, // kinetic energy proxy / temperature
+    charge: f32, // slight charge for electromagnetic effects
+    mass: f32,   // affects how forces move it
+    bonds: f32,  // how many bonds this atom has (affects reactivity)
 }
 
 fn main() {
@@ -55,7 +55,7 @@ fn main() {
 
             // Distribute elements: 50% H, 25% O, 15% N, 10% C
             let (element, color, mass, charge) = match i % 20 {
-                0..=9 => (HYDROGEN, Vec3::new(1.0, 1.0, 0.8), 1.0, 0.1),   // H - light, slight positive
+                0..=9 => (HYDROGEN, Vec3::new(1.0, 1.0, 0.8), 1.0, 0.1), // H - light, slight positive
                 10..=14 => (OXYGEN, Vec3::new(1.0, 0.3, 0.2), 16.0, -0.2), // O - heavy, slight negative
                 15..=17 => (NITROGEN, Vec3::new(0.3, 0.5, 1.0), 14.0, 0.0), // N - inert
                 _ => (CARBON, Vec3::new(0.4, 0.4, 0.4), 12.0, 0.0),        // C - neutral
@@ -84,7 +84,6 @@ fn main() {
         .with_bounds(1.0)
         .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         .with_spatial_config(0.15, 32)
-
         // === REACTIONS ===
         // Hydrogen + Oxygen → Water (with probability)
         .with_rule(Rule::Convert {
@@ -94,87 +93,103 @@ fn main() {
             radius: 0.03,
             probability: 0.002,
         })
-
         // === INTER-ELEMENT FORCES ===
-
         // Hydrogen attracts Oxygen (wants to bond)
         .with_rule(Rule::Typed {
             self_type: HYDROGEN,
             other_type: Some(OXYGEN),
-            rule: Box::new(Rule::NeighborCustom(r#"
+            rule: Box::new(Rule::NeighborCustom(
+                r#"
                 if neighbor_dist < 0.15 && neighbor_dist > 0.02 {
                     let attract = 0.8 / (neighbor_dist * neighbor_dist + 0.01);
                     p.velocity += neighbor_dir * attract * uniforms.delta_time;
                 }
-            "#.into())),
+            "#
+                .into(),
+            )),
         })
-
         // Oxygen attracts Hydrogen (mutual)
         .with_rule(Rule::Typed {
             self_type: OXYGEN,
             other_type: Some(HYDROGEN),
-            rule: Box::new(Rule::NeighborCustom(r#"
+            rule: Box::new(Rule::NeighborCustom(
+                r#"
                 if neighbor_dist < 0.15 && neighbor_dist > 0.02 {
                     let attract = 0.3 / (neighbor_dist * neighbor_dist + 0.01);
                     p.velocity += neighbor_dir * attract * uniforms.delta_time;
                 }
-            "#.into())),
+            "#
+                .into(),
+            )),
         })
-
         // Nitrogen clusters with itself (N2)
         .with_rule(Rule::Typed {
             self_type: NITROGEN,
             other_type: Some(NITROGEN),
-            rule: Box::new(Rule::Cohere { radius: 0.12, strength: 1.5 }),
+            rule: Box::new(Rule::Cohere {
+                radius: 0.12,
+                strength: 1.5,
+            }),
         })
-
         // Carbon attracts everything weakly
         .with_rule(Rule::Typed {
             self_type: CARBON,
             other_type: Some(HYDROGEN),
-            rule: Box::new(Rule::Cohere { radius: 0.1, strength: 0.8 }),
+            rule: Box::new(Rule::Cohere {
+                radius: 0.1,
+                strength: 0.8,
+            }),
         })
         .with_rule(Rule::Typed {
             self_type: CARBON,
             other_type: Some(OXYGEN),
-            rule: Box::new(Rule::Cohere { radius: 0.1, strength: 0.8 }),
+            rule: Box::new(Rule::Cohere {
+                radius: 0.1,
+                strength: 0.8,
+            }),
         })
         .with_rule(Rule::Typed {
             self_type: CARBON,
             other_type: Some(NITROGEN),
-            rule: Box::new(Rule::Cohere { radius: 0.1, strength: 0.5 }),
+            rule: Box::new(Rule::Cohere {
+                radius: 0.1,
+                strength: 0.5,
+            }),
         })
-
         // Water molecules attract each other (surface tension)
         .with_rule(Rule::Typed {
             self_type: WATER,
             other_type: Some(WATER),
-            rule: Box::new(Rule::Cohere { radius: 0.15, strength: 2.0 }),
+            rule: Box::new(Rule::Cohere {
+                radius: 0.15,
+                strength: 2.0,
+            }),
         })
-
         // === UNIVERSAL FORCES ===
-
         // Everything repels at very close range (electron shells)
-        .with_rule(Rule::Separate { radius: 0.025, strength: 3.0 })
-
+        .with_rule(Rule::Separate {
+            radius: 0.025,
+            strength: 3.0,
+        })
         // Charge-based attraction/repulsion
-        .with_rule(Rule::NeighborCustom(r#"
+        .with_rule(Rule::NeighborCustom(
+            r#"
             if neighbor_dist < 0.12 && neighbor_dist > 0.01 {
                 let force = -p.charge * other.charge / (neighbor_dist * neighbor_dist + 0.001);
                 p.velocity += neighbor_dir * force * 0.5 * uniforms.delta_time;
             }
-        "#.into()))
-
+        "#
+            .into(),
+        ))
         // === ENERGY / TEMPERATURE ===
-
         // Energy affects movement (temperature)
         .with_rule(Rule::Wander {
             strength: 0.3,
             frequency: 3.0,
         })
-
         // Reaction products get energy boost (exothermic)
-        .with_rule(Rule::Custom(r#"
+        .with_rule(Rule::Custom(
+            r#"
             if p.particle_type == 4u { // Water
                 // Newly formed water gets a speed boost
                 if p.bonds < 0.5 {
@@ -183,16 +198,19 @@ fn main() {
                     p.energy = 1.0;
                 }
             }
-        "#.into()))
-
+        "#
+            .into(),
+        ))
         // Energy slowly equalizes (heat dissipation)
-        .with_rule(Rule::Custom(r#"
+        .with_rule(Rule::Custom(
+            r#"
             p.energy = mix(p.energy, 0.5, 0.1 * uniforms.delta_time);
-        "#.into()))
-
+        "#
+            .into(),
+        ))
         // === COLORING ===
-
-        .with_rule(Rule::Custom(r#"
+        .with_rule(Rule::Custom(
+            r#"
             // Base colors by type
             if p.particle_type == 0u { // Hydrogen
                 p.color = vec3<f32>(1.0, 1.0, 0.7);
@@ -212,25 +230,28 @@ fn main() {
             // Speed adds brightness
             let speed = length(p.velocity);
             p.color += vec3<f32>(speed * 0.3);
-        "#.into()))
-
+        "#
+            .into(),
+        ))
         // === PHYSICS ===
-
         // Mass affects movement (heavier = slower response)
-        .with_rule(Rule::Custom(r#"
+        .with_rule(Rule::Custom(
+            r#"
             // Scale velocity changes by inverse mass
             let inv_mass = 1.0 / max(p.mass, 0.1);
             // Lighter atoms are faster
             p.velocity *= mix(1.0, inv_mass * 4.0, 0.02);
-        "#.into()))
-
+        "#
+            .into(),
+        ))
         .with_rule(Rule::Drag(1.2))
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 1.2 })
         .with_rule(Rule::BounceWalls)
-
         .with_visuals(|v| {
             v.blend_mode(BlendMode::Additive);
             v.background(Vec3::new(0.01, 0.01, 0.02));
         })
+        .with_rule_inspector()
+        .with_particle_inspector()
         .run();
 }

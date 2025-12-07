@@ -161,5 +161,7 @@ fn main() {
             v.connections(0.05);
             v.shape(ParticleShape::Star);
         })
+        .with_rule_inspector()
+        .with_particle_inspector()
         .run();
 }
