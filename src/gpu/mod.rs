@@ -27,7 +27,7 @@ pub use wireframe::WireframeState;
 
 use crate::field::FieldRegistry;
 #[cfg(feature = "egui")]
-use crate::selection::{SelectedParticle, SelectedParticleData};
+use crate::selection::{PendingParticleWrite, SelectedParticle, SelectedParticleData};
 
 #[cfg(feature = "egui")]
 pub use egui_integration::EguiIntegration;
@@ -243,7 +243,7 @@ impl GpuState {
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
             contents: particle_data,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
         });
 
         let camera = Camera::new();
@@ -1190,7 +1190,7 @@ impl GpuState {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Process egui frame before creating encoder
-        let egui_output: Option<EguiFrameOutput> = if let Some(ref mut egui) = self.egui {
+        let egui_output_and_write = if let Some(ref mut egui) = self.egui {
             egui.begin_frame(&self.window);
             // Store selection in egui's data for the callback to access
             let selected = self.picking.selected_particle;
@@ -1200,9 +1200,27 @@ impl GpuState {
                 d.insert_temp(egui::Id::NULL, SelectedParticleData(selected_data));
             });
             ui_callback(&egui.ctx);
-            Some(egui.end_frame(&self.window))
+
+            // Check for pending particle writes (will apply after compute pass)
+            let pending_write = egui.ctx.data(|d| {
+                d.get_temp::<PendingParticleWrite>(egui::Id::NULL)
+            });
+            if pending_write.is_some() {
+                // Clear the pending write from egui data
+                egui.ctx.data_mut(|d| {
+                    d.insert_temp(egui::Id::NULL, PendingParticleWrite(None));
+                });
+            }
+
+            Some((egui.end_frame(&self.window), pending_write))
         } else {
             None
+        };
+
+        // Extract egui output and pending write from the tuple
+        let (egui_output, pending_particle_write) = match egui_output_and_write {
+            Some((output, write)) => (Some(output), write),
+            None => (None, None),
         };
 
         let screen_descriptor = egui_wgpu::ScreenDescriptor {
@@ -1284,6 +1302,13 @@ impl GpuState {
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Apply pending particle write AFTER compute pass (so edits aren't overwritten)
+        #[cfg(feature = "egui")]
+        if let Some(PendingParticleWrite(Some((idx, bytes)))) = pending_particle_write {
+            let offset = (idx as usize) * self.particle_stride;
+            self.queue.write_buffer(&self.particle_buffer, offset as u64, &bytes);
         }
 
         // Sub-emitter spawn pass (spawn children from death events)

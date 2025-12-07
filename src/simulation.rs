@@ -177,6 +177,9 @@ pub struct Simulation<P: ParticleTrait> {
     /// Whether the built-in particle inspector is enabled.
     #[cfg(feature = "egui")]
     inspector_enabled: bool,
+    /// Whether the built-in rule inspector is enabled.
+    #[cfg(feature = "egui")]
+    rule_inspector_enabled: bool,
     /// Phantom data for the particle type.
     _phantom: PhantomData<P>,
 }
@@ -225,6 +228,8 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             ui_callback: None,
             #[cfg(feature = "egui")]
             inspector_enabled: false,
+            #[cfg(feature = "egui")]
+            rule_inspector_enabled: false,
             _phantom: PhantomData,
         }
     }
@@ -1224,6 +1229,34 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Enable the built-in rule inspector panel.
+    ///
+    /// Displays an egui window showing all rules and their parameters,
+    /// allowing live editing of rule values at runtime.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Ball>::new()
+    ///     .with_rule(Rule::Gravity(9.8))
+    ///     .with_rule(Rule::Drag(0.5))
+    ///     .with_rule_inspector()  // Live-edit gravity, drag, etc.
+    ///     .run();
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Rule values are stored in a uniform buffer and can be adjusted
+    /// without recompiling the shader. Changes take effect immediately.
+    ///
+    /// Requires the `egui` feature to be enabled.
+    #[cfg(feature = "egui")]
+    pub fn with_rule_inspector(mut self) -> Self {
+        self.egui_enabled = true;
+        self.rule_inspector_enabled = true;
+        self
+    }
+
     /// Check if any rules require neighbor queries
     fn has_neighbor_rules(&self) -> bool {
         self.rules.iter().any(|r| r.requires_neighbors()) || self.interaction_matrix.is_some()
@@ -1231,18 +1264,36 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
 
     /// Generate the compute shader WGSL code.
     fn generate_compute_shader(&self) -> String {
+        self.generate_compute_shader_impl(false)
+    }
+
+    /// Generate the compute shader WGSL code with dynamic rule params.
+    #[cfg(feature = "egui")]
+    fn generate_compute_shader_dynamic(&self) -> String {
+        self.generate_compute_shader_impl(true)
+    }
+
+    /// Generate the compute shader WGSL code (implementation).
+    fn generate_compute_shader_impl(&self, dynamic_rules: bool) -> String {
         let extra_wgsl = P::EXTRA_WGSL;
         let particle_struct = P::WGSL_STRUCT;
         let has_neighbors = self.has_neighbor_rules();
         let has_sub_emitters = !self.sub_emitters.is_empty();
 
 
-        // Generate non-neighbor rules
+        // Generate non-neighbor rules (static or dynamic)
         let simple_rules_code: String = self
             .rules
             .iter()
-            .filter(|r| !r.requires_neighbors())
-            .map(|r| r.to_wgsl(self.bounds))
+            .enumerate()
+            .filter(|(_, r)| !r.requires_neighbors())
+            .map(|(i, r)| {
+                if dynamic_rules {
+                    r.to_wgsl_dynamic(i, self.bounds)
+                } else {
+                    r.to_wgsl(self.bounds)
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n\n");
 
@@ -1922,7 +1973,24 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 
         let has_neighbors = self.has_neighbor_rules();
 
-        // Generate shaders before moving self
+        // If rule inspector is enabled, add all rule params to custom uniforms
+        #[cfg(feature = "egui")]
+        if self.rule_inspector_enabled {
+            for (i, rule) in self.rules.iter().enumerate() {
+                for (name, value) in rule.params(i) {
+                    self.custom_uniforms.set(&name, value);
+                }
+            }
+        }
+
+        // Generate shaders before moving self (uses dynamic rules if inspector enabled)
+        #[cfg(feature = "egui")]
+        let compute_shader = if self.rule_inspector_enabled {
+            self.generate_compute_shader_dynamic()
+        } else {
+            self.generate_compute_shader()
+        };
+        #[cfg(not(feature = "egui"))]
         let compute_shader = self.generate_compute_shader();
         let render_shader = self.generate_render_shader();
 
@@ -1977,6 +2045,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             self.update_callback,
             self.ui_callback,
             self.inspector_enabled,
+            self.rule_inspector_enabled,
+            self.rules,
         );
         #[cfg(not(feature = "egui"))]
         let mut app = App::<P>::new(
@@ -2062,6 +2132,10 @@ struct App<P: ParticleTrait> {
     ui_callback: Option<UiCallback>,
     #[cfg(feature = "egui")]
     inspector_enabled: bool,
+    #[cfg(feature = "egui")]
+    rule_inspector_enabled: bool,
+    #[cfg(feature = "egui")]
+    rules: Vec<Rule>,
     // Time tracking (single source of truth)
     time: Time,
     // Grid opacity change requested by update callback (None = no change)
@@ -2078,6 +2152,8 @@ impl<P: ParticleTrait + 'static> App<P> {
         update_callback: Option<UpdateCallback>,
         #[cfg(feature = "egui")] ui_callback: Option<UiCallback>,
         #[cfg(feature = "egui")] inspector_enabled: bool,
+        #[cfg(feature = "egui")] rule_inspector_enabled: bool,
+        #[cfg(feature = "egui")] rules: Vec<Rule>,
     ) -> Self {
         // Convert user particles to GPU format
         let mut gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
@@ -2109,6 +2185,10 @@ impl<P: ParticleTrait + 'static> App<P> {
             ui_callback,
             #[cfg(feature = "egui")]
             inspector_enabled,
+            #[cfg(feature = "egui")]
+            rule_inspector_enabled,
+            #[cfg(feature = "egui")]
+            rules,
             time: Time::new(),
             pending_grid_opacity: None,
             readback_data: None,
@@ -2325,17 +2405,24 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                     #[cfg(feature = "egui")]
                     let result = {
                         let inspector_enabled = self.inspector_enabled;
+                        let rule_inspector_enabled = self.rule_inspector_enabled;
                         let ui_callback = &mut self.ui_callback;
-                        let has_ui = ui_callback.is_some() || inspector_enabled;
+                        let rules = &self.rules;
+                        let custom_uniforms = &mut self.custom_uniforms;
+                        let has_ui = ui_callback.is_some() || inspector_enabled || rule_inspector_enabled;
                         if has_ui {
                             gpu_state.render_with_ui(time, delta_time, bytes_ref, |ctx| {
                                 // Call user UI callback if present
                                 if let Some(ref mut ui_cb) = ui_callback {
                                     ui_cb(ctx);
                                 }
-                                // Render built-in inspector if enabled
+                                // Render built-in particle inspector if enabled
                                 if inspector_enabled {
                                     render_particle_inspector::<P>(ctx);
+                                }
+                                // Render built-in rule inspector if enabled
+                                if rule_inspector_enabled {
+                                    render_rule_inspector(ctx, rules, custom_uniforms);
                                 }
                             })
                         } else {
@@ -2375,33 +2462,210 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
     }
 }
 
+/// Render the built-in rule inspector panel.
+///
+/// This is called automatically when `.with_rule_inspector()` is enabled.
+/// Allows live editing of rule parameters without shader recompilation.
+#[cfg(feature = "egui")]
+fn render_rule_inspector(
+    ctx: &egui::Context,
+    rules: &[Rule],
+    custom_uniforms: &mut CustomUniforms,
+) {
+    use crate::uniforms::UniformValue;
+
+    egui::Window::new("Rule Inspector")
+        .default_pos([10.0, 300.0])
+        .default_width(320.0)
+        .show(ctx, |ui| {
+            if rules.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(150, 150, 150),
+                    "No rules configured",
+                );
+                return;
+            }
+
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (index, rule) in rules.iter().enumerate() {
+                    let params = rule.params(index);
+
+                    // Skip rules with no editable params
+                    if params.is_empty() {
+                        // Still show the rule name but grayed out
+                        ui.add_enabled(false, egui::Label::new(
+                            egui::RichText::new(format!("{}. {}", index, rule.display_name()))
+                                .color(egui::Color32::from_rgb(100, 100, 100))
+                        ));
+                        continue;
+                    }
+
+                    // Collapsible section for each rule
+                    egui::CollapsingHeader::new(format!("{}. {}", index, rule.display_name()))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.indent(format!("rule_{}_indent", index), |ui| {
+                                for (param_name, _) in params {
+                                    // Get the current value from custom_uniforms
+                                    if let Some(value) = custom_uniforms.get(&param_name) {
+                                        // Extract just the parameter name (after rule_X_)
+                                        let display_name = param_name
+                                            .strip_prefix(&format!("rule_{}_", index))
+                                            .unwrap_or(&param_name);
+
+                                        match value {
+                                            UniformValue::F32(v) => {
+                                                let mut val = *v;
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("{}:", display_name));
+                                                    if ui.add(
+                                                        egui::DragValue::new(&mut val)
+                                                            .speed(0.01)
+                                                            .range(-1000.0..=1000.0)
+                                                    ).changed() {
+                                                        custom_uniforms.set(&param_name, val);
+                                                    }
+                                                });
+                                            }
+                                            UniformValue::U32(v) => {
+                                                let mut val = *v as i32;
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("{}:", display_name));
+                                                    if ui.add(
+                                                        egui::DragValue::new(&mut val)
+                                                            .speed(0.1)
+                                                            .range(0..=1000)
+                                                    ).changed() {
+                                                        custom_uniforms.set(&param_name, val.max(0) as u32);
+                                                    }
+                                                });
+                                            }
+                                            UniformValue::I32(v) => {
+                                                let mut val = *v;
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("{}:", display_name));
+                                                    if ui.add(
+                                                        egui::DragValue::new(&mut val)
+                                                            .speed(0.1)
+                                                            .range(-1000..=1000)
+                                                    ).changed() {
+                                                        custom_uniforms.set(&param_name, val);
+                                                    }
+                                                });
+                                            }
+                                            UniformValue::Vec2(v) => {
+                                                let mut x = v.x;
+                                                let mut y = v.y;
+                                                let mut changed = false;
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("{}:", display_name));
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("  x:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut x).speed(0.01)
+                                                    ).changed();
+                                                    ui.label("y:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut y).speed(0.01)
+                                                    ).changed();
+                                                });
+                                                if changed {
+                                                    custom_uniforms.set(&param_name, glam::Vec2::new(x, y));
+                                                }
+                                            }
+                                            UniformValue::Vec3(v) => {
+                                                let mut x = v.x;
+                                                let mut y = v.y;
+                                                let mut z = v.z;
+                                                let mut changed = false;
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("{}:", display_name));
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("  x:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut x).speed(0.01)
+                                                    ).changed();
+                                                    ui.label("y:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut y).speed(0.01)
+                                                    ).changed();
+                                                    ui.label("z:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut z).speed(0.01)
+                                                    ).changed();
+                                                });
+                                                if changed {
+                                                    custom_uniforms.set(&param_name, glam::Vec3::new(x, y, z));
+                                                }
+                                            }
+                                            UniformValue::Vec4(v) => {
+                                                let mut x = v.x;
+                                                let mut y = v.y;
+                                                let mut z = v.z;
+                                                let mut w = v.w;
+                                                let mut changed = false;
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("{}:", display_name));
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("  x:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut x).speed(0.01)
+                                                    ).changed();
+                                                    ui.label("y:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut y).speed(0.01)
+                                                    ).changed();
+                                                });
+                                                ui.horizontal(|ui| {
+                                                    ui.label("  z:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut z).speed(0.01)
+                                                    ).changed();
+                                                    ui.label("w:");
+                                                    changed |= ui.add(
+                                                        egui::DragValue::new(&mut w).speed(0.01)
+                                                    ).changed();
+                                                });
+                                                if changed {
+                                                    custom_uniforms.set(&param_name, glam::Vec4::new(x, y, z, w));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                }
+            });
+        });
+}
+
 /// Render the built-in particle inspector panel.
 ///
 /// This is called automatically when `.with_particle_inspector()` is enabled.
 #[cfg(feature = "egui")]
 fn render_particle_inspector<P: ParticleTrait>(ctx: &egui::Context) {
-    use crate::selection::{selected_particle, selected_particle_data};
+    use crate::selection::{selected_particle, selected_particle_data, write_particle};
 
     egui::Window::new("Particle Inspector")
         .default_pos([10.0, 10.0])
-        .default_width(250.0)
+        .default_width(300.0)
         .show(ctx, |ui| {
-            if let Some(particle) = selected_particle_data::<P>(ctx) {
-                let fields = particle.inspect_fields();
-                egui::Grid::new("inspector_fields")
-                    .num_columns(2)
-                    .spacing([20.0, 4.0])
-                    .show(ui, |ui| {
-                        for (name, value) in fields {
-                            ui.strong(format!("{}:", name));
-                            ui.label(value);
-                            ui.end_row();
-                        }
-                    });
-            } else if selected_particle(ctx).is_some() {
-                // Selection exists but data hasn't loaded yet
-                ui.spinner();
-                ui.label("Loading...");
+            if let Some(idx) = selected_particle(ctx) {
+                if let Some(mut particle) = selected_particle_data::<P>(ctx) {
+                    // Render editable fields
+                    if particle.render_editable_fields(ui) {
+                        // Particle was modified, queue write back to GPU
+                        write_particle(ctx, idx, &particle);
+                    }
+                } else {
+                    // Selection exists but data hasn't loaded yet
+                    ui.spinner();
+                    ui.label("Loading...");
+                }
             } else {
                 ui.colored_label(
                     egui::Color32::from_rgb(150, 150, 150),
@@ -2480,6 +2744,44 @@ mod tests {
                 ("position", format!("({:.3}, {:.3}, {:.3})", self.position.x, self.position.y, self.position.z)),
                 ("velocity", format!("({:.3}, {:.3}, {:.3})", self.velocity.x, self.velocity.y, self.velocity.z)),
             ]
+        }
+
+        #[cfg(feature = "egui")]
+        fn render_editable_fields(&mut self, ui: &mut egui::Ui) -> bool {
+            let mut modified = false;
+            egui::Grid::new("editable_fields")
+                .num_columns(2)
+                .spacing([20.0, 4.0])
+                .show(ui, |ui| {
+                    ui.label("position");
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::DragValue::new(&mut self.position.x).speed(0.01).prefix("x: ")).changed() {
+                            modified = true;
+                        }
+                        if ui.add(egui::DragValue::new(&mut self.position.y).speed(0.01).prefix("y: ")).changed() {
+                            modified = true;
+                        }
+                        if ui.add(egui::DragValue::new(&mut self.position.z).speed(0.01).prefix("z: ")).changed() {
+                            modified = true;
+                        }
+                    });
+                    ui.end_row();
+
+                    ui.label("velocity");
+                    ui.horizontal(|ui| {
+                        if ui.add(egui::DragValue::new(&mut self.velocity.x).speed(0.01).prefix("x: ")).changed() {
+                            modified = true;
+                        }
+                        if ui.add(egui::DragValue::new(&mut self.velocity.y).speed(0.01).prefix("y: ")).changed() {
+                            modified = true;
+                        }
+                        if ui.add(egui::DragValue::new(&mut self.velocity.z).speed(0.01).prefix("z: ")).changed() {
+                            modified = true;
+                        }
+                    });
+                    ui.end_row();
+                });
+            modified
         }
     }
 

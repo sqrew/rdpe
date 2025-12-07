@@ -41,6 +41,11 @@ pub struct SelectedParticle(pub Option<u32>);
 #[derive(Clone)]
 pub struct SelectedParticleData(pub Option<Vec<u8>>);
 
+/// Internal wrapper for storing pending particle writes.
+/// Contains (particle_index, gpu_bytes) when a particle has been edited.
+#[derive(Clone)]
+pub struct PendingParticleWrite(pub Option<(u32, Vec<u8>)>);
+
 /// Get the currently selected particle index from an egui context.
 ///
 /// Returns `Some(index)` if a particle is selected, `None` otherwise.
@@ -99,4 +104,33 @@ pub fn selected_particle_data<P: ParticleTrait>(ctx: &egui::Context) -> Option<P
                 None
             }
         })
+}
+
+/// Queue a modified particle to be written back to the GPU.
+///
+/// Call this after editing a particle's fields to push the changes to the GPU.
+/// The write will be applied on the next frame.
+///
+/// # Example
+///
+/// ```ignore
+/// .with_ui(|ctx| {
+///     if let Some(mut particle) = selected_particle_data::<MyParticle>(ctx) {
+///         // Edit the particle
+///         particle.velocity = Vec3::ZERO;
+///
+///         // Queue the write
+///         if let Some(idx) = selected_particle(ctx) {
+///             write_particle(ctx, idx, &particle);
+///         }
+///     }
+/// })
+/// ```
+#[cfg(feature = "egui")]
+pub fn write_particle<P: ParticleTrait>(ctx: &egui::Context, index: u32, particle: &P) {
+    let gpu = particle.to_gpu();
+    let bytes = bytemuck::bytes_of(&gpu).to_vec();
+    ctx.data_mut(|d| {
+        d.insert_temp(egui::Id::NULL, PendingParticleWrite(Some((index, bytes))));
+    });
 }

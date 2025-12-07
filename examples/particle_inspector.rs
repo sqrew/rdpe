@@ -1,13 +1,15 @@
 //! # Particle Inspector
 //!
-//! Demonstrates the built-in particle inspector panel.
+//! Demonstrates the built-in particle and rule inspector panels.
 //!
 //! ## What This Demonstrates
 //!
-//! - **`.with_particle_inspector()`** - Zero-boilerplate inspector panel
+//! - **`.with_particle_inspector()`** - Zero-boilerplate particle inspector panel
+//! - **`.with_rule_inspector()`** - Live-edit rule parameters without recompilation
 //! - **Left-click** to select a particle
 //! - **Live updates** - Selected particle's stats update in real-time
-//! - **Additive UI** - Inspector works alongside custom `.with_ui()` panels
+//! - **Drag values** in the Rule Inspector to adjust physics in real-time
+//! - **Additive UI** - Inspectors work alongside custom `.with_ui()` panels
 //!
 //! ## Camera Controls
 //!
@@ -127,11 +129,13 @@ fn main() {
         })
         // Built-in particle inspector - just one line!
         .with_particle_inspector()
+        // Built-in rule inspector - live edit rule parameters!
+        .with_rule_inspector()
         // Custom UI can be added alongside the inspector
         .with_ui(|ctx| {
             // Show cluster legend
             egui::Window::new("Clusters")
-                .default_pos([10.0, 300.0])
+                .default_pos([10.0, 550.0])
                 .default_width(150.0)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {

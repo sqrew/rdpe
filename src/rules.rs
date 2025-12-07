@@ -6336,6 +6336,694 @@ impl Rule {
             _ => String::new(),
         }
     }
+
+    /// Get a human-readable display name for this rule.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Rule::Gravity(_) => "Gravity",
+            Rule::BounceWalls => "Bounce Walls",
+            Rule::WrapWalls => "Wrap Walls",
+            Rule::Drag(_) => "Drag",
+            Rule::Acceleration(_) => "Acceleration",
+            Rule::AttractTo { .. } => "Attract To",
+            Rule::RepelFrom { .. } => "Repel From",
+            Rule::Seek { .. } => "Seek",
+            Rule::Flee { .. } => "Flee",
+            Rule::Arrive { .. } => "Arrive",
+            Rule::Vortex { .. } => "Vortex",
+            Rule::Turbulence { .. } => "Turbulence",
+            Rule::Orbit { .. } => "Orbit",
+            Rule::Curl { .. } => "Curl",
+            Rule::PointGravity { .. } => "Point Gravity",
+            Rule::Spring { .. } => "Spring",
+            Rule::Radial { .. } => "Radial",
+            Rule::Shockwave { .. } => "Shockwave",
+            Rule::Pulse { .. } => "Pulse",
+            Rule::Oscillate { .. } => "Oscillate",
+            Rule::PositionNoise { .. } => "Position Noise",
+            Rule::SpeedLimit { .. } => "Speed Limit",
+            Rule::Wander { .. } => "Wander",
+            Rule::Collide { .. } => "Collide",
+            Rule::Separate { .. } => "Separate",
+            Rule::Cohere { .. } => "Cohere",
+            Rule::Align { .. } => "Align",
+            Rule::Avoid { .. } => "Avoid",
+            Rule::NBodyGravity { .. } => "N-Body Gravity",
+            Rule::LennardJones { .. } => "Lennard-Jones",
+            Rule::DLA { .. } => "DLA",
+            Rule::Viscosity { .. } => "Viscosity",
+            Rule::Pressure { .. } => "Pressure",
+            Rule::Magnetism { .. } => "Magnetism",
+            Rule::SurfaceTension { .. } => "Surface Tension",
+            Rule::Typed { .. } => "Typed",
+            Rule::Convert { .. } => "Convert",
+            Rule::Chase { .. } => "Chase",
+            Rule::Evade { .. } => "Evade",
+            Rule::Age => "Age",
+            Rule::Lifetime(_) => "Lifetime",
+            Rule::FadeOut { .. } => "Fade Out",
+            Rule::ShrinkOut { .. } => "Shrink Out",
+            Rule::ColorOverLife { .. } => "Color Over Life",
+            Rule::ColorBySpeed { .. } => "Color By Speed",
+            Rule::ColorByAge { .. } => "Color By Age",
+            Rule::ScaleBySpeed { .. } => "Scale By Speed",
+            Rule::Custom(_) => "Custom",
+            Rule::NeighborCustom(_) => "Neighbor Custom",
+            Rule::OnDeath { .. } => "On Death",
+            Rule::OnSpawn { .. } => "On Spawn",
+            Rule::OnCollision { .. } => "On Collision",
+            Rule::State { .. } => "State",
+            Rule::Agent { .. } => "Agent",
+            Rule::Signal { .. } => "Signal",
+            Rule::Absorb { .. } => "Absorb",
+            // Catch-all for any other variants
+            _ => "Rule",
+        }
+    }
+
+    /// Extract editable parameters from this rule with a unique prefix.
+    ///
+    /// Returns Vec of (parameter_name, value) pairs for runtime editing.
+    /// The prefix ensures unique names when multiple rules of the same type exist.
+    pub fn params(&self, index: usize) -> Vec<(String, crate::uniforms::UniformValue)> {
+        use crate::uniforms::UniformValue;
+        let prefix = format!("rule_{}", index);
+
+        match self {
+            Rule::Gravity(strength) => vec![
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Drag(coefficient) => vec![
+                (format!("{}_coefficient", prefix), UniformValue::F32(*coefficient)),
+            ],
+            Rule::Acceleration(acc) => vec![
+                (format!("{}_acceleration", prefix), UniformValue::Vec3(*acc)),
+            ],
+            Rule::AttractTo { point, strength } => vec![
+                (format!("{}_point", prefix), UniformValue::Vec3(*point)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::RepelFrom { point, strength, radius } => vec![
+                (format!("{}_point", prefix), UniformValue::Vec3(*point)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+            ],
+            Rule::Seek { target, max_speed, max_force } => vec![
+                (format!("{}_target", prefix), UniformValue::Vec3(*target)),
+                (format!("{}_max_speed", prefix), UniformValue::F32(*max_speed)),
+                (format!("{}_max_force", prefix), UniformValue::F32(*max_force)),
+            ],
+            Rule::Flee { target, max_speed, max_force, panic_radius } => vec![
+                (format!("{}_target", prefix), UniformValue::Vec3(*target)),
+                (format!("{}_max_speed", prefix), UniformValue::F32(*max_speed)),
+                (format!("{}_max_force", prefix), UniformValue::F32(*max_force)),
+                (format!("{}_panic_radius", prefix), UniformValue::F32(*panic_radius)),
+            ],
+            Rule::Arrive { target, max_speed, max_force, slowing_radius } => vec![
+                (format!("{}_target", prefix), UniformValue::Vec3(*target)),
+                (format!("{}_max_speed", prefix), UniformValue::F32(*max_speed)),
+                (format!("{}_max_force", prefix), UniformValue::F32(*max_force)),
+                (format!("{}_slowing_radius", prefix), UniformValue::F32(*slowing_radius)),
+            ],
+            Rule::Vortex { center, axis, strength } => vec![
+                (format!("{}_center", prefix), UniformValue::Vec3(*center)),
+                (format!("{}_axis", prefix), UniformValue::Vec3(*axis)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Turbulence { scale, strength } => vec![
+                (format!("{}_scale", prefix), UniformValue::F32(*scale)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Orbit { center, strength } => vec![
+                (format!("{}_center", prefix), UniformValue::Vec3(*center)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Curl { scale, strength } => vec![
+                (format!("{}_scale", prefix), UniformValue::F32(*scale)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::PointGravity { point, strength, softening } => vec![
+                (format!("{}_point", prefix), UniformValue::Vec3(*point)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_softening", prefix), UniformValue::F32(*softening)),
+            ],
+            Rule::Spring { anchor, stiffness, damping } => vec![
+                (format!("{}_anchor", prefix), UniformValue::Vec3(*anchor)),
+                (format!("{}_stiffness", prefix), UniformValue::F32(*stiffness)),
+                (format!("{}_damping", prefix), UniformValue::F32(*damping)),
+            ],
+            Rule::Pulse { point, strength, frequency, radius } => vec![
+                (format!("{}_point", prefix), UniformValue::Vec3(*point)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_frequency", prefix), UniformValue::F32(*frequency)),
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+            ],
+            Rule::Oscillate { axis, amplitude, frequency, spatial_scale } => vec![
+                (format!("{}_axis", prefix), UniformValue::Vec3(*axis)),
+                (format!("{}_amplitude", prefix), UniformValue::F32(*amplitude)),
+                (format!("{}_frequency", prefix), UniformValue::F32(*frequency)),
+                (format!("{}_spatial_scale", prefix), UniformValue::F32(*spatial_scale)),
+            ],
+            Rule::SpeedLimit { min, max } => vec![
+                (format!("{}_min", prefix), UniformValue::F32(*min)),
+                (format!("{}_max", prefix), UniformValue::F32(*max)),
+            ],
+            Rule::Wander { strength, frequency } => vec![
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_frequency", prefix), UniformValue::F32(*frequency)),
+            ],
+            Rule::Separate { radius, strength } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Cohere { radius, strength } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Align { radius, strength } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Collide { radius, restitution } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_restitution", prefix), UniformValue::F32(*restitution)),
+            ],
+            Rule::Chase { self_type, target_type, radius, strength } => vec![
+                (format!("{}_self_type", prefix), UniformValue::U32(*self_type)),
+                (format!("{}_target_type", prefix), UniformValue::U32(*target_type)),
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Evade { self_type, threat_type, radius, strength } => vec![
+                (format!("{}_self_type", prefix), UniformValue::U32(*self_type)),
+                (format!("{}_threat_type", prefix), UniformValue::U32(*threat_type)),
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Lifetime(duration) => vec![
+                (format!("{}_duration", prefix), UniformValue::F32(*duration)),
+            ],
+            Rule::Radial { point, strength, radius, .. } => vec![
+                (format!("{}_point", prefix), UniformValue::Vec3(*point)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+            ],
+            Rule::Shockwave { origin, speed, width, strength, repeat } => vec![
+                (format!("{}_origin", prefix), UniformValue::Vec3(*origin)),
+                (format!("{}_speed", prefix), UniformValue::F32(*speed)),
+                (format!("{}_width", prefix), UniformValue::F32(*width)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_repeat", prefix), UniformValue::F32(*repeat)),
+            ],
+            Rule::PositionNoise { scale, strength, speed } => vec![
+                (format!("{}_scale", prefix), UniformValue::F32(*scale)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_speed", prefix), UniformValue::F32(*speed)),
+            ],
+            Rule::NBodyGravity { strength, softening, radius } => vec![
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_softening", prefix), UniformValue::F32(*softening)),
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+            ],
+            Rule::LennardJones { epsilon, sigma, cutoff } => vec![
+                (format!("{}_epsilon", prefix), UniformValue::F32(*epsilon)),
+                (format!("{}_sigma", prefix), UniformValue::F32(*sigma)),
+                (format!("{}_cutoff", prefix), UniformValue::F32(*cutoff)),
+            ],
+            Rule::DLA { seed_type, mobile_type, stick_radius, diffusion_strength } => vec![
+                (format!("{}_seed_type", prefix), UniformValue::U32(*seed_type)),
+                (format!("{}_mobile_type", prefix), UniformValue::U32(*mobile_type)),
+                (format!("{}_stick_radius", prefix), UniformValue::F32(*stick_radius)),
+                (format!("{}_diffusion_strength", prefix), UniformValue::F32(*diffusion_strength)),
+            ],
+            Rule::Viscosity { radius, strength } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Pressure { radius, strength, target_density } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_target_density", prefix), UniformValue::F32(*target_density)),
+            ],
+            Rule::Magnetism { radius, strength, .. } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::SurfaceTension { radius, strength, threshold } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_threshold", prefix), UniformValue::F32(*threshold)),
+            ],
+            Rule::Avoid { radius, strength } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::Buoyancy { surface_y, density } => vec![
+                (format!("{}_surface_y", prefix), UniformValue::F32(*surface_y)),
+                (format!("{}_density", prefix), UniformValue::F32(*density)),
+            ],
+            Rule::Friction { ground_y, strength, threshold } => vec![
+                (format!("{}_ground_y", prefix), UniformValue::F32(*ground_y)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_threshold", prefix), UniformValue::F32(*threshold)),
+            ],
+            Rule::Wind { direction, strength, turbulence } => vec![
+                (format!("{}_direction", prefix), UniformValue::Vec3(*direction)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+                (format!("{}_turbulence", prefix), UniformValue::F32(*turbulence)),
+            ],
+            Rule::RespawnBelow { threshold_y, spawn_y, .. } => vec![
+                (format!("{}_threshold_y", prefix), UniformValue::F32(*threshold_y)),
+                (format!("{}_spawn_y", prefix), UniformValue::F32(*spawn_y)),
+            ],
+            Rule::Convert { from_type, trigger_type, to_type, radius, probability } => vec![
+                (format!("{}_from_type", prefix), UniformValue::U32(*from_type)),
+                (format!("{}_trigger_type", prefix), UniformValue::U32(*trigger_type)),
+                (format!("{}_to_type", prefix), UniformValue::U32(*to_type)),
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_probability", prefix), UniformValue::F32(*probability)),
+            ],
+            Rule::FadeOut(duration) => vec![
+                (format!("{}_duration", prefix), UniformValue::F32(*duration)),
+            ],
+            Rule::ShrinkOut(duration) => vec![
+                (format!("{}_duration", prefix), UniformValue::F32(*duration)),
+            ],
+            Rule::ColorOverLife { start, end, duration } => vec![
+                (format!("{}_start", prefix), UniformValue::Vec3(*start)),
+                (format!("{}_end", prefix), UniformValue::Vec3(*end)),
+                (format!("{}_duration", prefix), UniformValue::F32(*duration)),
+            ],
+            Rule::ColorBySpeed { slow_color, fast_color, max_speed } => vec![
+                (format!("{}_slow_color", prefix), UniformValue::Vec3(*slow_color)),
+                (format!("{}_fast_color", prefix), UniformValue::Vec3(*fast_color)),
+                (format!("{}_max_speed", prefix), UniformValue::F32(*max_speed)),
+            ],
+            Rule::ColorByAge { young_color, old_color, max_age } => vec![
+                (format!("{}_young_color", prefix), UniformValue::Vec3(*young_color)),
+                (format!("{}_old_color", prefix), UniformValue::Vec3(*old_color)),
+                (format!("{}_max_age", prefix), UniformValue::F32(*max_age)),
+            ],
+            Rule::ScaleBySpeed { min_scale, max_scale, max_speed } => vec![
+                (format!("{}_min_scale", prefix), UniformValue::F32(*min_scale)),
+                (format!("{}_max_scale", prefix), UniformValue::F32(*max_scale)),
+                (format!("{}_max_speed", prefix), UniformValue::F32(*max_speed)),
+            ],
+            Rule::Flock { radius, separation, cohesion, alignment } => vec![
+                (format!("{}_radius", prefix), UniformValue::F32(*radius)),
+                (format!("{}_separation", prefix), UniformValue::F32(*separation)),
+                (format!("{}_cohesion", prefix), UniformValue::F32(*cohesion)),
+                (format!("{}_alignment", prefix), UniformValue::F32(*alignment)),
+            ],
+            Rule::Grow { rate, min, max } => vec![
+                (format!("{}_rate", prefix), UniformValue::F32(*rate)),
+                (format!("{}_min", prefix), UniformValue::F32(*min)),
+                (format!("{}_max", prefix), UniformValue::F32(*max)),
+            ],
+            Rule::Gradient { field, strength, .. } => vec![
+                (format!("{}_field", prefix), UniformValue::U32(*field)),
+                (format!("{}_strength", prefix), UniformValue::F32(*strength)),
+            ],
+            Rule::ChainSprings { stiffness, damping, rest_length, .. } => vec![
+                (format!("{}_stiffness", prefix), UniformValue::F32(*stiffness)),
+                (format!("{}_damping", prefix), UniformValue::F32(*damping)),
+                (format!("{}_rest_length", prefix), UniformValue::F32(*rest_length)),
+            ],
+            Rule::RadialSprings { hub_stiffness, ring_stiffness, damping, hub_length, ring_length } => vec![
+                (format!("{}_hub_stiffness", prefix), UniformValue::F32(*hub_stiffness)),
+                (format!("{}_ring_stiffness", prefix), UniformValue::F32(*ring_stiffness)),
+                (format!("{}_damping", prefix), UniformValue::F32(*damping)),
+                (format!("{}_hub_length", prefix), UniformValue::F32(*hub_length)),
+                (format!("{}_ring_length", prefix), UniformValue::F32(*ring_length)),
+            ],
+            // Rules with no numeric params or complex types (strings, closures, etc.)
+            // Use catch-all to handle any remaining rules not explicitly matched
+            _ => vec![],
+        }
+    }
+
+    /// Generate WGSL code that reads parameters from the uniforms struct.
+    ///
+    /// When rule inspector is enabled, rule parameters are stored as custom uniforms
+    /// and can be modified at runtime through the inspector UI.
+    /// For rules without dynamic support, falls back to static to_wgsl().
+    pub fn to_wgsl_dynamic(&self, index: usize, bounds: f32) -> String {
+        let prefix = format!("rule_{}", index);
+
+        match self {
+            Rule::Gravity(_) => format!(
+                "    // Gravity (dynamic)\n    p.velocity.y -= uniforms.{prefix}_strength * uniforms.delta_time;"
+            ),
+            Rule::Drag(_) => format!(
+                "    // Drag (dynamic)\n    p.velocity *= 1.0 - (uniforms.{prefix}_coefficient * uniforms.delta_time);"
+            ),
+            Rule::Acceleration(_) => format!(
+                "    // Acceleration (dynamic)\n    p.velocity += uniforms.{prefix}_acceleration * uniforms.delta_time;"
+            ),
+            Rule::AttractTo { .. } => format!(
+                r#"    // Attract to point (dynamic)
+    {{
+        let attract_dir = uniforms.{prefix}_point - p.position;
+        let dist = length(attract_dir);
+        if dist > 0.001 {{
+            p.velocity += normalize(attract_dir) * uniforms.{prefix}_strength * uniforms.delta_time;
+        }}
+    }}"#
+            ),
+            Rule::RepelFrom { .. } => format!(
+                r#"    // Repel from point (dynamic)
+    {{
+        let repel_dir = p.position - uniforms.{prefix}_point;
+        let dist = length(repel_dir);
+        if dist < uniforms.{prefix}_radius && dist > 0.001 {{
+            let force = (uniforms.{prefix}_radius - dist) / uniforms.{prefix}_radius * uniforms.{prefix}_strength;
+            p.velocity += normalize(repel_dir) * force * uniforms.delta_time;
+        }}
+    }}"#
+            ),
+            Rule::Vortex { .. } => format!(
+                r#"    // Vortex (dynamic)
+    {{
+        let to_particle = p.position - uniforms.{prefix}_center;
+        let axis_norm = normalize(uniforms.{prefix}_axis);
+        let proj = dot(to_particle, axis_norm) * axis_norm;
+        let radial = to_particle - proj;
+        let dist = length(radial);
+        if dist > 0.001 {{
+            let tangent = cross(axis_norm, normalize(radial));
+            p.velocity += tangent * uniforms.{prefix}_strength * uniforms.delta_time;
+        }}
+    }}"#
+            ),
+            Rule::Turbulence { .. } => format!(
+                r#"    // Turbulence (dynamic)
+    {{
+        let noise_pos = p.position * uniforms.{prefix}_scale + vec3<f32>(uniforms.time * 0.5);
+        let force = vec3<f32>(
+            noise3(noise_pos),
+            noise3(noise_pos + vec3<f32>(100.0, 0.0, 0.0)),
+            noise3(noise_pos + vec3<f32>(0.0, 100.0, 0.0))
+        );
+        p.velocity += force * uniforms.{prefix}_strength * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Orbit { .. } => format!(
+                r#"    // Orbit (dynamic)
+    {{
+        let to_center = uniforms.{prefix}_center - p.position;
+        let dist = length(to_center);
+        if dist > 0.001 {{
+            let tangent = normalize(cross(vec3<f32>(0.0, 1.0, 0.0), to_center));
+            p.velocity += tangent * uniforms.{prefix}_strength * uniforms.delta_time;
+            p.velocity += normalize(to_center) * uniforms.{prefix}_strength * 0.1 * uniforms.delta_time;
+        }}
+    }}"#
+            ),
+            Rule::PointGravity { .. } => format!(
+                r#"    // Point gravity (dynamic)
+    {{
+        let to_point = uniforms.{prefix}_point - p.position;
+        let dist_sq = dot(to_point, to_point) + uniforms.{prefix}_softening * uniforms.{prefix}_softening;
+        let force = uniforms.{prefix}_strength / dist_sq;
+        p.velocity += normalize(to_point) * force * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Spring { .. } => format!(
+                r#"    // Spring (dynamic)
+    {{
+        let displacement = uniforms.{prefix}_anchor - p.position;
+        let spring_force = displacement * uniforms.{prefix}_stiffness;
+        let damping_force = -p.velocity * uniforms.{prefix}_damping;
+        p.velocity += (spring_force + damping_force) * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Pulse { .. } => format!(
+                r#"    // Pulse (dynamic)
+    {{
+        let to_particle = p.position - uniforms.{prefix}_point;
+        let dist = length(to_particle);
+        if uniforms.{prefix}_radius <= 0.0 || dist < uniforms.{prefix}_radius {{
+            let pulse = sin(uniforms.time * uniforms.{prefix}_frequency * 6.28318) * uniforms.{prefix}_strength;
+            if dist > 0.001 {{
+                p.velocity += normalize(to_particle) * pulse * uniforms.delta_time;
+            }}
+        }}
+    }}"#
+            ),
+            Rule::SpeedLimit { .. } => format!(
+                r#"    // Speed limit (dynamic)
+    {{
+        let speed = length(p.velocity);
+        if speed > uniforms.{prefix}_max {{
+            p.velocity = normalize(p.velocity) * uniforms.{prefix}_max;
+        }} else if speed < uniforms.{prefix}_min && speed > 0.001 {{
+            p.velocity = normalize(p.velocity) * uniforms.{prefix}_min;
+        }}
+    }}"#
+            ),
+            Rule::Lifetime(_) => format!(
+                r#"    // Lifetime (dynamic)
+    if p.age >= uniforms.{prefix}_duration {{
+        p.alive = 0u;
+    }}"#
+            ),
+            Rule::Curl { .. } => format!(
+                r#"    // Curl noise (dynamic)
+    {{
+        let curl_pos = p.position * uniforms.{prefix}_scale + vec3<f32>(uniforms.time * 0.3);
+        let eps = 0.01;
+        let dx = noise3(curl_pos + vec3<f32>(eps, 0.0, 0.0)) - noise3(curl_pos - vec3<f32>(eps, 0.0, 0.0));
+        let dy = noise3(curl_pos + vec3<f32>(0.0, eps, 0.0)) - noise3(curl_pos - vec3<f32>(0.0, eps, 0.0));
+        let dz = noise3(curl_pos + vec3<f32>(0.0, 0.0, eps)) - noise3(curl_pos - vec3<f32>(0.0, 0.0, eps));
+        let curl = vec3<f32>(dy - dz, dz - dx, dx - dy) / (2.0 * eps);
+        p.velocity += curl * uniforms.{prefix}_strength * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Oscillate { .. } => format!(
+                r#"    // Oscillate (dynamic)
+    {{
+        let phase = uniforms.time * uniforms.{prefix}_frequency * 6.28318;
+        var wave = sin(phase);
+        if uniforms.{prefix}_spatial_scale > 0.0 {{
+            let dist = length(p.position.xz);
+            wave = sin(phase - dist * uniforms.{prefix}_spatial_scale);
+        }}
+        p.velocity += normalize(uniforms.{prefix}_axis) * wave * uniforms.{prefix}_amplitude * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Wander { .. } => format!(
+                r#"    // Wander (dynamic)
+    {{
+        let seed = f32(index) * 0.1 + uniforms.time * uniforms.{prefix}_frequency;
+        let wander_dir = vec3<f32>(
+            sin(seed * 1.1),
+            sin(seed * 0.7 + 2.0),
+            sin(seed * 0.9 + 4.0)
+        );
+        p.velocity += wander_dir * uniforms.{prefix}_strength * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Seek { .. } => format!(
+                r#"    // Seek (dynamic)
+    {{
+        let desired = normalize(uniforms.{prefix}_target - p.position) * uniforms.{prefix}_max_speed;
+        var steer = desired - p.velocity;
+        let steer_mag = length(steer);
+        if steer_mag > uniforms.{prefix}_max_force {{
+            steer = normalize(steer) * uniforms.{prefix}_max_force;
+        }}
+        p.velocity += steer * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Flee { .. } => format!(
+                r#"    // Flee (dynamic)
+    {{
+        let to_target = uniforms.{prefix}_target - p.position;
+        let dist = length(to_target);
+        if uniforms.{prefix}_panic_radius <= 0.0 || dist < uniforms.{prefix}_panic_radius {{
+            let desired = normalize(-to_target) * uniforms.{prefix}_max_speed;
+            var steer = desired - p.velocity;
+            let steer_mag = length(steer);
+            if steer_mag > uniforms.{prefix}_max_force {{
+                steer = normalize(steer) * uniforms.{prefix}_max_force;
+            }}
+            p.velocity += steer * uniforms.delta_time;
+        }}
+    }}"#
+            ),
+            Rule::Arrive { .. } => format!(
+                r#"    // Arrive (dynamic)
+    {{
+        let to_target = uniforms.{prefix}_target - p.position;
+        let dist = length(to_target);
+        var desired_speed = uniforms.{prefix}_max_speed;
+        if dist < uniforms.{prefix}_slowing_radius {{
+            desired_speed = uniforms.{prefix}_max_speed * (dist / uniforms.{prefix}_slowing_radius);
+        }}
+        let desired = normalize(to_target) * desired_speed;
+        var steer = desired - p.velocity;
+        let steer_mag = length(steer);
+        if steer_mag > uniforms.{prefix}_max_force {{
+            steer = normalize(steer) * uniforms.{prefix}_max_force;
+        }}
+        p.velocity += steer * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Wind { .. } => format!(
+                r#"    // Wind (dynamic)
+    {{
+        let wind_dir = normalize(uniforms.{prefix}_direction);
+        var force = wind_dir * uniforms.{prefix}_strength;
+        if uniforms.{prefix}_turbulence > 0.0 {{
+            let noise_pos = p.position * 2.0 + vec3<f32>(uniforms.time);
+            force += vec3<f32>(
+                noise3(noise_pos),
+                noise3(noise_pos + vec3<f32>(100.0, 0.0, 0.0)),
+                noise3(noise_pos + vec3<f32>(0.0, 100.0, 0.0))
+            ) * uniforms.{prefix}_turbulence * uniforms.{prefix}_strength;
+        }}
+        p.velocity += force * uniforms.delta_time;
+    }}"#
+            ),
+            Rule::Buoyancy { .. } => format!(
+                r#"    // Buoyancy (dynamic)
+    {{
+        if p.position.y < uniforms.{prefix}_surface_y {{
+            let depth = uniforms.{prefix}_surface_y - p.position.y;
+            p.velocity.y += depth * uniforms.{prefix}_density * uniforms.delta_time;
+        }}
+    }}"#
+            ),
+            Rule::Friction { .. } => format!(
+                r#"    // Friction (dynamic)
+    {{
+        if p.position.y < uniforms.{prefix}_ground_y + uniforms.{prefix}_threshold {{
+            let friction = uniforms.{prefix}_strength * uniforms.delta_time;
+            p.velocity.x *= 1.0 - friction;
+            p.velocity.z *= 1.0 - friction;
+        }}
+    }}"#
+            ),
+            Rule::RespawnBelow { reset_velocity, .. } => {
+                let reset_code = if *reset_velocity {
+                    "p.velocity = vec3<f32>(0.0);"
+                } else {
+                    ""
+                };
+                format!(
+                    r#"    // Respawn below (dynamic)
+    if p.position.y < uniforms.{prefix}_threshold_y {{
+        p.position.y = uniforms.{prefix}_spawn_y;
+        {reset_code}
+    }}"#
+                )
+            },
+            Rule::FadeOut(_) => format!(
+                r#"    // Fade out (dynamic)
+    {{
+        let fade = max(0.0, 1.0 - p.age / uniforms.{prefix}_duration);
+        p.color *= fade;
+    }}"#
+            ),
+            Rule::ShrinkOut(_) => format!(
+                r#"    // Shrink out (dynamic)
+    {{
+        p.scale = max(0.0, 1.0 - p.age / uniforms.{prefix}_duration);
+    }}"#
+            ),
+            Rule::ColorOverLife { .. } => format!(
+                r#"    // Color over life (dynamic)
+    {{
+        let t = clamp(p.age / uniforms.{prefix}_duration, 0.0, 1.0);
+        p.color = mix(uniforms.{prefix}_start, uniforms.{prefix}_end, t);
+    }}"#
+            ),
+            Rule::ColorBySpeed { .. } => format!(
+                r#"    // Color by speed (dynamic)
+    {{
+        let speed = length(p.velocity);
+        let t = clamp(speed / uniforms.{prefix}_max_speed, 0.0, 1.0);
+        p.color = mix(uniforms.{prefix}_slow_color, uniforms.{prefix}_fast_color, t);
+    }}"#
+            ),
+            Rule::ColorByAge { .. } => format!(
+                r#"    // Color by age (dynamic)
+    {{
+        let t = clamp(p.age / uniforms.{prefix}_max_age, 0.0, 1.0);
+        p.color = mix(uniforms.{prefix}_young_color, uniforms.{prefix}_old_color, t);
+    }}"#
+            ),
+            Rule::ScaleBySpeed { .. } => format!(
+                r#"    // Scale by speed (dynamic)
+    {{
+        let speed = length(p.velocity);
+        let t = clamp(speed / uniforms.{prefix}_max_speed, 0.0, 1.0);
+        p.scale = mix(uniforms.{prefix}_min_scale, uniforms.{prefix}_max_scale, t);
+    }}"#
+            ),
+            Rule::Grow { .. } => format!(
+                r#"    // Grow (dynamic)
+    {{
+        p.scale = clamp(p.scale + uniforms.{prefix}_rate * uniforms.delta_time, uniforms.{prefix}_min, uniforms.{prefix}_max);
+    }}"#
+            ),
+            Rule::PositionNoise { .. } => format!(
+                r#"    // Position noise (dynamic)
+    {{
+        let noise_pos = p.position * uniforms.{prefix}_scale + vec3<f32>(uniforms.time * uniforms.{prefix}_speed);
+        let jitter = vec3<f32>(
+            noise3(noise_pos) - 0.5,
+            noise3(noise_pos + vec3<f32>(100.0, 0.0, 0.0)) - 0.5,
+            noise3(noise_pos + vec3<f32>(0.0, 100.0, 0.0)) - 0.5
+        ) * 2.0;
+        p.position += jitter * uniforms.{prefix}_strength;
+    }}"#
+            ),
+            Rule::Shockwave { .. } => format!(
+                r#"    // Shockwave (dynamic)
+    {{
+        var t = uniforms.time;
+        if uniforms.{prefix}_repeat > 0.0 {{
+            t = fract(t / uniforms.{prefix}_repeat) * uniforms.{prefix}_repeat;
+        }}
+        let wave_radius = t * uniforms.{prefix}_speed;
+        let to_particle = p.position - uniforms.{prefix}_origin;
+        let dist = length(to_particle);
+        let wave_dist = abs(dist - wave_radius);
+        if wave_dist < uniforms.{prefix}_width {{
+            let force = (1.0 - wave_dist / uniforms.{prefix}_width) * uniforms.{prefix}_strength;
+            if dist > 0.001 {{
+                p.velocity += normalize(to_particle) * force * uniforms.delta_time;
+            }}
+        }}
+    }}"#
+            ),
+            Rule::Radial { falloff, .. } => {
+                let falloff_code = match falloff {
+                    Falloff::Constant => "let falloff = 1.0;",
+                    Falloff::Linear => "let falloff = 1.0 - dist / uniforms.{prefix}_radius;",
+                    Falloff::Inverse => "let falloff = 1.0 / (dist + 0.01);",
+                    Falloff::InverseSquare => "let falloff = 1.0 / (dist * dist + 0.01);",
+                    Falloff::Smooth => "let t = dist / uniforms.{prefix}_radius; let falloff = 1.0 - t * t * (3.0 - 2.0 * t);",
+                };
+                format!(
+                    r#"    // Radial (dynamic)
+    {{
+        let to_particle = p.position - uniforms.{prefix}_point;
+        let dist = length(to_particle);
+        if uniforms.{prefix}_radius <= 0.0 || dist < uniforms.{prefix}_radius {{
+            {falloff_code}
+            if dist > 0.001 {{
+                p.velocity += normalize(to_particle) * uniforms.{prefix}_strength * falloff * uniforms.delta_time;
+            }}
+        }}
+    }}"#
+                )
+            },
+            // Fall back to static for complex rules or rules without dynamic support
+            _ => self.to_wgsl(bounds),
+        }
+    }
 }
 
 #[cfg(test)]

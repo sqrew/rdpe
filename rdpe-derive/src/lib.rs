@@ -337,6 +337,7 @@ pub fn derive_particle(input: TokenStream) -> TokenStream {
     let mut to_gpu_conversions = Vec::new();
     let mut from_gpu_conversions = Vec::new();
     let mut inspect_field_entries = Vec::new();
+    let mut editable_field_widgets = Vec::new();
     let mut field_offset = 0u32;
     let mut padding_count = 0u32;
     let mut color_field: Option<String> = None;
@@ -405,6 +406,10 @@ pub fn derive_particle(input: TokenStream) -> TokenStream {
         // Generate inspect field entry with nice formatting
         let inspect_format = generate_inspect_format(field_name, field_type);
         inspect_field_entries.push(quote! { (#field_name_str, #inspect_format) });
+
+        // Generate editable widget for this field
+        let editable_widget = generate_editable_widget(field_name, &field_name_str, field_type);
+        editable_field_widgets.push(editable_widget);
 
         field_offset += type_info.size;
     }
@@ -547,6 +552,18 @@ pub fn derive_particle(input: TokenStream) -> TokenStream {
                     #(#inspect_field_entries),*
                 ]
             }
+
+            #[cfg(feature = "egui")]
+            fn render_editable_fields(&mut self, ui: &mut egui::Ui) -> bool {
+                let mut modified = false;
+                egui::Grid::new("editable_fields")
+                    .num_columns(2)
+                    .spacing([20.0, 4.0])
+                    .show(ui, |ui| {
+                        #(#editable_field_widgets)*
+                    });
+                modified
+            }
         }
     };
 
@@ -680,6 +697,199 @@ fn generate_inspect_format(field_name: &Ident, ty: &Type) -> proc_macro2::TokenS
         }
         _ => {
             quote! { format!("{:?}", self.#field_name) }
+        }
+    }
+}
+
+/// Generate editable UI widget code for a field.
+///
+/// Produces egui widget code for editing particle fields in the inspector.
+fn generate_editable_widget(field_name: &Ident, field_name_str: &str, ty: &Type) -> proc_macro2::TokenStream {
+    let type_str = quote!(#ty).to_string().replace(" ", "");
+
+    match type_str.as_str() {
+        "Vec3" | "glam::Vec3" => {
+            quote! {
+                ui.label(#field_name_str);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.x).speed(0.01).prefix("x: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.y).speed(0.01).prefix("y: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.z).speed(0.01).prefix("z: ")).changed() {
+                        modified = true;
+                    }
+                });
+                ui.end_row();
+            }
+        }
+        "Vec2" | "glam::Vec2" => {
+            quote! {
+                ui.label(#field_name_str);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.x).speed(0.01).prefix("x: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.y).speed(0.01).prefix("y: ")).changed() {
+                        modified = true;
+                    }
+                });
+                ui.end_row();
+            }
+        }
+        "Vec4" | "glam::Vec4" => {
+            quote! {
+                ui.label(#field_name_str);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.x).speed(0.01).prefix("x: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.y).speed(0.01).prefix("y: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.z).speed(0.01).prefix("z: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.w).speed(0.01).prefix("w: ")).changed() {
+                        modified = true;
+                    }
+                });
+                ui.end_row();
+            }
+        }
+        "f32" => {
+            quote! {
+                ui.label(#field_name_str);
+                if ui.add(egui::DragValue::new(&mut self.#field_name).speed(0.01)).changed() {
+                    modified = true;
+                }
+                ui.end_row();
+            }
+        }
+        "u32" => {
+            quote! {
+                ui.label(#field_name_str);
+                let mut val = self.#field_name as i64;
+                if ui.add(egui::DragValue::new(&mut val).speed(1.0)).changed() {
+                    self.#field_name = val.max(0) as u32;
+                    modified = true;
+                }
+                ui.end_row();
+            }
+        }
+        "i32" => {
+            quote! {
+                ui.label(#field_name_str);
+                if ui.add(egui::DragValue::new(&mut self.#field_name).speed(1.0)).changed() {
+                    modified = true;
+                }
+                ui.end_row();
+            }
+        }
+        _ => {
+            // For unknown types, just show as read-only
+            quote! {
+                ui.label(#field_name_str);
+                ui.label(format!("{:?}", self.#field_name));
+                ui.end_row();
+            }
+        }
+    }
+}
+
+/// Generate editable UI widget code for a field (from string type).
+///
+/// Used by MultiParticle derive where we have type as string.
+fn generate_editable_widget_from_string(field_name: &Ident, field_name_str: &str, type_str: &str) -> proc_macro2::TokenStream {
+    match type_str {
+        "Vec3" => {
+            quote! {
+                ui.label(#field_name_str);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.x).speed(0.01).prefix("x: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.y).speed(0.01).prefix("y: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.z).speed(0.01).prefix("z: ")).changed() {
+                        modified = true;
+                    }
+                });
+                ui.end_row();
+            }
+        }
+        "Vec2" => {
+            quote! {
+                ui.label(#field_name_str);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.x).speed(0.01).prefix("x: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.y).speed(0.01).prefix("y: ")).changed() {
+                        modified = true;
+                    }
+                });
+                ui.end_row();
+            }
+        }
+        "Vec4" => {
+            quote! {
+                ui.label(#field_name_str);
+                ui.horizontal(|ui| {
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.x).speed(0.01).prefix("x: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.y).speed(0.01).prefix("y: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.z).speed(0.01).prefix("z: ")).changed() {
+                        modified = true;
+                    }
+                    if ui.add(egui::DragValue::new(&mut self.#field_name.w).speed(0.01).prefix("w: ")).changed() {
+                        modified = true;
+                    }
+                });
+                ui.end_row();
+            }
+        }
+        "f32" => {
+            quote! {
+                ui.label(#field_name_str);
+                if ui.add(egui::DragValue::new(&mut self.#field_name).speed(0.01)).changed() {
+                    modified = true;
+                }
+                ui.end_row();
+            }
+        }
+        "u32" => {
+            quote! {
+                ui.label(#field_name_str);
+                let mut val = self.#field_name as i64;
+                if ui.add(egui::DragValue::new(&mut val).speed(1.0)).changed() {
+                    self.#field_name = val.max(0) as u32;
+                    modified = true;
+                }
+                ui.end_row();
+            }
+        }
+        "i32" => {
+            quote! {
+                ui.label(#field_name_str);
+                if ui.add(egui::DragValue::new(&mut self.#field_name).speed(1.0)).changed() {
+                    modified = true;
+                }
+                ui.end_row();
+            }
+        }
+        _ => {
+            quote! {
+                ui.label(#field_name_str);
+                ui.label(format!("{:?}", self.#field_name));
+                ui.end_row();
+            }
         }
     }
 }
@@ -906,6 +1116,13 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
             }
         }).collect();
 
+        // Build editable widget entries
+        let editable_entries: Vec<_> = fields.iter().map(|(name, type_str, _)| {
+            let name_str = name.to_string();
+            let type_normalized = type_str.replace("glam::", "");
+            generate_editable_widget_from_string(name, &name_str, &type_normalized)
+        }).collect();
+
         let color_field_expr = match &color_field {
             Some(name) => quote! { Some(#name) },
             None => quote! { None },
@@ -954,6 +1171,18 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
                     vec![
                         #(#inspect_entries),*
                     ]
+                }
+
+                #[cfg(feature = "egui")]
+                fn render_editable_fields(&mut self, ui: &mut egui::Ui) -> bool {
+                    let mut modified = false;
+                    egui::Grid::new("editable_fields")
+                        .num_columns(2)
+                        .spacing([20.0, 4.0])
+                        .show(ui, |ui| {
+                            #(#editable_entries)*
+                        });
+                    modified
                 }
             }
         });
@@ -1138,6 +1367,109 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    // Generate render_editable_fields() match arms for enum
+    let editable_arms: Vec<_> = variant_info
+        .iter()
+        .map(|(variant_name, variant_fields)| {
+            // Generate mutable field bindings for the match pattern
+            let field_bindings: Vec<_> = variant_fields.iter().map(|(fname, _, _)| {
+                quote! { #fname }
+            }).collect();
+
+            // Generate editable widgets for each field
+            let editable_widgets: Vec<_> = variant_fields.iter().map(|(fname, ftype, _)| {
+                let fname_str = fname.to_string();
+                let type_normalized = ftype.replace("glam::", "");
+                match type_normalized.as_str() {
+                    "Vec3" => quote! {
+                        ui.label(#fname_str);
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::DragValue::new(&mut #fname.x).speed(0.01).prefix("x: ")).changed() {
+                                modified = true;
+                            }
+                            if ui.add(egui::DragValue::new(&mut #fname.y).speed(0.01).prefix("y: ")).changed() {
+                                modified = true;
+                            }
+                            if ui.add(egui::DragValue::new(&mut #fname.z).speed(0.01).prefix("z: ")).changed() {
+                                modified = true;
+                            }
+                        });
+                        ui.end_row();
+                    },
+                    "Vec2" => quote! {
+                        ui.label(#fname_str);
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::DragValue::new(&mut #fname.x).speed(0.01).prefix("x: ")).changed() {
+                                modified = true;
+                            }
+                            if ui.add(egui::DragValue::new(&mut #fname.y).speed(0.01).prefix("y: ")).changed() {
+                                modified = true;
+                            }
+                        });
+                        ui.end_row();
+                    },
+                    "Vec4" => quote! {
+                        ui.label(#fname_str);
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::DragValue::new(&mut #fname.x).speed(0.01).prefix("x: ")).changed() {
+                                modified = true;
+                            }
+                            if ui.add(egui::DragValue::new(&mut #fname.y).speed(0.01).prefix("y: ")).changed() {
+                                modified = true;
+                            }
+                            if ui.add(egui::DragValue::new(&mut #fname.z).speed(0.01).prefix("z: ")).changed() {
+                                modified = true;
+                            }
+                            if ui.add(egui::DragValue::new(&mut #fname.w).speed(0.01).prefix("w: ")).changed() {
+                                modified = true;
+                            }
+                        });
+                        ui.end_row();
+                    },
+                    "f32" => quote! {
+                        ui.label(#fname_str);
+                        if ui.add(egui::DragValue::new(#fname).speed(0.01)).changed() {
+                            modified = true;
+                        }
+                        ui.end_row();
+                    },
+                    "u32" => quote! {
+                        ui.label(#fname_str);
+                        let mut val = *#fname as i64;
+                        if ui.add(egui::DragValue::new(&mut val).speed(1.0)).changed() {
+                            *#fname = val.max(0) as u32;
+                            modified = true;
+                        }
+                        ui.end_row();
+                    },
+                    "i32" => quote! {
+                        ui.label(#fname_str);
+                        if ui.add(egui::DragValue::new(#fname).speed(1.0)).changed() {
+                            modified = true;
+                        }
+                        ui.end_row();
+                    },
+                    _ => quote! {
+                        ui.label(#fname_str);
+                        ui.label(format!("{:?}", #fname));
+                        ui.end_row();
+                    },
+                }
+            }).collect();
+
+            quote! {
+                #enum_name::#variant_name { #(#field_bindings),* } => {
+                    egui::Grid::new("editable_fields")
+                        .num_columns(2)
+                        .spacing([20.0, 4.0])
+                        .show(ui, |ui| {
+                            #(#editable_widgets)*
+                        });
+                }
+            }
+        })
+        .collect();
+
     // Generate type ID constants for the enum
     let type_constants: Vec<_> = variant_info
         .iter()
@@ -1197,6 +1529,15 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
                 match self {
                     #(#inspect_arms)*
                 }
+            }
+
+            #[cfg(feature = "egui")]
+            fn render_editable_fields(&mut self, ui: &mut egui::Ui) -> bool {
+                let mut modified = false;
+                match self {
+                    #(#editable_arms)*
+                }
+                modified
             }
         }
     };
