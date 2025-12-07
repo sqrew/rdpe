@@ -1,6 +1,7 @@
 mod camera;
 mod connections;
 mod field_gpu;
+mod picking;
 mod post_process;
 mod spatial_gpu;
 mod spatial_grid_viz;
@@ -16,6 +17,7 @@ mod egui_integration;
 pub use camera::Camera;
 pub use connections::ConnectionState;
 pub use field_gpu::{FieldSystemGpu, create_particle_field_bind_group_layout};
+pub use picking::PickingState;
 pub use post_process::PostProcessState;
 pub use spatial_grid_viz::SpatialGridViz;
 pub use sub_emitter_gpu::SubEmitterGpu;
@@ -24,6 +26,8 @@ pub use volume_render::{VolumeConfig, VolumeRenderState};
 pub use wireframe::WireframeState;
 
 use crate::field::FieldRegistry;
+#[cfg(feature = "egui")]
+use crate::selection::{SelectedParticle, SelectedParticleData};
 
 #[cfg(feature = "egui")]
 pub use egui_integration::EguiIntegration;
@@ -140,6 +144,8 @@ pub struct GpuState {
     // CPU readback support
     particle_stride: usize,
     readback_staging: Option<wgpu::Buffer>,
+    // GPU picking for particle selection
+    picking: PickingState,
 }
 
 impl GpuState {
@@ -916,6 +922,17 @@ impl GpuState {
             None
         };
 
+        // GPU picking for particle selection
+        let picking = PickingState::new(
+            &device,
+            config.width,
+            config.height,
+            particle_stride,
+            color_offset,
+            alive_offset,
+            scale_offset,
+        );
+
         Self {
             surface,
             device,
@@ -959,6 +976,7 @@ impl GpuState {
             wireframe_state,
             particle_stride,
             readback_staging: None,
+            picking,
         }
     }
 
@@ -979,6 +997,9 @@ impl GpuState {
                     self.config.format,
                 );
             }
+
+            // Resize picking texture
+            self.picking.resize(&self.device, new_size.width, new_size.height);
         }
     }
 
@@ -989,6 +1010,24 @@ impl GpuState {
         if let Some(ref mut grid) = self.spatial_grid_viz {
             grid.set_opacity(&self.queue, opacity);
         }
+    }
+
+    /// Request particle picking at the given screen coordinates.
+    ///
+    /// The pick will be performed on the next render, and the result
+    /// will be available via `selected_particle()` after that frame.
+    pub fn request_pick(&mut self, x: u32, y: u32) {
+        self.picking.request_pick(x, y);
+    }
+
+    /// Get the currently selected particle index, if any.
+    pub fn selected_particle(&self) -> Option<u32> {
+        self.picking.selected_particle
+    }
+
+    /// Clear the current particle selection.
+    pub fn clear_selection(&mut self) {
+        self.picking.clear_selection();
     }
 
     /// Read particle data from GPU to CPU synchronously.
@@ -1153,6 +1192,13 @@ impl GpuState {
         // Process egui frame before creating encoder
         let egui_output: Option<EguiFrameOutput> = if let Some(ref mut egui) = self.egui {
             egui.begin_frame(&self.window);
+            // Store selection in egui's data for the callback to access
+            let selected = self.picking.selected_particle;
+            let selected_data = self.picking.selected_particle_data.clone();
+            egui.ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::NULL, SelectedParticle(selected));
+                d.insert_temp(egui::Id::NULL, SelectedParticleData(selected_data));
+            });
             ui_callback(&egui.ctx);
             Some(egui.end_frame(&self.window))
         } else {
@@ -1305,6 +1351,16 @@ impl GpuState {
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
+        }
+
+        // Picking pass (only if there's a pending pick request)
+        if self.picking.has_pending_pick() {
+            self.picking.render(
+                &mut encoder,
+                &self.particle_buffer,
+                &self.uniform_bind_group,
+                self.num_particles,
+            );
         }
 
         // Render pass - render to offscreen texture if post-processing, otherwise to screen
@@ -1464,8 +1520,22 @@ impl GpuState {
             egui.renderer().render(render_pass, &egui_out.paint_jobs, &screen_descriptor);
         }
 
+        // Copy picked pixel to staging buffer before submit
+        self.picking.copy_pixel(&mut encoder);
+
+        // Copy selected particle data if we have a pending read
+        if self.picking.needs_particle_data_copy() {
+            self.picking.copy_particle_data(&mut encoder, &self.particle_buffer);
+        }
+
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+
+        // Read back picked pixel after submit
+        self.picking.read_result(&self.device);
+
+        // Read back particle data if pending
+        self.picking.read_particle_data(&self.device);
 
         // Cleanup egui textures
         if let (Some(ref mut egui), Some(ref egui_out)) = (&mut self.egui, &egui_output) {
@@ -1623,6 +1693,16 @@ impl GpuState {
             compute_pass.dispatch_workgroups(workgroups, 1, 1);
         }
 
+        // Picking pass (only if there's a pending pick request)
+        if self.picking.has_pending_pick() {
+            self.picking.render(
+                &mut encoder,
+                &self.particle_buffer,
+                &self.uniform_bind_group,
+                self.num_particles,
+            );
+        }
+
         // Render pass - render to offscreen texture if post-processing, otherwise to screen
         let render_target = if let Some(ref pp) = self.post_process {
             &pp.view
@@ -1754,8 +1834,22 @@ impl GpuState {
             render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
 
+        // Copy picked pixel to staging buffer before submit
+        self.picking.copy_pixel(&mut encoder);
+
+        // Copy selected particle data if we have a pending read
+        if self.picking.needs_particle_data_copy() {
+            self.picking.copy_particle_data(&mut encoder, &self.particle_buffer);
+        }
+
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+
+        // Read back picked pixel after submit
+        self.picking.read_result(&self.device);
+
+        // Read back particle data if pending
+        self.picking.read_particle_data(&self.device);
 
         Ok(())
     }

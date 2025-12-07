@@ -66,7 +66,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
+    event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
@@ -174,6 +174,9 @@ pub struct Simulation<P: ParticleTrait> {
     /// UI callback for egui (called each frame).
     #[cfg(feature = "egui")]
     ui_callback: Option<UiCallback>,
+    /// Whether the built-in particle inspector is enabled.
+    #[cfg(feature = "egui")]
+    inspector_enabled: bool,
     /// Phantom data for the particle type.
     _phantom: PhantomData<P>,
 }
@@ -220,6 +223,8 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             egui_enabled: false,
             #[cfg(feature = "egui")]
             ui_callback: None,
+            #[cfg(feature = "egui")]
+            inspector_enabled: false,
             _phantom: PhantomData,
         }
     }
@@ -1181,6 +1186,44 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
         self
     }
 
+    /// Enable the built-in particle inspector panel.
+    ///
+    /// When enabled, a "Particle Inspector" window appears that displays
+    /// all fields of the currently selected particle with live updates.
+    /// Click on any particle to select it.
+    ///
+    /// This is a zero-boilerplate alternative to manually creating an
+    /// inspector using `with_ui()` and `selected_particle_data()`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Standalone use - no UI code needed
+    /// Simulation::<MyParticle>::new()
+    ///     .with_particle_inspector()
+    ///     .run();
+    ///
+    /// // Combined with custom UI
+    /// Simulation::<MyParticle>::new()
+    ///     .with_particle_inspector()  // Built-in inspector
+    ///     .with_ui(|ctx| {            // Plus custom panels
+    ///         egui::Window::new("Controls").show(ctx, |ui| {
+    ///             ui.label("Custom controls here");
+    ///         });
+    ///     })
+    ///     .run();
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Requires the `egui` feature to be enabled.
+    #[cfg(feature = "egui")]
+    pub fn with_particle_inspector(mut self) -> Self {
+        self.egui_enabled = true;
+        self.inspector_enabled = true;
+        self
+    }
+
     /// Check if any rules require neighbor queries
     fn has_neighbor_rules(&self) -> bool {
         self.rules.iter().any(|r| r.requires_neighbors()) || self.interaction_matrix.is_some()
@@ -1292,11 +1335,59 @@ fn inbox_receive_at(my_idx: u32, channel: u32) -> f32 {
             (String::new(), String::new())
         };
 
-        // Track was_alive if we need death recording
-        let was_alive_tracking = if has_sub_emitters {
+        // Check if any rules are OnDeath or OnSpawn
+        let has_on_death = self.rules.iter().any(|r| r.is_on_death());
+        let has_on_spawn = self.rules.iter().any(|r| r.is_on_spawn());
+
+        // Track was_alive if we need death recording (sub-emitters, OnDeath, or OnSpawn)
+        let was_alive_tracking = if has_sub_emitters || has_on_death || has_on_spawn {
             "    let was_alive = p.alive;\n"
         } else {
             ""
+        };
+
+        // Generate OnSpawn code
+        let on_spawn_code = if has_on_spawn {
+            let actions: String = self
+                .rules
+                .iter()
+                .filter(|r| r.is_on_spawn())
+                .map(|r| r.to_on_spawn_wgsl())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            format!(
+                r#"
+    // OnSpawn handling
+    if was_alive == 0u && p.alive == 1u {{
+{actions}
+    }}
+"#
+            )
+        } else {
+            String::new()
+        };
+
+        // Generate OnDeath code
+        let on_death_code = if has_on_death {
+            let actions: String = self
+                .rules
+                .iter()
+                .filter(|r| r.is_on_death())
+                .map(|r| r.to_on_death_wgsl())
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            format!(
+                r#"
+    // OnDeath handling
+    if was_alive == 1u && p.alive == 0u {{
+{actions}
+    }}
+"#
+            )
+        } else {
+            String::new()
         };
 
         let shader = if !has_neighbors {
@@ -1338,12 +1429,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     if p.alive == 0u {{
         return;
     }}
-
+{on_spawn_code}
 {simple_rules_code}
 
     // Integrate velocity
     p.position += p.velocity * uniforms.delta_time;
-{sub_emitter_death_recording}
+{on_death_code}{sub_emitter_death_recording}
     particles[index] = p;
 }}
 "#
@@ -1522,7 +1613,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     if p.alive == 0u {{
         return;
     }}
-
+{on_spawn_code}
     let my_pos = p.position;
     let my_cell = pos_to_cell(my_pos, spatial.cell_size, spatial.grid_resolution);
 
@@ -1586,7 +1677,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     // Integrate velocity
     p.position += p.velocity * uniforms.delta_time;
-{sub_emitter_death_recording}
+{on_death_code}{sub_emitter_death_recording}
     particles[index] = p;
 }}
 "#
@@ -1851,6 +1942,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 
         let config = SimConfig {
             particle_count: self.particle_count,
+            bounds: self.bounds,
             compute_shader,
             render_shader,
             has_neighbors,
@@ -1884,6 +1976,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             self.custom_uniforms,
             self.update_callback,
             self.ui_callback,
+            self.inspector_enabled,
         );
         #[cfg(not(feature = "egui"))]
         let mut app = App::<P>::new(
@@ -1911,6 +2004,8 @@ impl<P: ParticleTrait + 'static> Default for Simulation<P> {
 pub(crate) struct SimConfig {
     /// Total number of particles.
     pub particle_count: u32,
+    /// Simulation bounds (half-size of bounding cube).
+    pub bounds: f32,
     /// Generated WGSL compute shader source.
     pub compute_shader: String,
     /// Generated WGSL render shader source.
@@ -1961,12 +2056,12 @@ struct App<P: ParticleTrait> {
     config: SimConfig,
     // Input state (single source of truth for user input)
     input: Input,
-    // Last mouse position for camera dragging (internal use)
-    last_mouse_pos: Option<(f64, f64)>,
     custom_uniforms: CustomUniforms,
     update_callback: Option<UpdateCallback>,
     #[cfg(feature = "egui")]
     ui_callback: Option<UiCallback>,
+    #[cfg(feature = "egui")]
+    inspector_enabled: bool,
     // Time tracking (single source of truth)
     time: Time,
     // Grid opacity change requested by update callback (None = no change)
@@ -1982,6 +2077,7 @@ impl<P: ParticleTrait + 'static> App<P> {
         custom_uniforms: CustomUniforms,
         update_callback: Option<UpdateCallback>,
         #[cfg(feature = "egui")] ui_callback: Option<UiCallback>,
+        #[cfg(feature = "egui")] inspector_enabled: bool,
     ) -> Self {
         // Convert user particles to GPU format
         let mut gpu_particles: Vec<P::Gpu> = particles.iter().map(|p| p.to_gpu()).collect();
@@ -2007,11 +2103,12 @@ impl<P: ParticleTrait + 'static> App<P> {
             gpu_particles,
             config,
             input: Input::new(),
-            last_mouse_pos: None,
             custom_uniforms,
             update_callback,
             #[cfg(feature = "egui")]
             ui_callback,
+            #[cfg(feature = "egui")]
+            inspector_enabled,
             time: Time::new(),
             pending_grid_opacity: None,
             readback_data: None,
@@ -2094,45 +2191,87 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                     gpu_state.resize(physical_size);
                 }
             }
-            WindowEvent::MouseInput { state, button, .. } => {
-                // Reset camera drag state when left mouse is released
-                if !egui_consumed && button == MouseButton::Left && state == ElementState::Released {
-                    self.last_mouse_pos = None;
-                }
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                // Camera drag (only if egui didn't consume and left mouse is held)
+            WindowEvent::MouseInput { .. } => {
+                // Left click: particle selection (only if egui didn't consume)
                 use crate::input::MouseButton as InputMouseButton;
-                if !egui_consumed && self.input.mouse_held(InputMouseButton::Left) {
-                    if let Some((last_x, last_y)) = self.last_mouse_pos {
-                        let dx = position.x - last_x;
-                        let dy = position.y - last_y;
-
-                        if let Some(gpu_state) = &mut self.gpu_state {
-                            gpu_state.camera.yaw -= dx as f32 * 0.005;
-                            gpu_state.camera.pitch += dy as f32 * 0.005;
-                            gpu_state.camera.pitch = gpu_state.camera.pitch.clamp(-1.5, 1.5);
-                        }
+                if !egui_consumed && self.input.mouse_pressed(InputMouseButton::Left) {
+                    let mouse_pos = self.input.mouse_position();
+                    if let Some(gpu_state) = &mut self.gpu_state {
+                        gpu_state.request_pick(mouse_pos.x as u32, mouse_pos.y as u32);
                     }
-                    self.last_mouse_pos = Some((position.x, position.y));
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => {
-                // Only process if egui didn't consume the event
+            WindowEvent::CursorMoved { .. } => {
+                // Camera controls (only if egui didn't consume)
                 if !egui_consumed {
-                    let scroll = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y,
-                        MouseScrollDelta::PixelDelta(pos) => pos.y as f32 * 0.1,
-                    };
+                    use crate::input::MouseButton as InputMouseButton;
+                    let delta = self.input.mouse_delta();
+
                     if let Some(gpu_state) = &mut self.gpu_state {
-                        gpu_state.camera.distance -= scroll * 0.3;
-                        gpu_state.camera.distance = gpu_state.camera.distance.clamp(0.5, 20.0);
+                        // Right mouse: orbit
+                        if self.input.mouse_held(InputMouseButton::Right) {
+                            gpu_state.camera.orbit(delta.x, delta.y);
+                        }
+                        // Left mouse: reserved (do nothing)
+                        // Middle mouse: reserved (do nothing)
+                    }
+                }
+            }
+            WindowEvent::MouseWheel { .. } => {
+                // Zoom (only if egui didn't consume)
+                if !egui_consumed {
+                    let scroll = self.input.scroll_delta();
+                    if let Some(gpu_state) = &mut self.gpu_state {
+                        gpu_state.camera.zoom(scroll);
                     }
                 }
             }
             WindowEvent::RedrawRequested => {
                 // Update time (single source of truth)
                 let (time, delta_time) = self.time.update();
+
+                // Update camera (keyboard movement + smooth interpolation)
+                if let Some(gpu_state) = &mut self.gpu_state {
+                    use crate::input::KeyCode;
+
+                    // Speed multiplier when shift is held
+                    let speed_mult = if self.input.key_held(KeyCode::Shift) {
+                        gpu_state.camera.sprint_multiplier
+                    } else {
+                        1.0
+                    };
+                    let move_amount = gpu_state.camera.move_speed * delta_time * speed_mult;
+
+                    // WASD movement
+                    if self.input.key_held(KeyCode::W) {
+                        gpu_state.camera.move_forward(move_amount);
+                    }
+                    if self.input.key_held(KeyCode::S) {
+                        gpu_state.camera.move_forward(-move_amount);
+                    }
+                    if self.input.key_held(KeyCode::A) {
+                        gpu_state.camera.move_right(-move_amount);
+                    }
+                    if self.input.key_held(KeyCode::D) {
+                        gpu_state.camera.move_right(move_amount);
+                    }
+
+                    // Q/E vertical movement
+                    if self.input.key_held(KeyCode::Q) {
+                        gpu_state.camera.move_up(-move_amount);
+                    }
+                    if self.input.key_held(KeyCode::E) {
+                        gpu_state.camera.move_up(move_amount);
+                    }
+
+                    // R to reset camera
+                    if self.input.key_pressed(KeyCode::R) {
+                        gpu_state.camera.reset();
+                    }
+
+                    // Smooth interpolation update
+                    gpu_state.camera.update(delta_time);
+                }
 
                 // Update window title with FPS (Time handles the update interval internally)
                 let fps = self.time.fps();
@@ -2159,6 +2298,8 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                         &self.input,
                         time,
                         delta_time,
+                        self.config.bounds,
+                        self.input.aspect_ratio(),
                         &mut self.pending_grid_opacity,
                         &mut pending_readback,
                         self.readback_data.as_deref(),
@@ -2183,8 +2324,20 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
 
                     #[cfg(feature = "egui")]
                     let result = {
-                        if let Some(ref mut ui_cb) = self.ui_callback {
-                            gpu_state.render_with_ui(time, delta_time, bytes_ref, ui_cb)
+                        let inspector_enabled = self.inspector_enabled;
+                        let ui_callback = &mut self.ui_callback;
+                        let has_ui = ui_callback.is_some() || inspector_enabled;
+                        if has_ui {
+                            gpu_state.render_with_ui(time, delta_time, bytes_ref, |ctx| {
+                                // Call user UI callback if present
+                                if let Some(ref mut ui_cb) = ui_callback {
+                                    ui_cb(ctx);
+                                }
+                                // Render built-in inspector if enabled
+                                if inspector_enabled {
+                                    render_particle_inspector::<P>(ctx);
+                                }
+                            })
                         } else {
                             gpu_state.render(time, delta_time, bytes_ref)
                         }
@@ -2220,6 +2373,42 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
             _ => {}
         }
     }
+}
+
+/// Render the built-in particle inspector panel.
+///
+/// This is called automatically when `.with_particle_inspector()` is enabled.
+#[cfg(feature = "egui")]
+fn render_particle_inspector<P: ParticleTrait>(ctx: &egui::Context) {
+    use crate::selection::{selected_particle, selected_particle_data};
+
+    egui::Window::new("Particle Inspector")
+        .default_pos([10.0, 10.0])
+        .default_width(250.0)
+        .show(ctx, |ui| {
+            if let Some(particle) = selected_particle_data::<P>(ctx) {
+                let fields = particle.inspect_fields();
+                egui::Grid::new("inspector_fields")
+                    .num_columns(2)
+                    .spacing([20.0, 4.0])
+                    .show(ui, |ui| {
+                        for (name, value) in fields {
+                            ui.strong(format!("{}:", name));
+                            ui.label(value);
+                            ui.end_row();
+                        }
+                    });
+            } else if selected_particle(ctx).is_some() {
+                // Selection exists but data hasn't loaded yet
+                ui.spinner();
+                ui.label("Loading...");
+            } else {
+                ui.colored_label(
+                    egui::Color32::from_rgb(150, 150, 150),
+                    "Click a particle to inspect it",
+                );
+            }
+        });
 }
 
 #[cfg(test)]
@@ -2277,6 +2466,20 @@ mod tests {
                 alive: 1,
                 scale: 1.0,
             }
+        }
+
+        fn from_gpu(gpu: &Self::Gpu) -> Self {
+            Self {
+                position: Vec3::from_array(gpu.position),
+                velocity: Vec3::from_array(gpu.velocity),
+            }
+        }
+
+        fn inspect_fields(&self) -> Vec<(&'static str, String)> {
+            vec![
+                ("position", format!("({:.3}, {:.3}, {:.3})", self.position.x, self.position.y, self.position.z)),
+                ("velocity", format!("({:.3}, {:.3}, {:.3})", self.velocity.x, self.velocity.y, self.velocity.z)),
+            ]
         }
     }
 

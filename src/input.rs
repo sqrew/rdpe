@@ -244,6 +244,21 @@ impl Input {
         self.scroll_delta
     }
 
+    /// Get the current window size in pixels (width, height).
+    pub fn window_size(&self) -> (u32, u32) {
+        self.window_size
+    }
+
+    /// Get the window aspect ratio (width / height).
+    pub fn aspect_ratio(&self) -> f32 {
+        let (w, h) = self.window_size;
+        if h > 0 {
+            w as f32 / h as f32
+        } else {
+            1.0
+        }
+    }
+
     // ========== Internal Methods ==========
 
     /// Called at the start of each frame to clear per-frame state.

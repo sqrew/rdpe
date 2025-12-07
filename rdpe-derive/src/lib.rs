@@ -335,6 +335,8 @@ pub fn derive_particle(input: TokenStream) -> TokenStream {
     let mut wgsl_fields = Vec::new();
     let mut gpu_struct_fields = Vec::new();
     let mut to_gpu_conversions = Vec::new();
+    let mut from_gpu_conversions = Vec::new();
+    let mut inspect_field_entries = Vec::new();
     let mut field_offset = 0u32;
     let mut padding_count = 0u32;
     let mut color_field: Option<String> = None;
@@ -396,6 +398,13 @@ pub fn derive_particle(input: TokenStream) -> TokenStream {
 
         let conversion = generate_conversion(field_name, field_type);
         to_gpu_conversions.push(quote! { #field_name: #conversion });
+
+        let reverse_conversion = generate_reverse_conversion(field_name, field_type);
+        from_gpu_conversions.push(quote! { #field_name: #reverse_conversion });
+
+        // Generate inspect field entry with nice formatting
+        let inspect_format = generate_inspect_format(field_name, field_type);
+        inspect_field_entries.push(quote! { (#field_name_str, #inspect_format) });
 
         field_offset += type_info.size;
     }
@@ -526,6 +535,18 @@ pub fn derive_particle(input: TokenStream) -> TokenStream {
                     #(#to_gpu_conversions),*
                 }
             }
+
+            fn from_gpu(gpu: &Self::Gpu) -> Self {
+                Self {
+                    #(#from_gpu_conversions),*
+                }
+            }
+
+            fn inspect_fields(&self) -> Vec<(&'static str, String)> {
+                vec![
+                    #(#inspect_field_entries),*
+                ]
+            }
         }
     };
 
@@ -603,6 +624,62 @@ fn generate_conversion(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStrea
         }
         _ => {
             quote! { self.#field_name }
+        }
+    }
+}
+
+/// Generate code to convert a field from GPU format back to Rust.
+///
+/// Vector types need `from_array()`, scalars are passed through.
+fn generate_reverse_conversion(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    let type_str = quote!(#ty).to_string().replace(" ", "");
+
+    match type_str.as_str() {
+        "Vec3" | "glam::Vec3" => {
+            quote! { glam::Vec3::from_array(gpu.#field_name) }
+        }
+        "Vec2" | "glam::Vec2" => {
+            quote! { glam::Vec2::from_array(gpu.#field_name) }
+        }
+        "Vec4" | "glam::Vec4" => {
+            quote! { glam::Vec4::from_array(gpu.#field_name) }
+        }
+        _ => {
+            quote! { gpu.#field_name }
+        }
+    }
+}
+
+/// Generate code to format a field for inspection display.
+///
+/// Produces human-readable formatted strings for the inspector panel.
+fn generate_inspect_format(field_name: &Ident, ty: &Type) -> proc_macro2::TokenStream {
+    let type_str = quote!(#ty).to_string().replace(" ", "");
+
+    match type_str.as_str() {
+        "Vec3" | "glam::Vec3" => {
+            quote! {
+                format!("({:.3}, {:.3}, {:.3})", self.#field_name.x, self.#field_name.y, self.#field_name.z)
+            }
+        }
+        "Vec2" | "glam::Vec2" => {
+            quote! {
+                format!("({:.3}, {:.3})", self.#field_name.x, self.#field_name.y)
+            }
+        }
+        "Vec4" | "glam::Vec4" => {
+            quote! {
+                format!("({:.3}, {:.3}, {:.3}, {:.3})", self.#field_name.x, self.#field_name.y, self.#field_name.z, self.#field_name.w)
+            }
+        }
+        "f32" => {
+            quote! { format!("{:.3}", self.#field_name) }
+        }
+        "u32" | "i32" => {
+            quote! { format!("{}", self.#field_name) }
+        }
+        _ => {
+            quote! { format!("{:?}", self.#field_name) }
         }
     }
 }
@@ -803,6 +880,32 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
             }
         }).collect();
 
+        // Build from_gpu conversions for each user field
+        let from_gpu_conversions: Vec<_> = fields.iter().map(|(name, type_str, _)| {
+            let name_ident = name;
+            let type_normalized = type_str.replace("glam::", "");
+            match type_normalized.as_str() {
+                "Vec3" => quote! { #name_ident: rdpe::Vec3::from_array(gpu.#name_ident) },
+                "Vec2" => quote! { #name_ident: rdpe::Vec2::from_array(gpu.#name_ident) },
+                "Vec4" => quote! { #name_ident: rdpe::Vec4::from_array(gpu.#name_ident) },
+                _ => quote! { #name_ident: gpu.#name_ident },
+            }
+        }).collect();
+
+        // Build inspect field entries
+        let inspect_entries: Vec<_> = fields.iter().map(|(name, type_str, _)| {
+            let name_str = name.to_string();
+            let type_normalized = type_str.replace("glam::", "");
+            match type_normalized.as_str() {
+                "Vec3" => quote! { (#name_str, format!("({:.3}, {:.3}, {:.3})", self.#name.x, self.#name.y, self.#name.z)) },
+                "Vec2" => quote! { (#name_str, format!("({:.3}, {:.3})", self.#name.x, self.#name.y)) },
+                "Vec4" => quote! { (#name_str, format!("({:.3}, {:.3}, {:.3}, {:.3})", self.#name.x, self.#name.y, self.#name.z, self.#name.w)) },
+                "f32" => quote! { (#name_str, format!("{:.3}", self.#name)) },
+                "u32" | "i32" => quote! { (#name_str, format!("{}", self.#name)) },
+                _ => quote! { (#name_str, format!("{:?}", self.#name)) },
+            }
+        }).collect();
+
         let color_field_expr = match &color_field {
             Some(name) => quote! { Some(#name) },
             None => quote! { None },
@@ -839,6 +942,18 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
                     #struct_gpu_name {
                         #(#to_gpu_conversions),*
                     }
+                }
+
+                fn from_gpu(gpu: &Self::Gpu) -> Self {
+                    Self {
+                        #(#from_gpu_conversions),*
+                    }
+                }
+
+                fn inspect_fields(&self) -> Vec<(&'static str, String)> {
+                    vec![
+                        #(#inspect_entries),*
+                    ]
                 }
             }
         });
@@ -961,6 +1076,68 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    // Generate from_gpu() match arms for enum
+    let from_gpu_arms: Vec<_> = variant_info
+        .iter()
+        .enumerate()
+        .map(|(idx, (variant_name, variant_fields))| {
+            let idx_u32 = idx as u32;
+
+            // Generate field assignments from GPU to enum variant
+            let field_assignments: Vec<_> = variant_fields.iter().map(|(fname, ftype, _)| {
+                let type_normalized = ftype.replace("glam::", "");
+                match type_normalized.as_str() {
+                    "Vec3" => quote! { #fname: rdpe::Vec3::from_array(gpu.#fname) },
+                    "Vec2" => quote! { #fname: rdpe::Vec2::from_array(gpu.#fname) },
+                    "Vec4" => quote! { #fname: rdpe::Vec4::from_array(gpu.#fname) },
+                    _ => quote! { #fname: gpu.#fname },
+                }
+            }).collect();
+
+            // Need a default case for the last variant
+            if idx == variant_info.len() - 1 {
+                quote! {
+                    _ => #enum_name::#variant_name { #(#field_assignments),* }
+                }
+            } else {
+                quote! {
+                    #idx_u32 => #enum_name::#variant_name { #(#field_assignments),* },
+                }
+            }
+        })
+        .collect();
+
+    // Generate inspect_fields() match arms for enum
+    let inspect_arms: Vec<_> = variant_info
+        .iter()
+        .map(|(variant_name, variant_fields)| {
+            // Generate field bindings for the match pattern
+            let field_bindings: Vec<_> = variant_fields.iter().map(|(fname, _, _)| {
+                quote! { #fname }
+            }).collect();
+
+            // Generate inspect entries
+            let inspect_entries: Vec<_> = variant_fields.iter().map(|(fname, ftype, _)| {
+                let fname_str = fname.to_string();
+                let type_normalized = ftype.replace("glam::", "");
+                match type_normalized.as_str() {
+                    "Vec3" => quote! { (#fname_str, format!("({:.3}, {:.3}, {:.3})", #fname.x, #fname.y, #fname.z)) },
+                    "Vec2" => quote! { (#fname_str, format!("({:.3}, {:.3})", #fname.x, #fname.y)) },
+                    "Vec4" => quote! { (#fname_str, format!("({:.3}, {:.3}, {:.3}, {:.3})", #fname.x, #fname.y, #fname.z, #fname.w)) },
+                    "f32" => quote! { (#fname_str, format!("{:.3}", #fname)) },
+                    "u32" | "i32" => quote! { (#fname_str, format!("{}", #fname)) },
+                    _ => quote! { (#fname_str, format!("{:?}", #fname)) },
+                }
+            }).collect();
+
+            quote! {
+                #enum_name::#variant_name { #(#field_bindings),* } => {
+                    vec![#(#inspect_entries),*]
+                }
+            }
+        })
+        .collect();
+
     // Generate type ID constants for the enum
     let type_constants: Vec<_> = variant_info
         .iter()
@@ -1007,6 +1184,18 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
             fn to_gpu(&self) -> Self::Gpu {
                 match self {
                     #(#to_gpu_arms)*
+                }
+            }
+
+            fn from_gpu(gpu: &Self::Gpu) -> Self {
+                match gpu.particle_type {
+                    #(#from_gpu_arms)*
+                }
+            }
+
+            fn inspect_fields(&self) -> Vec<(&'static str, String)> {
+                match self {
+                    #(#inspect_arms)*
                 }
             }
         }

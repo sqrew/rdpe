@@ -126,7 +126,7 @@ fn main() {
         .with_particle_count(8_000)
         .with_particle_size(0.006)
         .with_bounds(1.5)
-        .with_spawner(|ctx| particles[ctx.index as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         .with_spatial_config(0.15, 32)
         // Gravitational potential field
         .with_field(
@@ -167,28 +167,20 @@ fn main() {
                             .text("Gravity Strength")
                             .logarithmic(true),
                     );
-                    ui.add(
-                        egui::Slider::new(&mut s.softening, 0.01..=0.2)
-                            .text("Softening"),
-                    );
+                    ui.add(egui::Slider::new(&mut s.softening, 0.01..=0.2).text("Softening"));
                     ui.add(
                         egui::Slider::new(&mut s.interaction_radius, 0.2..=1.5)
                             .text("Interaction Radius"),
                     );
-                    ui.add(
-                        egui::Slider::new(&mut s.drag, 0.0..=2.0)
-                            .text("Drag"),
-                    );
+                    ui.add(egui::Slider::new(&mut s.drag, 0.0..=2.0).text("Drag"));
 
                     ui.separator();
                     ui.heading("Visualization");
                     ui.add(
-                        egui::Slider::new(&mut s.field_deposit, 0.01..=0.5)
-                            .text("Field Deposit"),
+                        egui::Slider::new(&mut s.field_deposit, 0.01..=0.5).text("Field Deposit"),
                     );
                     ui.add(
-                        egui::Slider::new(&mut s.volume_density, 1.0..=20.0)
-                            .text("Volume Density"),
+                        egui::Slider::new(&mut s.volume_density, 1.0..=20.0).text("Volume Density"),
                     );
                     ui.checkbox(&mut s.show_grid, "Show Spatial Grid");
 

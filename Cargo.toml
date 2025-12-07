@@ -123,3 +123,8 @@ required-features = ["egui"]
 name = "wave_field"
 path = "examples/wave_field.rs"
 required-features = ["egui"]
+
+[[example]]
+name = "particle_inspector"
+path = "examples/particle_inspector.rs"
+required-features = ["egui"]

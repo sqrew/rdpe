@@ -10,9 +10,9 @@
 //!     .with_uniform("attractor", Vec3::ZERO)
 //!     .with_uniform("strength", 1.0f32)
 //!     .with_update(|ctx| {
-//!         // Update uniforms based on input
-//!         if let Some(pos) = ctx.mouse_world_position() {
-//!             ctx.set("attractor", pos);
+//!         // Update uniforms based on input - mouse_world_pos() maps to world coordinates!
+//!         if ctx.input.mouse_held(MouseButton::Left) {
+//!             ctx.set("attractor", ctx.mouse_world_pos());
 //!         }
 //!         ctx.set("strength", (ctx.time() * 2.0).sin() * 0.5 + 1.0);
 //!     })
@@ -227,7 +227,7 @@ impl CustomUniforms {
 ///
 ///     // Check if left mouse is held down
 ///     if ctx.input.mouse_held(MouseButton::Left) {
-///         ctx.set("attractor", ctx.input.mouse_ndc());
+///         ctx.set("attractor", ctx.mouse_world_pos());
 ///     }
 ///
 ///     // Get mouse movement delta
@@ -262,6 +262,10 @@ pub struct UpdateContext<'a> {
     pub(crate) time: f32,
     /// Time since last frame in seconds.
     pub(crate) delta_time: f32,
+    /// Simulation bounds (half-size of bounding cube).
+    pub(crate) bounds: f32,
+    /// Window aspect ratio (width / height).
+    pub(crate) aspect_ratio: f32,
     /// Grid opacity to set (None = no change).
     pub(crate) grid_opacity: &'a mut Option<f32>,
     /// Whether to perform readback after this frame.
@@ -277,6 +281,8 @@ impl<'a> UpdateContext<'a> {
         input: &'a Input,
         time: f32,
         delta_time: f32,
+        bounds: f32,
+        aspect_ratio: f32,
         grid_opacity: &'a mut Option<f32>,
         readback_requested: &'a mut bool,
         readback_data: Option<&'a [u8]>,
@@ -286,6 +292,8 @@ impl<'a> UpdateContext<'a> {
             input,
             time,
             delta_time,
+            bounds,
+            aspect_ratio,
             grid_opacity,
             readback_requested,
             readback_data,
@@ -309,6 +317,46 @@ impl<'a> UpdateContext<'a> {
     /// This is a convenience method. For full input access, use `ctx.input`.
     pub fn mouse_ndc(&self) -> Vec2 {
         self.input.mouse_ndc()
+    }
+
+    /// Get the mouse position in world coordinates.
+    ///
+    /// Maps the mouse position from screen space to world space using the
+    /// simulation bounds. The z-coordinate is set to 0 (front-facing plane).
+    ///
+    /// This accounts for window aspect ratio, so the mapping is correct
+    /// regardless of window shape.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_update(|ctx| {
+    ///     if ctx.input.mouse_held(MouseButton::Left) {
+    ///         // Get mouse position in world coordinates
+    ///         let pos = ctx.mouse_world_pos();
+    ///         ctx.set("attractor", pos);
+    ///     }
+    /// })
+    /// ```
+    pub fn mouse_world_pos(&self) -> Vec3 {
+        let ndc = self.input.mouse_ndc();
+        // Scale by bounds and correct for aspect ratio
+        // The camera view scales uniformly, so we apply aspect ratio correction
+        Vec3::new(
+            ndc.x * self.bounds * self.aspect_ratio,
+            ndc.y * self.bounds,
+            0.0,
+        )
+    }
+
+    /// Get the simulation bounds (half-size of the bounding cube).
+    pub fn bounds(&self) -> f32 {
+        self.bounds
+    }
+
+    /// Get the window aspect ratio (width / height).
+    pub fn aspect_ratio(&self) -> f32 {
+        self.aspect_ratio
     }
 
     /// Check if the left mouse button is currently held down.

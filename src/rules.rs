@@ -2947,6 +2947,273 @@ pub enum Rule {
         radius: f32,
     },
 
+    /// Refractory period / cooldown mechanic for particle fields.
+    ///
+    /// Models a "charge" that depletes when a trigger field is active and
+    /// regenerates when inactive. Perfect for:
+    /// - Bioluminescence (luciferin depletion/regeneration)
+    /// - Neuron firing (refractory period)
+    /// - Ability cooldowns
+    /// - Energy systems
+    ///
+    /// When `trigger` field is above `active_threshold`:
+    /// - Charge depletes at `depletion_rate * trigger_value`
+    ///
+    /// When `trigger` field is below `active_threshold`:
+    /// - Charge regenerates at `regen_rate`
+    ///
+    /// # Fields
+    ///
+    /// - `trigger` - Field that triggers depletion (e.g., "glow")
+    /// - `charge` - Field storing the charge level (e.g., "energy")
+    /// - `active_threshold` - Trigger value above which charge depletes
+    /// - `depletion_rate` - How fast charge depletes when active
+    /// - `regen_rate` - How fast charge regenerates when inactive
+    ///
+    /// # Example: Bioluminescence
+    ///
+    /// ```ignore
+    /// Rule::Refractory {
+    ///     trigger: "glow".into(),
+    ///     charge: "luciferin".into(),
+    ///     active_threshold: 0.05,
+    ///     depletion_rate: 0.03,
+    ///     regen_rate: 0.008,
+    /// }
+    /// ```
+    ///
+    /// # Example: Neuron firing
+    ///
+    /// ```ignore
+    /// Rule::Refractory {
+    ///     trigger: "firing".into(),
+    ///     charge: "membrane_potential".into(),
+    ///     active_threshold: 0.1,
+    ///     depletion_rate: 0.5,   // Fast depletion during firing
+    ///     regen_rate: 0.02,      // Slow recovery
+    /// }
+    /// ```
+    Refractory {
+        /// Field that triggers depletion when high.
+        trigger: String,
+        /// Field storing the charge (0.0 to 1.0).
+        charge: String,
+        /// Threshold above which trigger causes depletion.
+        active_threshold: f32,
+        /// Depletion rate (multiplied by trigger value).
+        depletion_rate: f32,
+        /// Regeneration rate when trigger is low.
+        regen_rate: f32,
+    },
+
+    /// Run custom WGSL code when a particle dies.
+    ///
+    /// Triggered on the frame when `p.alive` transitions from 1 to 0.
+    /// Useful for death effects, recording final state, or triggering
+    /// other systems.
+    ///
+    /// # Available Variables
+    ///
+    /// - `p` - The particle at the moment of death (read/write)
+    /// - `index` - Particle index (`u32`)
+    /// - `uniforms.time`, `uniforms.delta_time` - Time values
+    ///
+    /// # Example: Flash color on death
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::Lifetime(3.0))
+    /// .with_rule(Rule::OnDeath {
+    ///     action: r#"
+    ///         p.color = vec3<f32>(1.0, 1.0, 1.0); // Flash white
+    ///     "#.into(),
+    /// })
+    /// ```
+    ///
+    /// # Example: Deposit to field on death
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::OnDeath {
+    ///     action: r#"
+    ///         // Leave a "corpse" marker in the field
+    ///         field_write(0u, p.position, 1.0);
+    ///     "#.into(),
+    /// })
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// The action runs after all other rules have executed, just before
+    /// the particle is written back to the buffer. The particle is still
+    /// "alive" in the sense that you can modify its fields, but `p.alive`
+    /// will be 0.
+    OnDeath {
+        /// WGSL code to execute when particle dies.
+        action: String,
+    },
+
+    /// Run custom WGSL code when a condition is true.
+    ///
+    /// A declarative wrapper around conditional logic. More readable than
+    /// `Rule::Custom` with an if statement when the pattern is simple.
+    ///
+    /// # Fields
+    ///
+    /// - `condition` - WGSL boolean expression (e.g., `"p.energy < 0.1"`)
+    /// - `action` - WGSL code to run when condition is true
+    ///
+    /// # Example: Low health warning
+    ///
+    /// ```ignore
+    /// Rule::OnCondition {
+    ///     condition: "p.health < 0.2".into(),
+    ///     action: "p.color = vec3<f32>(1.0, 0.0, 0.0);".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Speed boost when charged
+    ///
+    /// ```ignore
+    /// Rule::OnCondition {
+    ///     condition: "p.charge > 0.8".into(),
+    ///     action: r#"
+    ///         p.velocity *= 1.5;
+    ///         p.color = vec3<f32>(1.0, 1.0, 0.0);
+    ///     "#.into(),
+    /// }
+    /// ```
+    OnCondition {
+        /// WGSL boolean expression.
+        condition: String,
+        /// WGSL code to execute when condition is true.
+        action: String,
+    },
+
+    /// Run custom WGSL code at regular time intervals.
+    ///
+    /// Triggers once per interval when the simulation time crosses an
+    /// interval boundary. Useful for periodic effects like pulses,
+    /// spawning, or state changes.
+    ///
+    /// # Fields
+    ///
+    /// - `interval` - Time between triggers in seconds
+    /// - `action` - WGSL code to run at each interval
+    ///
+    /// # Example: Periodic pulse
+    ///
+    /// ```ignore
+    /// Rule::OnInterval {
+    ///     interval: 0.5,
+    ///     action: "p.glow = 1.0;".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Random color change every second
+    ///
+    /// ```ignore
+    /// Rule::OnInterval {
+    ///     interval: 1.0,
+    ///     action: r#"
+    ///         p.color = vec3<f32>(
+    ///             rand_f32(index, 0u),
+    ///             rand_f32(index, 1u),
+    ///             rand_f32(index, 2u)
+    ///         );
+    ///     "#.into(),
+    /// }
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// The trigger detection uses `floor(time / interval)` comparison,
+    /// so it fires once per particle when crossing each interval boundary.
+    OnInterval {
+        /// Time between triggers in seconds.
+        interval: f32,
+        /// WGSL code to execute at each interval.
+        action: String,
+    },
+
+    /// Run custom WGSL code when a particle spawns.
+    ///
+    /// Triggered on the frame when `p.alive` transitions from 0 to 1
+    /// (i.e., when an emitter spawns the particle). Useful for
+    /// initialization effects, random starting values, or spawn bursts.
+    ///
+    /// # Available Variables
+    ///
+    /// - `p` - The newly spawned particle (read/write)
+    /// - `index` - Particle index (`u32`)
+    /// - `uniforms.time`, `uniforms.delta_time` - Time values
+    ///
+    /// # Example: Random color on spawn
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::OnSpawn {
+    ///     action: r#"
+    ///         p.color = vec3<f32>(
+    ///             rand_f32(index, 0u),
+    ///             rand_f32(index, 1u),
+    ///             rand_f32(index, 2u)
+    ///         );
+    ///     "#.into(),
+    /// })
+    /// ```
+    ///
+    /// # Example: Spawn burst effect
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::OnSpawn {
+    ///     action: r#"
+    ///         p.glow = 1.0;
+    ///         p.scale = 2.0;
+    ///     "#.into(),
+    /// })
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This triggers for emitter-spawned particles, not for particles
+    /// created at simulation start (those are initialized via the spawner).
+    OnSpawn {
+        /// WGSL code to execute when particle spawns.
+        action: String,
+    },
+
+    /// Copy one particle field to another.
+    ///
+    /// Simple field assignment. Useful for tracking previous values,
+    /// creating derived fields, or synchronizing state.
+    ///
+    /// # Fields
+    ///
+    /// - `from` - Source field name
+    /// - `to` - Destination field name
+    ///
+    /// # Example: Track previous position
+    ///
+    /// ```ignore
+    /// Rule::CopyField {
+    ///     from: "position".into(),
+    ///     to: "prev_position".into(),
+    /// }
+    /// ```
+    ///
+    /// # Example: Sync color to velocity-based color
+    ///
+    /// ```ignore
+    /// Rule::CopyField {
+    ///     from: "computed_color".into(),
+    ///     to: "color".into(),
+    /// }
+    /// ```
+    CopyField {
+        /// Source field name.
+        from: String,
+        /// Destination field name.
+        to: String,
+    },
+
     /// Accumulate a value from neighbors into a target field.
     ///
     /// Gathers values from nearby particles and combines them using the
@@ -4005,6 +4272,42 @@ pub enum Rule {
 }
 
 impl Rule {
+    /// Returns `true` if this is an OnDeath rule.
+    pub fn is_on_death(&self) -> bool {
+        matches!(self, Rule::OnDeath { .. })
+    }
+
+    /// Generate WGSL code for OnDeath handling.
+    ///
+    /// Returns the code to run when `was_alive == 1u && p.alive == 0u`.
+    pub fn to_on_death_wgsl(&self) -> String {
+        match self {
+            Rule::OnDeath { action } => format!(
+                "        // OnDeath action\n{}",
+                action
+            ),
+            _ => String::new(),
+        }
+    }
+
+    /// Returns `true` if this is an OnSpawn rule.
+    pub fn is_on_spawn(&self) -> bool {
+        matches!(self, Rule::OnSpawn { .. })
+    }
+
+    /// Generate WGSL code for OnSpawn handling.
+    ///
+    /// Returns the code to run when `was_alive == 0u && p.alive == 1u`.
+    pub fn to_on_spawn_wgsl(&self) -> String {
+        match self {
+            Rule::OnSpawn { action } => format!(
+                "        // OnSpawn action\n{}",
+                action
+            ),
+            _ => String::new(),
+        }
+    }
+
     /// Returns `true` if this rule requires spatial hashing.
     ///
     /// Neighbor-based rules (Collide, Separate, Cohere, Align, Convert,
@@ -4436,6 +4739,24 @@ impl Rule {
 
             Rule::Custom(code) => format!("    // Custom rule\n{}", code),
 
+            Rule::OnCondition { condition, action } => format!(
+                r#"    // OnCondition
+    if {condition} {{
+{action}
+    }}"#
+            ),
+
+            Rule::OnInterval { interval, action } => format!(
+                r#"    // OnInterval ({interval}s)
+    {{
+        let prev_intervals = floor((uniforms.time - uniforms.delta_time) / {interval});
+        let curr_intervals = floor(uniforms.time / {interval});
+        if curr_intervals > prev_intervals {{
+{action}
+        }}
+    }}"#
+            ),
+
             Rule::Sync {
                 phase_field,
                 frequency,
@@ -4816,6 +5137,23 @@ impl Rule {
             Rule::ShrinkOut(duration) => format!(
                 r#"    // Shrink out
     p.scale = clamp(1.0 - p.age / {duration}, 0.0, 1.0);"#
+            ),
+
+            Rule::Refractory {
+                trigger,
+                charge,
+                active_threshold,
+                depletion_rate,
+                regen_rate,
+            } => format!(
+                r#"    // Refractory: charge depletion/regeneration
+    if p.{trigger} > {active_threshold} {{
+        // Trigger is active - deplete charge
+        p.{charge} = max(p.{charge} - p.{trigger} * {depletion_rate}, 0.0);
+    }} else {{
+        // Trigger inactive - regenerate charge
+        p.{charge} = min(p.{charge} + {regen_rate}, 1.0);
+    }}"#
             ),
 
             Rule::ColorOverLife { start, end, duration } => format!(
@@ -5411,6 +5749,10 @@ impl Rule {
                 "    // Blend by weight\n    p.{output} = mix(p.{a}, p.{b}, p.{weight});"
             ),
 
+            Rule::CopyField { from, to } => format!(
+                "    // Copy field\n    p.{to} = p.{from};"
+            ),
+
             // Neighbor rules generate code through to_neighbor_wgsl
             Rule::Collide { .. }
             | Rule::OnCollision { .. }
@@ -5434,7 +5776,9 @@ impl Rule {
             | Rule::Accumulate { .. }
             | Rule::Signal { .. }
             | Rule::Absorb { .. }
-            | Rule::NeighborCustom(_) => String::new(),
+            | Rule::NeighborCustom(_)
+            | Rule::OnDeath { .. }
+            | Rule::OnSpawn { .. } => String::new(), // OnDeath/OnSpawn handled specially
 
             Rule::Deposit { field_index, source, amount } => format!(
                 r#"    // Deposit: write particle value to field
