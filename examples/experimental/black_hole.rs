@@ -99,7 +99,7 @@ fn main() {
         .with_particle_count(25_000)
         .with_particle_size(0.008)
         .with_bounds(2.0)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
 
         // === Gravitational Functions ===
         .with_function(r#"

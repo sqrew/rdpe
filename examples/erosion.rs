@@ -44,8 +44,8 @@ fn main() {
     Simulation::<WaterDroplet>::new()
         .with_particle_count(num_droplets as u32)
         .with_bounds(1.0)
-        .with_spawner(move |i, _| WaterDroplet {
-            position: positions[i as usize],
+        .with_spawner(move |ctx| WaterDroplet {
+            position: positions[ctx.index as usize],
             velocity: Vec3::ZERO,
             color: Vec3::new(0.3, 0.6, 1.0), // Blue water
             sediment: 0.0,

@@ -111,7 +111,7 @@ fn main() {
         .with_particle_count(3500)
         .with_bounds(2.0)
         .with_particle_size(0.018)
-        .with_spawner(move |i, _| {
+        .with_spawner(|ctx| {
             let (pos, vel, color, entity_type, intensity) = particles[i as usize];
             GridEntity { position: pos, velocity: vel, color, entity_type, intensity }
         })

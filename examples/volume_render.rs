@@ -61,8 +61,8 @@ fn main() {
         .with_particle_count(5_000)
         .with_bounds(1.0)
         .with_particle_size(0.008)
-        .with_spawner(move |i, _| Agent {
-            position: positions[i as usize],
+        .with_spawner(move |ctx| Agent {
+            position: positions[ctx.index as usize],
             velocity: Vec3::ZERO,
             color: Vec3::new(1.0, 1.0, 1.0), // White particles
         })

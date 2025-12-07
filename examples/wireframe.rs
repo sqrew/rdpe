@@ -29,7 +29,6 @@
 //!
 //! Run with: `cargo run --example wireframe`
 
-use rand::Rng;
 use rdpe::prelude::*;
 
 #[derive(rdpe::Particle, Clone)]
@@ -41,39 +40,19 @@ struct CubeParticle {
 }
 
 fn main() {
-    let mut rng = rand::thread_rng();
-    let count = 200;
-
-    // Pre-generate particles
-    let particles: Vec<CubeParticle> = (0..count)
-        .map(|i| {
-            // Spawn in a grid pattern
-            let x = (i % 10) as f32 * 0.2 - 0.9;
-            let y = ((i / 10) % 10) as f32 * 0.2 - 0.9;
-            let z = (i / 100) as f32 * 0.2 - 0.1;
-
-            // Slight random velocity
-            let vx = rng.gen_range(-0.1..0.1);
-            let vy = rng.gen_range(-0.1..0.1);
-            let vz = rng.gen_range(-0.1..0.1);
-
-            // Color based on position
-            let hue = (x + 1.0) / 2.0;
-            let color = hsv_to_rgb(hue, 0.8, 1.0);
-
-            CubeParticle {
-                position: Vec3::new(x, y, z),
-                velocity: Vec3::new(vx, vy, vz),
-                color,
-            }
-        })
-        .collect();
-
     Simulation::<CubeParticle>::new()
-        .with_particle_count(count)
+        .with_particle_count(200)
         .with_bounds(1.5)
         .with_particle_size(0.01) // This controls the wireframe mesh scale
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(|ctx| {
+            // Grid layout
+            let pos = ctx.grid_position(10, 10, 2);
+            CubeParticle {
+                position: pos,
+                velocity: ctx.random_direction() * 0.1,
+                color: ctx.hsv((pos.x + 1.0) / 2.0, 0.8, 1.0),
+            }
+        })
         // Wireframe rendering - each particle is a 3D mesh!
         .with_visuals(|v| {
             // Try different shapes:
@@ -106,22 +85,4 @@ fn main() {
         // Bounce off walls
         .with_rule(Rule::BounceWalls)
         .run();
-}
-
-// Simple HSV to RGB conversion
-fn hsv_to_rgb(h: f32, s: f32, v: f32) -> Vec3 {
-    let c = v * s;
-    let x = c * (1.0 - ((h * 6.0) % 2.0 - 1.0).abs());
-    let m = v - c;
-
-    let (r, g, b) = match (h * 6.0) as u32 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-
-    Vec3::new(r + m, g + m, b + m)
 }

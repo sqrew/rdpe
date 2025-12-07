@@ -87,8 +87,8 @@ fn main() {
     Simulation::<EnergyParticle>::new()
         .with_particle_count(5000)
         .with_bounds(1.5)
-        .with_spawner(move |i, _| {
-            let (pos, energy) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (pos, energy) = particles[ctx.index as usize];
             let color = energy_to_color(energy);
             EnergyParticle {
                 position: pos,

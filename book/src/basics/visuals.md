@@ -106,6 +106,46 @@ Great for:
 - Organic webs
 - Network graphs
 
+### Wireframe Meshes
+
+Render particles as 3D wireframe shapes instead of flat billboards:
+
+```rust
+v.wireframe(WireframeMesh::cube(), 0.002);  // Cube wireframe, 0.002 line thickness
+```
+
+**Built-in shapes:**
+
+```rust
+WireframeMesh::cube()         // 12 edges
+WireframeMesh::tetrahedron()  // 6 edges
+WireframeMesh::octahedron()   // 12 edges
+WireframeMesh::icosahedron()  // 30 edges
+WireframeMesh::diamond()      // 8 edges
+WireframeMesh::star()         // Spiky star
+WireframeMesh::axes()         // XYZ axis indicator
+WireframeMesh::spiral(2.0, 32) // Helix with 2 turns, 32 segments
+```
+
+**Custom shapes:**
+
+```rust
+let my_shape = WireframeMesh::custom(vec![
+    (Vec3::ZERO, Vec3::X),           // Line from origin to +X
+    (Vec3::ZERO, Vec3::Y),           // Line from origin to +Y
+    (Vec3::X, Vec3::new(1.0, 1.0, 0.0)), // Diagonal
+]);
+v.wireframe(my_shape, 0.003);
+```
+
+Wireframes are great for:
+- Geometric/abstract visualizations
+- Debug views
+- Sci-fi/technical aesthetics
+- Low-poly effects
+
+The mesh scales with `particle_size` and per-particle `scale`, and uses the particle's color.
+
 ### Post-Processing
 
 Apply screen-space effects to the final image:
@@ -119,6 +159,35 @@ v.post_process(r#"
 ```
 
 See [Post-Processing](./advanced/post-processing.md) for details.
+
+## Vertex Effects
+
+Pre-built, composable effects for particle vertex transformations. Stack multiple effects together:
+
+```rust
+Simulation::<MyParticle>::new()
+    .with_vertex_effect(VertexEffect::Rotate { speed: 2.0 })
+    .with_vertex_effect(VertexEffect::Wobble { frequency: 3.0, amplitude: 0.05 })
+    .with_vertex_effect(VertexEffect::Pulse { frequency: 4.0, amplitude: 0.3 })
+    .run();
+```
+
+**Available effects:**
+
+| Effect | Parameters | Description |
+|--------|------------|-------------|
+| `Rotate` | `speed` | Spin around facing axis |
+| `Wobble` | `frequency`, `amplitude` | Sinusoidal position offset |
+| `Pulse` | `frequency`, `amplitude` | Size oscillation |
+| `Wave` | `direction`, `frequency`, `speed`, `amplitude` | Coordinated wave pattern |
+| `Jitter` | `amplitude` | Random shake |
+| `ScaleByDistance` | `center`, `min_scale`, `max_scale`, `max_distance` | Size based on distance |
+| `FadeByDistance` | `near`, `far` | Opacity based on distance |
+| `BillboardCylindrical` | `axis` | Stay upright, face camera horizontally |
+| `BillboardFixed` | `forward`, `up` | Fixed world orientation |
+| `FacePoint` | `target` | Orient toward a point |
+
+Effects compose automatically - each modifies shared transformation variables. For full custom control, use `with_vertex_shader()` instead.
 
 ## Complete Example
 

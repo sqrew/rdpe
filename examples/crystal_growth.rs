@@ -78,8 +78,8 @@ fn main() {
     Simulation::<CrystalParticle>::new()
         .with_particle_count(num_particles as u32)
         .with_bounds(1.0)
-        .with_spawner(move |i, _| {
-            let (pos, is_seed) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (pos, is_seed) = particles[ctx.index as usize];
             CrystalParticle {
                 position: pos,
                 velocity: Vec3::ZERO,

@@ -1031,6 +1031,34 @@ pub enum VertexEffect {
         /// Distance at which particles are fully transparent.
         far: f32,
     },
+
+    /// Cylindrical billboarding - rotate only around one axis.
+    ///
+    /// Useful for grass, trees, flames - things that should stay upright
+    /// but still face the camera horizontally.
+    BillboardCylindrical {
+        /// The axis to stay fixed (typically Y for upright sprites).
+        axis: Vec3,
+    },
+
+    /// Fixed orientation - disable billboarding entirely.
+    ///
+    /// Particles maintain a fixed orientation in world space.
+    /// Useful for debris, leaves, or when combined with Rotate for tumbling.
+    BillboardFixed {
+        /// Forward direction of the quad in world space.
+        forward: Vec3,
+        /// Up direction of the quad in world space.
+        up: Vec3,
+    },
+
+    /// Orient particles to face a specific point.
+    ///
+    /// All particles rotate to look at the target point.
+    FacePoint {
+        /// The point all particles should face toward.
+        target: Vec3,
+    },
 }
 
 impl VertexEffect {
@@ -1158,6 +1186,62 @@ impl VertexEffect {
         color_mod *= fade;
     }}"#
             ),
+
+            VertexEffect::BillboardCylindrical { axis } => format!(
+                r#"
+    // Cylindrical billboard - fixed axis, face camera horizontally
+    {{
+        let fixed_axis = normalize(vec3<f32>({}f, {}f, {}f));
+        // Camera is at origin looking at particles, so camera_dir approximates view
+        let to_camera = normalize(-particle_pos);
+        // Project to_camera onto plane perpendicular to fixed_axis
+        let camera_flat = normalize(to_camera - fixed_axis * dot(to_camera, fixed_axis));
+        // Right vector is perpendicular to both
+        let right = cross(fixed_axis, camera_flat);
+        // Build world-space offset from quad coordinates
+        billboard_right = right;
+        billboard_up = fixed_axis;
+        use_world_billboard = true;
+    }}"#,
+                axis.x, axis.y, axis.z
+            ),
+
+            VertexEffect::BillboardFixed { forward, up } => format!(
+                r#"
+    // Fixed billboard - no camera facing
+    {{
+        let fwd = normalize(vec3<f32>({}f, {}f, {}f));
+        let up_dir = normalize(vec3<f32>({}f, {}f, {}f));
+        let right = cross(up_dir, fwd);
+        billboard_right = right;
+        billboard_up = up_dir;
+        use_world_billboard = true;
+    }}"#,
+                forward.x, forward.y, forward.z,
+                up.x, up.y, up.z
+            ),
+
+            VertexEffect::FacePoint { target } => format!(
+                r#"
+    // Face point - orient toward target
+    {{
+        let target_pos = vec3<f32>({}f, {}f, {}f);
+        let to_target = normalize(target_pos - particle_pos);
+        // Use world up as reference
+        let world_up = vec3<f32>(0.0, 1.0, 0.0);
+        var right = cross(world_up, to_target);
+        if length(right) < 0.001 {{
+            right = vec3<f32>(1.0, 0.0, 0.0);
+        }} else {{
+            right = normalize(right);
+        }}
+        let up_dir = cross(to_target, right);
+        billboard_right = right;
+        billboard_up = up_dir;
+        use_world_billboard = true;
+    }}"#,
+                target.x, target.y, target.z
+            ),
         }
     }
 }
@@ -1181,20 +1265,54 @@ pub fn combine_vertex_effects(effects: &[VertexEffect], color_expr: &str) -> Str
         );
     }
 
+    // Check if any billboard effects are used
+    let has_billboard = effects.iter().any(|e| matches!(e,
+        VertexEffect::BillboardCylindrical { .. } |
+        VertexEffect::BillboardFixed { .. } |
+        VertexEffect::FacePoint { .. }
+    ));
+
     // Generate effect code
     let effects_code: String = effects.iter().map(|e| e.to_wgsl()).collect();
 
-    format!(
-        r#"    // Initialize effect variables
-    var pos_offset = vec3<f32>(0.0);
-    var rotated_quad = quad_pos;
-    var size_mult = 1.0;
-    var color_mod = {color_expr};
+    // Billboard variables initialization (only if needed)
+    let billboard_vars = if has_billboard {
+        r#"
+    var use_world_billboard = false;
+    var billboard_right = vec3<f32>(1.0, 0.0, 0.0);
+    var billboard_up = vec3<f32>(0.0, 1.0, 0.0);"#
+    } else {
+        ""
+    };
 
-    // Apply vertex effects
-{effects_code}
+    // Final transformation - use world billboard if enabled
+    let final_transform = if has_billboard {
+        r#"    // Final transformation
+    let final_pos = particle_pos + pos_offset;
+    let final_size = particle_size * size_mult;
 
-    // Final transformation
+    let world_pos = vec4<f32>(final_pos, 1.0);
+
+    if use_world_billboard {
+        // World-space billboarding
+        let world_offset = billboard_right * rotated_quad.x * final_size
+                         + billboard_up * rotated_quad.y * final_size;
+        let offset_world_pos = vec4<f32>(final_pos + world_offset, 1.0);
+        out.clip_position = uniforms.view_proj * offset_world_pos;
+    } else {
+        // Screen-space billboarding (default)
+        var clip_pos = uniforms.view_proj * world_pos;
+        clip_pos.x += rotated_quad.x * final_size * clip_pos.w;
+        clip_pos.y += rotated_quad.y * final_size * clip_pos.w;
+        out.clip_position = clip_pos;
+    }
+
+    out.color = color_mod;
+    out.uv = rotated_quad;
+
+    return out;"#
+    } else {
+        r#"    // Final transformation
     let final_pos = particle_pos + pos_offset;
     let final_size = particle_size * size_mult;
 
@@ -1209,5 +1327,18 @@ pub fn combine_vertex_effects(effects: &[VertexEffect], color_expr: &str) -> Str
     out.uv = rotated_quad;
 
     return out;"#
+    };
+
+    format!(
+        r#"    // Initialize effect variables
+    var pos_offset = vec3<f32>(0.0);
+    var rotated_quad = quad_pos;
+    var size_mult = 1.0;
+    var color_mod = {color_expr};{billboard_vars}
+
+    // Apply vertex effects
+{effects_code}
+
+{final_transform}"#
     )
 }

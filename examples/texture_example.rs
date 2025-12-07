@@ -73,13 +73,14 @@ fn main() {
     Simulation::<Particle>::new()
         .with_particle_count(50_000)
         .with_bounds(1.0)
-        .with_spawner(|i, total| {
-            let angle = (i as f32 / total as f32) * std::f32::consts::TAU * 20.0;
-            let radius = 0.3 + (i as f32 / total as f32) * 0.5;
+        .with_spawner(|ctx| {
+            let t = ctx.progress();
+            let angle = t * std::f32::consts::TAU * 20.0;
+            let radius = 0.3 + t * 0.5;
             Particle {
                 position: Vec3::new(
                     angle.cos() * radius,
-                    (i as f32 / total as f32 - 0.5) * 0.5,
+                    (t - 0.5) * 0.5,
                     angle.sin() * radius,
                 ),
                 velocity: Vec3::new(

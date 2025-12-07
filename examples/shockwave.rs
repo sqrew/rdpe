@@ -52,11 +52,11 @@ fn main() {
         .with_particle_count(count)
         .with_bounds(1.5)
         .with_particle_size(0.012)
-        .with_spawner(|i, total| {
-            // Spawn in a spherical shell
-            let phi = (i as f32 / total as f32) * std::f32::consts::PI * 2.0 * 100.0;
-            let theta = ((i as f32 * 0.618_034) % 1.0) * std::f32::consts::PI;
-            let r = 0.3 + (i as f32 * 0.381966) % 0.4;
+        .with_spawner(|ctx| {
+            // Spawn in a spherical shell using golden angle distribution
+            let phi = ctx.progress() * std::f32::consts::PI * 2.0 * 100.0;
+            let theta = ((ctx.index as f32 * 0.618_034) % 1.0) * std::f32::consts::PI;
+            let r = 0.3 + (ctx.index as f32 * 0.381966) % 0.4;
 
             let x = r * theta.sin() * phi.cos();
             let y = r * theta.cos();

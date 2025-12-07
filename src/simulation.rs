@@ -25,8 +25,8 @@
 //! Simulation::<Ball>::new()
 //!     .with_particle_count(10_000)
 //!     .with_bounds(1.0)
-//!     .with_spawner(|i, count| Ball {
-//!         position: Vec3::new(0.0, 0.5, 0.0),
+//!     .with_spawner(|ctx| Ball {
+//!         position: ctx.random_in_sphere(0.5),
 //!         velocity: Vec3::ZERO,
 //!     })
 //!     .with_rule(Rule::Gravity(9.8))
@@ -53,6 +53,7 @@ use crate::field::{FieldConfig, FieldRegistry};
 use crate::gpu::GpuState;
 use crate::input::Input;
 use crate::interactions::InteractionMatrix;
+use crate::spawn::SpawnContext;
 use crate::rules::Rule;
 use crate::shader_utils;
 use crate::spatial::{SpatialConfig, MORTON_WGSL, NEIGHBOR_UTILS_WGSL};
@@ -113,13 +114,9 @@ type UiCallback = Box<dyn FnMut(&egui::Context) + Send + 'static>;
 ///     .with_particle_count(5000)
 ///     .with_bounds(1.0)
 ///     .with_spatial_config(0.1, 32)  // Needed for Separate/Cohere/Align
-///     .with_spawner(|i, count| Boid {
-///         position: Vec3::new(
-///             (i as f32 / count as f32) * 2.0 - 1.0,
-///             0.0,
-///             0.0,
-///         ),
-///         velocity: Vec3::ZERO,
+///     .with_spawner(|ctx| Boid {
+///         position: ctx.random_in_bounds(),
+///         velocity: ctx.random_direction() * 0.5,
 ///     })
 ///     .with_rule(Rule::Separate { radius: 0.05, strength: 2.0 })
 ///     .with_rule(Rule::Cohere { radius: 0.2, strength: 0.5 })
@@ -136,7 +133,7 @@ pub struct Simulation<P: ParticleTrait> {
     /// Base particle render size (multiplied by per-particle scale).
     particle_size: f32,
     /// Function called to create each particle at startup.
-    spawner: Option<Box<dyn Fn(u32, u32) -> P + Send + Sync>>,
+    spawner: Option<Box<dyn Fn(&mut SpawnContext) -> P + Send + Sync>>,
     /// List of rules that define particle behavior.
     rules: Vec<Rule>,
     /// Particle emitters for runtime spawning.
@@ -311,63 +308,77 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// Set the particle spawner function.
     ///
     /// The spawner is called once for each particle at simulation startup.
-    /// It receives the particle index and total count, and must return a
-    /// fully initialized particle.
+    /// It receives a [`SpawnContext`] with helper methods for common spawn
+    /// patterns like random positions, colors, and structured layouts.
     ///
     /// # Arguments
     ///
-    /// * `spawner` - Function `(index, total_count) -> P`
+    /// * `spawner` - Function `(&mut SpawnContext) -> P`
     ///
     /// # Required
     ///
     /// This method **must** be called before `.run()`, or the simulation
     /// will panic.
     ///
+    /// # SpawnContext Helpers
+    ///
+    /// The context provides many useful methods:
+    /// - `ctx.index`, `ctx.count`, `ctx.progress()` - spawn info
+    /// - `ctx.random_in_sphere(r)`, `ctx.random_on_sphere(r)` - positions
+    /// - `ctx.random_in_cube(size)`, `ctx.random_in_bounds()` - box positions
+    /// - `ctx.random_direction()` - unit vectors
+    /// - `ctx.random_hue(s, v)`, `ctx.rainbow(s, v)` - colors
+    /// - `ctx.grid_position(cols, rows, layers)` - structured layouts
+    /// - `ctx.tangent_velocity(pos, speed)` - orbital motion
+    ///
     /// # Examples
     ///
-    /// ## Simple centered spawn
+    /// ## Random sphere distribution
     ///
     /// ```ignore
-    /// .with_spawner(|i, count| Ball {
-    ///     position: Vec3::ZERO,
+    /// .with_spawner(|ctx| Ball {
+    ///     position: ctx.random_in_sphere(0.8),
     ///     velocity: Vec3::ZERO,
     /// })
     /// ```
     ///
-    /// ## Random distribution
+    /// ## Colorful swirl
     ///
     /// ```ignore
-    /// let mut rng = rand::thread_rng();
-    /// let particles: Vec<Ball> = (0..count)
-    ///     .map(|_| Ball {
-    ///         position: Vec3::new(
-    ///             rng.gen_range(-1.0..1.0),
-    ///             rng.gen_range(-1.0..1.0),
-    ///             rng.gen_range(-1.0..1.0),
-    ///         ),
-    ///         velocity: Vec3::ZERO,
-    ///     })
-    ///     .collect();
+    /// .with_spawner(|ctx| {
+    ///     let pos = ctx.random_in_sphere(0.6);
+    ///     Spark {
+    ///         position: pos,
+    ///         velocity: ctx.tangent_velocity(pos, 0.3),
+    ///         color: ctx.rainbow(0.9, 1.0),
+    ///     }
+    /// })
+    /// ```
     ///
-    /// Simulation::<Ball>::new()
-    ///     .with_spawner(move |i, _| particles[i as usize].clone())
+    /// ## Grid layout
+    ///
+    /// ```ignore
+    /// .with_spawner(|ctx| Ball {
+    ///     position: ctx.grid_position(10, 10, 10),
+    ///     velocity: Vec3::ZERO,
+    /// })
     /// ```
     ///
     /// ## Type-based initialization
     ///
     /// ```ignore
-    /// .with_spawner(|i, count| {
-    ///     let is_predator = i < 50;
+    /// .with_spawner(|ctx| {
+    ///     let is_predator = ctx.index < 50;
     ///     Creature {
-    ///         position: random_pos(),
-    ///         velocity: Vec3::ZERO,
+    ///         position: ctx.random_in_bounds(),
+    ///         velocity: ctx.random_direction() * 0.1,
     ///         particle_type: if is_predator { 1 } else { 0 },
     ///     }
     /// })
     /// ```
     pub fn with_spawner<F>(mut self, spawner: F) -> Self
     where
-        F: Fn(u32, u32) -> P + Send + Sync + 'static,
+        F: Fn(&mut SpawnContext) -> P + Send + Sync + 'static,
     {
         self.spawner = Some(Box::new(spawner));
         self
@@ -1123,7 +1134,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// ```ignore
     /// Simulation::<Ball>::new()
     ///     .with_egui()
-    ///     .with_spawner(|_, _| Ball::default())
+    ///     .with_spawner(|_| Ball::default())
     ///     .run();
     /// ```
     ///
@@ -1153,7 +1164,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     ///             ui.label("Hello from egui!");
     ///         });
     ///     })
-    ///     .with_spawner(|_, _| Ball::default())
+    ///     .with_spawner(|_| Ball::default())
     ///     .run();
     /// ```
     ///
@@ -1804,7 +1815,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
     /// Simulation::<Ball>::new()
     ///     .with_particle_count(10_000)
     ///     .with_bounds(1.0)
-    ///     .with_spawner(|_, _| Ball::default())
+    ///     .with_spawner(|_| Ball::default())
     ///     .with_rule(Rule::Gravity(9.8))
     ///     .with_rule(Rule::BounceWalls)
     ///     .run();  // Blocks here until window closed
@@ -1828,9 +1839,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         let custom_uniform_size = self.custom_uniforms.byte_size();
         let custom_uniform_fields = self.custom_uniforms.to_wgsl_fields();
 
-        // Generate particles
+        // Generate particles using SpawnContext
+        let bounds = self.bounds;
+        let count = self.particle_count;
         let particles: Vec<P> = (0..self.particle_count)
-            .map(|i| spawner(i, self.particle_count))
+            .map(|i| {
+                let mut ctx = SpawnContext::new(i, count, bounds);
+                spawner(&mut ctx)
+            })
             .collect();
 
         let config = SimConfig {
@@ -2310,8 +2326,8 @@ mod tests {
     #[test]
     fn test_with_spawner() {
         let sim = Simulation::<TestParticle>::new()
-            .with_spawner(|i, _total| TestParticle {
-                position: Vec3::new(i as f32, 0.0, 0.0),
+            .with_spawner(|ctx| TestParticle {
+                position: Vec3::new(ctx.index as f32, 0.0, 0.0),
                 velocity: Vec3::ZERO,
             });
 
@@ -2396,7 +2412,7 @@ mod tests {
             .with_particle_count(20_000)
             .with_bounds(2.0)
             .with_particle_size(0.02)
-            .with_spawner(|_, _| TestParticle {
+            .with_spawner(|_| TestParticle {
                 position: Vec3::ZERO,
                 velocity: Vec3::ZERO,
             })

@@ -115,7 +115,7 @@ fn main() {
         .with_particle_count(total as u32)
         .with_bounds(1.0)
         .with_spatial_config(0.1, 32)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         // === Disease Mechanics ===
         // Healthy -> Infected (when near infected)
         .with_rule(Rule::Convert {

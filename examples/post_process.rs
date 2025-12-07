@@ -85,8 +85,8 @@ fn main() {
         .with_particle_count(3000)
         .with_bounds(1.5)
         .with_particle_size(0.035)
-        .with_spawner(move |i, _| {
-            let (pos, color) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (pos, color) = particles[ctx.index as usize];
             GlowParticle {
                 position: pos,
                 velocity: Vec3::ZERO,

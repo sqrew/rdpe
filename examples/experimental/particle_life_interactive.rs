@@ -204,7 +204,7 @@ fn main() {
     let mut sim = Simulation::<Cell>::new()
         .with_particle_count(6_000)
         .with_bounds(1.5)
-        .with_spawner(move |i, _| particles[i as usize].clone());
+        .with_spawner(|ctx| particles[ctx.index as usize].clone());
 
     // Register uniforms for each interaction pair
     for i in 0..NUM_TYPES {

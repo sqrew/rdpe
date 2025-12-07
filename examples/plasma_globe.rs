@@ -74,7 +74,7 @@ fn main() {
         .with_particle_count(num_particles as u32)
         .with_particle_size(0.008)
         .with_bounds(1.2)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         // Plasma glow field
         .with_field(
             "plasma",

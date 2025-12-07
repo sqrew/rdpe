@@ -132,7 +132,7 @@ fn main() {
     Simulation::<Chemical>::new()
         .with_particle_count(PARTICLE_COUNT)
         .with_bounds(2.0)
-        .with_spawner(move |i, _| {
+        .with_spawner(|ctx| {
             let (x, y, z, ptype) = particles[i as usize];
 
             let color = if ptype == 0 {

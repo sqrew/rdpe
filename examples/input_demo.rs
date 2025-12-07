@@ -56,7 +56,7 @@ fn main() {
     Simulation::<Mote>::new()
         .with_particle_count(20_000)
         .with_bounds(2.0)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         // Custom uniforms for forces
         .with_uniform("force_pos", Vec3::ZERO)
         .with_uniform("attract_strength", 0.0f32)

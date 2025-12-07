@@ -77,8 +77,8 @@ fn main() {
     Simulation::<Agent>::new()
         .with_particle_count(20_000)
         .with_bounds(1.2)
-        .with_spawner(move |i, _| {
-            let (pos, heading, team) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (pos, heading, team) = particles[ctx.index as usize];
             let color = if team == 0 {
                 Vec3::new(1.0, 0.3, 0.2) // Red team
             } else {

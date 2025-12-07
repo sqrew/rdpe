@@ -23,24 +23,20 @@ fn main() {
     Simulation::<Molecule>::new()
         .with_particle_count(3000)
         .with_bounds(1.0)
-        .with_spawner(|i, total| {
-            // Start with random positions and small random velocities
-            let angle1 = (i as f32 / total as f32) * std::f32::consts::TAU * 47.0;
-            let angle2 = (i as f32 / total as f32) * std::f32::consts::TAU * 31.0;
-            let r = 0.7 * ((i as f32 * 0.618033) % 1.0).sqrt();
+        .with_spawner(|ctx| {
+            // Distribute in a nice pattern using golden angle
+            let t = ctx.progress();
+            let angle1 = t * std::f32::consts::TAU * 47.0;
+            let angle2 = t * std::f32::consts::TAU * 31.0;
+            let r = 0.7 * ((ctx.index as f32 * 0.618033) % 1.0).sqrt();
 
             let x = r * angle1.cos() * angle2.cos();
             let y = r * angle1.sin() * 0.5;
             let z = r * angle1.cos() * angle2.sin();
 
-            // Small random initial velocity
-            let vx = ((i * 7) % 100) as f32 / 100.0 - 0.5;
-            let vy = ((i * 13) % 100) as f32 / 100.0 - 0.5;
-            let vz = ((i * 19) % 100) as f32 / 100.0 - 0.5;
-
             Molecule {
                 position: Vec3::new(x, y, z),
-                velocity: Vec3::new(vx, vy, vz) * 0.3,
+                velocity: ctx.random_direction() * 0.15,
             }
         })
         .with_spatial_config(cutoff, 32)

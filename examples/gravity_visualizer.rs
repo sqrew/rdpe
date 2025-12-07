@@ -126,7 +126,7 @@ fn main() {
         .with_particle_count(8_000)
         .with_particle_size(0.006)
         .with_bounds(1.5)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(|ctx| particles[ctx.index as usize].clone())
         .with_spatial_config(0.15, 32)
         // Gravitational potential field
         .with_field(

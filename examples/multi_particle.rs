@@ -102,7 +102,7 @@ fn main() {
         .with_particle_count(total as u32)
         .with_bounds(1.0)
         .with_spatial_config(0.25, 32)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         // Boid flocking behavior (using generated type constants)
         .with_rule(Rule::Typed {
             self_type: Creature::BOID,

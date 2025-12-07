@@ -77,8 +77,8 @@ fn main() {
     Simulation::<Star>::new()
         .with_particle_count(num_stars as u32)
         .with_bounds(10.0)
-        .with_spawner(move |i, _| {
-            let (pos, vel, mass) = stars[i as usize];
+        .with_spawner(move |ctx| {
+            let (pos, vel, mass) = stars[ctx.index as usize];
             Star {
                 position: pos,
                 velocity: vel,

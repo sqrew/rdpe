@@ -115,7 +115,7 @@ fn main() {
     Simulation::<StarParticle>::new()
         .with_particle_count(15_000)
         .with_bounds(1.0)
-        .with_spawner(move |i, _| {
+        .with_spawner(|ctx| {
             let (pos, vel, color, temperature) = particles[i as usize];
             StarParticle {
                 position: pos,

@@ -124,7 +124,7 @@ fn main() {
         .with_bounds(1.0)
         .with_spatial_config(0.15, 32)
         .with_particle_size(0.018)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
 
         // === Visual Setup ===
         .with_visuals(|v| {

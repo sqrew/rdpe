@@ -38,7 +38,6 @@
 //!
 //! Run with: `cargo run --example glow`
 
-use rand::Rng;
 use rdpe::prelude::*;
 
 #[derive(rdpe::Particle, Clone)]
@@ -50,42 +49,19 @@ struct Spark {
 }
 
 fn main() {
-    let mut rng = rand::thread_rng();
-    let count = 50_000;
-
-    // Pre-generate particles
-    let particles: Vec<Spark> = (0..count)
-        .map(|_| {
-            // Spawn in a sphere around origin
-            let theta = rng.gen_range(0.0..std::f32::consts::TAU);
-            let phi = rng.gen_range(0.0..std::f32::consts::PI);
-            let r = rng.gen_range(0.3..0.8);
-
-            let x = r * phi.sin() * theta.cos();
-            let y = r * phi.sin() * theta.sin();
-            let z = r * phi.cos();
-
-            // Give initial tangent velocity for orbiting
-            let speed = rng.gen_range(0.3..0.6);
-            let vel = Vec3::new(-y, rng.gen_range(-0.1..0.1), x).normalize() * speed;
-
-            // Color based on spawn position (creates nice gradients)
-            let hue = theta / std::f32::consts::TAU;
-            let color = hsv_to_rgb(hue, 0.8, 1.0);
-
-            Spark {
-                position: Vec3::new(x, y, z),
-                velocity: vel,
-                color,
-            }
-        })
-        .collect();
-
     Simulation::<Spark>::new()
-        .with_particle_count(count)
+        .with_particle_count(50_000)
         .with_bounds(2.0)
         .with_particle_size(0.008) // Smaller particles work well with additive
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(|ctx| {
+            let pos = ctx.random_in_sphere(0.8);
+            let speed = ctx.random_range(0.3, 0.6);
+            Spark {
+                position: pos,
+                velocity: ctx.tangent_velocity(pos, speed),
+                color: ctx.rainbow(0.8, 1.0),
+            }
+        })
         // Additive blending - overlapping particles glow brighter!
         .with_visuals(|v| {
             v.blend_mode(BlendMode::Additive);
@@ -111,22 +87,4 @@ fn main() {
         // Bounce off walls
         .with_rule(Rule::BounceWalls)
         .run();
-}
-
-// Simple HSV to RGB conversion
-fn hsv_to_rgb(h: f32, s: f32, v: f32) -> Vec3 {
-    let c = v * s;
-    let x = c * (1.0 - ((h * 6.0) % 2.0 - 1.0).abs());
-    let m = v - c;
-
-    let (r, g, b) = match (h * 6.0) as u32 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-
-    Vec3::new(r + m, g + m, b + m)
 }

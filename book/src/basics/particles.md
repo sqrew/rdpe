@@ -86,37 +86,99 @@ These are always available in your WGSL code via `p.age`, `p.alive`, `p.scale`, 
 
 ## Spawning Particles
 
-The spawner function is called once per particle at initialization:
+The spawner function receives a [`SpawnContext`] with helper methods for common patterns:
 
 ```rust
-.with_spawner(|index, total_count| {
-    MyParticle {
-        position: Vec3::new(
-            rand::random::<f32>() - 0.5,
-            rand::random::<f32>() - 0.5,
-            rand::random::<f32>() - 0.5,
-        ),
-        velocity: Vec3::ZERO,
+.with_spawner(|ctx| MyParticle {
+    position: ctx.random_in_sphere(0.8),
+    velocity: ctx.random_direction() * 0.2,
+})
+```
+
+### SpawnContext Methods
+
+**Info:**
+- `ctx.index` - Particle index (0 to count-1)
+- `ctx.count` - Total particle count
+- `ctx.bounds` - Simulation bounds
+- `ctx.progress()` - Normalized progress (0.0 to 1.0)
+
+**Positions:**
+- `ctx.random_in_sphere(radius)` - Random point inside a sphere
+- `ctx.random_on_sphere(radius)` - Random point on sphere surface
+- `ctx.random_in_cube(half_size)` - Random point in cube
+- `ctx.random_in_bounds()` - Random within simulation bounds
+- `ctx.random_in_cylinder(radius, half_height)` - Random in cylinder
+- `ctx.random_in_disk(radius)` - Random in XZ disk
+
+**Directions/Velocities:**
+- `ctx.random_direction()` - Random unit vector
+- `ctx.tangent_velocity(pos, speed)` - Velocity perpendicular to position (orbits)
+- `ctx.outward_velocity(pos, speed)` - Velocity pointing away from origin
+
+**Colors:**
+- `ctx.random_color()` - Random RGB
+- `ctx.random_hue(saturation, value)` - Random hue, fixed saturation/value
+- `ctx.rainbow(saturation, value)` - Color based on spawn progress
+- `ctx.hsv(hue, saturation, value)` - Specific HSV color
+
+**Structured Layouts:**
+- `ctx.grid_position(cols, rows, layers)` - 3D grid position
+- `ctx.grid_position_2d(cols, rows)` - 2D grid in XZ plane
+- `ctx.line_position(start, end)` - Point along a line
+- `ctx.circle_position(radius)` - Point on a circle
+- `ctx.helix_position(radius, height, turns)` - Point on a helix
+
+**Random Values:**
+- `ctx.random()` - f32 0.0 to 1.0
+- `ctx.random_range(min, max)` - f32 in range
+
+### Examples
+
+**Swirling particles:**
+
+```rust
+.with_spawner(|ctx| {
+    let pos = ctx.random_in_sphere(0.6);
+    let speed = ctx.random_range(0.2, 0.5);
+    Spark {
+        position: pos,
+        velocity: ctx.tangent_velocity(pos, speed),
+        color: ctx.rainbow(0.9, 1.0),
     }
 })
 ```
 
-Parameters:
-- `index` - Particle index (0 to count-1)
-- `total_count` - Total number of particles
-
-Since the spawner must be `Send + Sync`, pre-generate random values:
+**Grid layout:**
 
 ```rust
-let mut rng = rand::thread_rng();
-let positions: Vec<Vec3> = (0..count)
-    .map(|_| Vec3::new(rng.gen_range(-1.0..1.0), ...))
-    .collect();
-
-.with_spawner(move |i, _| MyParticle {
-    position: positions[i as usize],
+.with_spawner(|ctx| Ball {
+    position: ctx.grid_position(10, 10, 10),
     velocity: Vec3::ZERO,
 })
+```
+
+**Type-based spawn:**
+
+```rust
+.with_spawner(|ctx| {
+    let is_predator = ctx.index < 50;
+    Creature {
+        position: ctx.random_in_bounds(),
+        velocity: ctx.random_direction() * 0.1,
+        particle_type: if is_predator { 1 } else { 0 },
+    }
+})
+```
+
+### Pre-generated Data
+
+For complex initialization, pre-generate and capture:
+
+```rust
+let particles: Vec<MyParticle> = generate_complex_data();
+
+.with_spawner(move |ctx| particles[ctx.index as usize].clone())
 ```
 
 ## Custom Fields

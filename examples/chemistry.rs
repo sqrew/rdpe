@@ -82,7 +82,7 @@ fn main() {
         .with_particle_count(1500)
         .with_particle_size(0.012)
         .with_bounds(1.0)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         .with_spatial_config(0.15, 32)
 
         // === REACTIONS ===

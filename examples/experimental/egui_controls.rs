@@ -84,7 +84,7 @@ fn main() {
     Simulation::<Ball>::new()
         .with_particle_count(5_000)
         .with_bounds(1.0)
-        .with_spawner(move |i, _| {
+        .with_spawner(|ctx| {
             let (pos, vel, color) = particles[i as usize];
             Ball {
                 position: pos,

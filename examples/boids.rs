@@ -33,7 +33,6 @@
 //!
 //! Run with: `cargo run --example boids`
 
-use rand::Rng;
 use rdpe::prelude::*;
 
 #[derive(Particle, Clone)]
@@ -43,37 +42,15 @@ struct Boid {
 }
 
 fn main() {
-    let mut rng = rand::thread_rng();
-
-    // Pre-generate random positions and velocities
-    let particles: Vec<(Vec3, Vec3)> = (0..5_000)
-        .map(|_| {
-            let pos = Vec3::new(
-                rng.gen_range(-0.75..0.75),
-                rng.gen_range(-0.75..0.75),
-                rng.gen_range(-0.75..0.75),
-            );
-            let vel = Vec3::new(
-                rng.gen_range(-0.25..0.25),
-                rng.gen_range(-0.25..0.25),
-                rng.gen_range(-0.25..0.25),
-            );
-            (pos, vel)
-        })
-        .collect();
-
     Simulation::<Boid>::new()
         .with_particle_count(5_000)
         .with_bounds(1.0)
         // Enable spatial hashing for neighbor queries
         // Cell size 0.1 (>= largest radius), 32^3 grid
         .with_spatial_config(0.1, 32)
-        .with_spawner(move |i, _count| {
-            let (pos, vel) = particles[i as usize];
-            Boid {
-                position: pos,
-                velocity: vel,
-            }
+        .with_spawner(|ctx| Boid {
+            position: ctx.random_in_cube(0.75),
+            velocity: ctx.random_direction() * 0.25,
         })
         // The three classic boids rules
         .with_rule(Rule::Separate {

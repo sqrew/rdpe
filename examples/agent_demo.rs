@@ -77,7 +77,7 @@ fn main() {
         .with_particle_count(500)
         .with_particle_size(0.015)
         .with_bounds(1.0)
-        .with_spawner(move |i, _| particles[i as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
 
         // Simulate food detection (using noise as proxy for "food location")
         .with_rule(Rule::Custom(

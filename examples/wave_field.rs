@@ -106,7 +106,7 @@ fn main() {
         .with_particle_count(200) // Room for spawning more
         .with_particle_size(0.02)
         .with_bounds(1.0)
-        .with_spawner(move |i, _| {
+        .with_spawner(|ctx| {
             if (i as usize) < particles.len() {
                 particles[i as usize].clone()
             } else {
