@@ -3,12 +3,13 @@
 use eframe::egui;
 use rdpe_editor::config::*;
 use rdpe_editor::ui::{render_rules_panel, render_spawn_panel, PRESETS};
-use std::process::{Child, Command};
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 800.0])
+            .with_inner_size([420.0, 850.0])
             .with_title("RDPE Editor"),
         ..Default::default()
     };
@@ -16,7 +17,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "RDPE Editor",
         options,
-        Box::new(|_cc| Ok(Box::new(EditorApp::default()))),
+        Box::new(|_cc| Ok(Box::new(EditorApp::new()))),
     )
 }
 
@@ -25,15 +26,44 @@ struct EditorApp {
     current_file: Option<String>,
     simulation_process: Option<Child>,
     status_message: Option<(String, std::time::Instant)>,
+    workspace_root: Option<PathBuf>,
 }
 
-impl Default for EditorApp {
-    fn default() -> Self {
+impl EditorApp {
+    fn new() -> Self {
+        // Find workspace root by looking for Cargo.toml with [workspace]
+        let workspace_root = Self::find_workspace_root();
+
         Self {
             config: SimConfig::default(),
             current_file: None,
             simulation_process: None,
             status_message: None,
+            workspace_root,
+        }
+    }
+
+    fn find_workspace_root() -> Option<PathBuf> {
+        // Start from current exe location or current dir
+        let start = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+            .or_else(|| std::env::current_dir().ok())?;
+
+        let mut current = start.as_path();
+
+        // Walk up looking for workspace Cargo.toml
+        loop {
+            let cargo_toml = current.join("Cargo.toml");
+            if cargo_toml.exists() {
+                if let Ok(contents) = std::fs::read_to_string(&cargo_toml) {
+                    if contents.contains("[workspace]") {
+                        return Some(current.to_path_buf());
+                    }
+                }
+            }
+
+            current = current.parent()?;
         }
     }
 }
@@ -41,6 +71,10 @@ impl Default for EditorApp {
 impl EditorApp {
     fn show_status(&mut self, msg: impl Into<String>) {
         self.status_message = Some((msg.into(), std::time::Instant::now()));
+    }
+
+    fn is_running(&self) -> bool {
+        self.simulation_process.is_some()
     }
 
     fn run_simulation(&mut self) {
@@ -54,37 +88,64 @@ impl EditorApp {
             return;
         }
 
-        // Find the runner binary
-        let runner = if cfg!(debug_assertions) {
-            "target/debug/rdpe-runner"
-        } else {
-            "target/release/rdpe-runner"
-        };
+        // Try different methods to launch the runner
+        if let Some(ref workspace) = self.workspace_root {
+            // Method 1: Direct binary path
+            let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+            let runner_path = workspace.join("target").join(profile).join("rdpe-runner");
 
-        // Try to spawn the runner process
-        match Command::new(runner)
-            .arg(&temp_path)
-            .spawn()
-        {
-            Ok(child) => {
-                self.simulation_process = Some(child);
-                self.show_status("Simulation started");
-            }
-            Err(e) => {
-                // Try cargo run as fallback
-                match Command::new("cargo")
-                    .args(["run", "--bin", "rdpe-runner", "-p", "rdpe-editor", "--"])
+            if runner_path.exists() {
+                match Command::new(&runner_path)
                     .arg(&temp_path)
+                    .current_dir(workspace)
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
                     .spawn()
                 {
                     Ok(child) => {
                         self.simulation_process = Some(child);
-                        self.show_status("Simulation started (via cargo)");
+                        self.show_status("Simulation started");
+                        return;
                     }
-                    Err(_) => {
-                        self.show_status(format!("Failed to start simulation: {}", e));
-                    }
+                    Err(_) => {}
                 }
+            }
+
+            // Method 2: cargo run from workspace
+            match Command::new("cargo")
+                .args(["run", "--bin", "rdpe-runner", "-p", "rdpe-editor", "--"])
+                .arg(&temp_path)
+                .current_dir(workspace)
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+            {
+                Ok(child) => {
+                    self.simulation_process = Some(child);
+                    self.show_status("Simulation started (building...)");
+                    return;
+                }
+                Err(e) => {
+                    self.show_status(format!("Failed to start: {}", e));
+                    return;
+                }
+            }
+        }
+
+        // Fallback: try cargo run from current directory
+        match Command::new("cargo")
+            .args(["run", "--bin", "rdpe-runner", "-p", "rdpe-editor", "--"])
+            .arg(&temp_path)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+        {
+            Ok(child) => {
+                self.simulation_process = Some(child);
+                self.show_status("Simulation started (building...)");
+            }
+            Err(e) => {
+                self.show_status(format!("Failed to start simulation: {}", e));
             }
         }
     }
@@ -194,6 +255,35 @@ impl eframe::App for EditorApp {
                         }
                     }
                 });
+
+                // Spacer
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let is_running = self.is_running();
+
+                    // Stop button (red-ish)
+                    if is_running {
+                        if ui.add(egui::Button::new("Stop").fill(egui::Color32::from_rgb(180, 60, 60))).clicked() {
+                            self.stop_simulation();
+                        }
+                    }
+
+                    // Run/Restart button (green-ish)
+                    let run_text = if is_running { "Restart" } else { "Run" };
+                    let run_color = if is_running {
+                        egui::Color32::from_rgb(60, 120, 180)
+                    } else {
+                        egui::Color32::from_rgb(60, 160, 60)
+                    };
+
+                    if ui.add(egui::Button::new(run_text).fill(run_color)).clicked() {
+                        self.run_simulation();
+                    }
+
+                    // Running indicator
+                    if is_running {
+                        ui.label(egui::RichText::new("Running").color(egui::Color32::GREEN));
+                    }
+                });
             });
         });
 
@@ -210,16 +300,11 @@ impl eframe::App for EditorApp {
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let is_running = self.simulation_process.is_some();
-
-                    if is_running {
-                        if ui.button("Stop").clicked() {
-                            self.stop_simulation();
-                        }
-                    }
-
-                    if ui.button(if is_running { "Restart" } else { "Run" }).clicked() {
-                        self.run_simulation();
+                    // Show current file
+                    if let Some(file) = &self.current_file {
+                        ui.label(egui::RichText::new(file).small().weak());
+                    } else {
+                        ui.label(egui::RichText::new("(unsaved)").small().weak());
                     }
                 });
             });
