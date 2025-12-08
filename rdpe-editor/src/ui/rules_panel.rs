@@ -83,7 +83,15 @@ pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
     ]),
     ("Custom", &[
         ("Custom WGSL", || RuleConfig::Custom { code: "// Your WGSL code here\np.velocity.y += 0.01;".into() }),
+        ("Custom Dynamic", || RuleConfig::CustomDynamic {
+            code: "// Custom code with editable params\np.velocity.y += uniforms.rule_0_strength * sin(uniforms.time);".into(),
+            params: vec![("strength".into(), 1.0)],
+        }),
         ("Neighbor Custom", || RuleConfig::NeighborCustom { code: "// Applied for each neighbor\nlet diff = n.position - p.position;".into() }),
+        ("Neighbor Custom Dynamic", || RuleConfig::NeighborCustomDynamic {
+            code: "// Neighbor code with editable params\nif neighbor_dist < uniforms.rule_0_radius {\n    p.velocity += neighbor_dir * uniforms.rule_0_force;\n}".into(),
+            params: vec![("radius".into(), 0.2), ("force".into(), 0.5)],
+        }),
         ("On Collision", || RuleConfig::OnCollision { radius: 0.1, response: "p.color = vec3(1.0, 0.0, 0.0);".into() }),
     ]),
     ("Event Hooks", &[
@@ -507,18 +515,85 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
         }
         RuleConfig::CustomDynamic { code, params } => {
             ui.label("WGSL Code:");
+            ui.label(egui::RichText::new("Access params via uniforms.rule_N_paramname").small().weak());
             if ui.text_edit_multiline(code).changed() {
                 changed = true;
             }
             ui.separator();
-            ui.label("Parameters:");
-            for (name, value) in params.iter_mut() {
+
+            // Parameters with add/remove
+            ui.horizontal(|ui| {
+                ui.label("Parameters:");
+                if ui.small_button("+").on_hover_text("Add parameter").clicked() {
+                    let new_name = format!("param_{}", params.len());
+                    params.push((new_name, 1.0));
+                    changed = true;
+                }
+            });
+
+            let mut to_remove = None;
+            for (idx, (name, value)) in params.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
-                    ui.label(name.as_str());
+                    // Editable name
+                    let mut name_edit = name.clone();
+                    if ui.add(egui::TextEdit::singleline(&mut name_edit).desired_width(80.0)).changed() {
+                        *name = name_edit;
+                        changed = true;
+                    }
+                    ui.label("=");
                     if ui.add(egui::DragValue::new(value).speed(0.01)).changed() {
                         changed = true;
                     }
+                    if ui.small_button("X").on_hover_text("Remove").clicked() {
+                        to_remove = Some(idx);
+                    }
                 });
+            }
+            if let Some(idx) = to_remove {
+                params.remove(idx);
+                changed = true;
+            }
+        }
+        RuleConfig::NeighborCustomDynamic { code, params } => {
+            ui.label("Neighbor WGSL Code:");
+            ui.label(egui::RichText::new("Available: neighbor_dist, neighbor_dir, neighbor_pos, neighbor_vel, other").small().weak());
+            ui.label(egui::RichText::new("Access params via uniforms.rule_N_paramname").small().weak());
+            if ui.text_edit_multiline(code).changed() {
+                changed = true;
+            }
+            ui.separator();
+
+            // Parameters with add/remove
+            ui.horizontal(|ui| {
+                ui.label("Parameters:");
+                if ui.small_button("+").on_hover_text("Add parameter").clicked() {
+                    let new_name = format!("param_{}", params.len());
+                    params.push((new_name, 1.0));
+                    changed = true;
+                }
+            });
+
+            let mut to_remove = None;
+            for (idx, (name, value)) in params.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    // Editable name
+                    let mut name_edit = name.clone();
+                    if ui.add(egui::TextEdit::singleline(&mut name_edit).desired_width(80.0)).changed() {
+                        *name = name_edit;
+                        changed = true;
+                    }
+                    ui.label("=");
+                    if ui.add(egui::DragValue::new(value).speed(0.01)).changed() {
+                        changed = true;
+                    }
+                    if ui.small_button("X").on_hover_text("Remove").clicked() {
+                        to_remove = Some(idx);
+                    }
+                });
+            }
+            if let Some(idx) = to_remove {
+                params.remove(idx);
+                changed = true;
             }
         }
 

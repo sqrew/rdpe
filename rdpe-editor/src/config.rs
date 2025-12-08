@@ -5,8 +5,151 @@
 
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
+/// Custom uniform value types for shader parameters.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum UniformValueConfig {
+    F32(f32),
+    Vec2([f32; 2]),
+    Vec3([f32; 3]),
+    Vec4([f32; 4]),
+}
+
+impl UniformValueConfig {
+    pub fn wgsl_type(&self) -> &'static str {
+        match self {
+            UniformValueConfig::F32(_) => "f32",
+            UniformValueConfig::Vec2(_) => "vec2<f32>",
+            UniformValueConfig::Vec3(_) => "vec3<f32>",
+            UniformValueConfig::Vec4(_) => "vec4<f32>",
+        }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        match self {
+            UniformValueConfig::F32(v) => bytes.extend_from_slice(&v.to_le_bytes()),
+            UniformValueConfig::Vec2(v) => {
+                bytes.extend_from_slice(&v[0].to_le_bytes());
+                bytes.extend_from_slice(&v[1].to_le_bytes());
+            }
+            UniformValueConfig::Vec3(v) => {
+                bytes.extend_from_slice(&v[0].to_le_bytes());
+                bytes.extend_from_slice(&v[1].to_le_bytes());
+                bytes.extend_from_slice(&v[2].to_le_bytes());
+            }
+            UniformValueConfig::Vec4(v) => {
+                bytes.extend_from_slice(&v[0].to_le_bytes());
+                bytes.extend_from_slice(&v[1].to_le_bytes());
+                bytes.extend_from_slice(&v[2].to_le_bytes());
+                bytes.extend_from_slice(&v[3].to_le_bytes());
+            }
+        }
+        bytes
+    }
+
+    pub fn byte_size(&self) -> usize {
+        match self {
+            UniformValueConfig::F32(_) => 4,
+            UniformValueConfig::Vec2(_) => 8,
+            UniformValueConfig::Vec3(_) => 12,
+            UniformValueConfig::Vec4(_) => 16,
+        }
+    }
+
+    pub fn alignment(&self) -> usize {
+        match self {
+            UniformValueConfig::F32(_) => 4,
+            UniformValueConfig::Vec2(_) => 8,
+            UniformValueConfig::Vec3(_) => 16, // vec3 aligns to 16 in std140
+            UniformValueConfig::Vec4(_) => 16,
+        }
+    }
+}
+
+/// Custom shader code configuration.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct CustomShaderConfig {
+    /// Custom vertex shader code (injected after vertex effects).
+    #[serde(default)]
+    pub vertex_code: String,
+    /// Custom fragment shader code (injected before final color output).
+    #[serde(default)]
+    pub fragment_code: String,
+}
+
+/// Field type for editor configuration.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum FieldTypeConfig {
+    #[default]
+    Scalar,
+    Vector,
+}
+
+impl FieldTypeConfig {
+    pub fn variants() -> &'static [&'static str] {
+        &["Scalar", "Vector"]
+    }
+
+    pub fn to_field_type(&self) -> rdpe::FieldType {
+        match self {
+            FieldTypeConfig::Scalar => rdpe::FieldType::Scalar,
+            FieldTypeConfig::Vector => rdpe::FieldType::Vector,
+        }
+    }
+}
+
+/// Configuration for a single 3D spatial field.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FieldConfigEntry {
+    /// Field name (for reference in code).
+    pub name: String,
+    /// Grid resolution per axis (8-256).
+    pub resolution: u32,
+    /// World-space extent (cube from -extent to +extent).
+    pub extent: f32,
+    /// Per-frame decay multiplier (0.0-1.0).
+    pub decay: f32,
+    /// Blur/diffusion strength per frame (0.0-1.0).
+    pub blur: f32,
+    /// Number of blur iterations per frame.
+    pub blur_iterations: u32,
+    /// Field type (Scalar or Vector).
+    pub field_type: FieldTypeConfig,
+}
+
+impl Default for FieldConfigEntry {
+    fn default() -> Self {
+        Self {
+            name: "field".into(),
+            resolution: 64,
+            extent: 1.0,
+            decay: 0.98,
+            blur: 0.1,
+            blur_iterations: 1,
+            field_type: FieldTypeConfig::Scalar,
+        }
+    }
+}
+
+impl FieldConfigEntry {
+    pub fn to_field_config(&self) -> rdpe::FieldConfig {
+        let mut config = if self.field_type == FieldTypeConfig::Vector {
+            rdpe::FieldConfig::new_vector(self.resolution.clamp(8, 256))
+        } else {
+            rdpe::FieldConfig::new(self.resolution.clamp(8, 256))
+        };
+        config = config
+            .with_extent(self.extent)
+            .with_decay(self.decay)
+            .with_blur(self.blur)
+            .with_blur_iterations(self.blur_iterations);
+        config
+    }
+}
 
 /// Spawn shape configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -254,6 +397,53 @@ impl PaletteConfig {
             PaletteConfig::Neon => rdpe::Palette::Neon,
             PaletteConfig::Forest => rdpe::Palette::Forest,
             PaletteConfig::Grayscale => rdpe::Palette::Grayscale,
+        }
+    }
+}
+
+/// Configuration for volume rendering (ray marching visualization of fields).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VolumeRenderConfig {
+    /// Whether volume rendering is enabled.
+    pub enabled: bool,
+    /// Which field index to render (default: 0).
+    pub field_index: u32,
+    /// Number of ray march steps (higher = better quality, slower).
+    pub steps: u32,
+    /// Density multiplier (higher = more opaque).
+    pub density_scale: f32,
+    /// Color palette for density mapping.
+    pub palette: PaletteConfig,
+    /// Minimum density threshold (values below are transparent).
+    pub threshold: f32,
+    /// Whether to use additive blending (glow effect).
+    pub additive: bool,
+}
+
+impl Default for VolumeRenderConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            field_index: 0,
+            steps: 64,
+            density_scale: 5.0,
+            palette: PaletteConfig::Inferno,
+            threshold: 0.01,
+            additive: true,
+        }
+    }
+}
+
+impl VolumeRenderConfig {
+    /// Convert to rdpe::VolumeConfig.
+    pub fn to_volume_config(&self) -> rdpe::VolumeConfig {
+        rdpe::VolumeConfig {
+            field_index: self.field_index,
+            steps: self.steps,
+            density_scale: self.density_scale,
+            palette: self.palette.to_palette(),
+            threshold: self.threshold,
+            additive: self.additive,
         }
     }
 }
@@ -533,6 +723,7 @@ pub enum RuleConfig {
     NeighborCustom { code: String },
     OnCollision { radius: f32, response: String },
     CustomDynamic { code: String, params: Vec<(String, f32)> },
+    NeighborCustomDynamic { code: String, params: Vec<(String, f32)> },
 
     // === Event Hooks ===
     OnCondition { condition: String, action: String },
@@ -630,6 +821,7 @@ impl RuleConfig {
             RuleConfig::NeighborCustom { .. } => "Neighbor Custom",
             RuleConfig::OnCollision { .. } => "On Collision",
             RuleConfig::CustomDynamic { .. } => "Custom Dynamic",
+            RuleConfig::NeighborCustomDynamic { .. } => "Neighbor Custom Dynamic",
             // Event Hooks
             RuleConfig::OnCondition { .. } => "On Condition",
             RuleConfig::OnDeath { .. } => "On Death",
@@ -677,6 +869,7 @@ impl RuleConfig {
             RuleConfig::Maybe { .. } | RuleConfig::Trigger { .. } => "Conditional",
             RuleConfig::Custom { .. } | RuleConfig::NeighborCustom { .. } | RuleConfig::OnCollision { .. } |
             RuleConfig::CustomDynamic { .. } => "Custom",
+            RuleConfig::NeighborCustomDynamic { .. } => "Custom",
             // New categories
             RuleConfig::OnCondition { .. } | RuleConfig::OnDeath { .. } | RuleConfig::OnInterval { .. } |
             RuleConfig::OnSpawn { .. } => "Event Hooks",
@@ -932,6 +1125,13 @@ impl RuleConfig {
                 }
                 builder.into()
             }
+            RuleConfig::NeighborCustomDynamic { code, params } => {
+                let mut builder = Rule::neighbor_custom_dynamic(code.clone());
+                for (name, value) in params {
+                    builder = builder.with_param(name, *value);
+                }
+                builder.into()
+            }
             // Event Hooks
             RuleConfig::OnCondition { condition, action } => Rule::OnCondition {
                 condition: condition.clone(),
@@ -1037,6 +1237,18 @@ pub struct SimConfig {
     pub vertex_effects: Vec<VertexEffectConfig>,
     #[serde(default)]
     pub visuals: VisualsConfig,
+    /// Custom uniforms accessible in shaders as `uniforms.name`.
+    #[serde(default)]
+    pub custom_uniforms: HashMap<String, UniformValueConfig>,
+    /// Custom shader code for vertex and fragment shaders.
+    #[serde(default)]
+    pub custom_shaders: CustomShaderConfig,
+    /// 3D spatial fields for particle-environment interaction.
+    #[serde(default)]
+    pub fields: Vec<FieldConfigEntry>,
+    /// Volume rendering configuration for field visualization.
+    #[serde(default)]
+    pub volume_render: VolumeRenderConfig,
 }
 
 impl Default for SimConfig {
@@ -1056,6 +1268,10 @@ impl Default for SimConfig {
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         }
     }
 }
@@ -1076,5 +1292,14 @@ impl SimConfig {
     /// Check if any rules require spatial hashing
     pub fn needs_spatial(&self) -> bool {
         self.rules.iter().any(|r| r.requires_neighbors())
+    }
+
+    /// Create a FieldRegistry from the config.
+    pub fn to_field_registry(&self) -> rdpe::FieldRegistry {
+        let mut registry = rdpe::FieldRegistry::new();
+        for field in &self.fields {
+            registry.add(&field.name, field.to_field_config());
+        }
+        registry
     }
 }

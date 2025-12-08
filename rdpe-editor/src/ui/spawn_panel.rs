@@ -42,10 +42,15 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
         SpawnShape::Plane { .. } => 6,
     };
 
-    if egui::ComboBox::from_label("Shape")
-        .show_index(ui, &mut shape_idx, shapes.len(), |i| shapes[i])
-        .changed()
-    {
+    let shape_changed = ui.horizontal(|ui| {
+        ui.label("Shape:");
+        egui::ComboBox::from_id_salt("spawn_shape")
+            .selected_text(shapes[shape_idx])
+            .show_index(ui, &mut shape_idx, shapes.len(), |i| shapes[i])
+            .changed()
+    }).inner;
+
+    if shape_changed {
         config.spawn.shape = match shape_idx {
             0 => SpawnShape::Cube { size: 0.5 },
             1 => SpawnShape::Sphere { radius: 0.5 },

@@ -19,9 +19,11 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, visuals: &mut VisualsConfig) {
         });
 
     // Particle Shape
-    egui::ComboBox::from_label("Shape")
-        .selected_text(format!("{:?}", visuals.shape))
-        .show_ui(ui, |ui| {
+    ui.horizontal(|ui| {
+        ui.label("Shape:");
+        egui::ComboBox::from_id_salt("particle_shape")
+            .selected_text(format!("{:?}", visuals.shape))
+            .show_ui(ui, |ui| {
             ui.selectable_value(&mut visuals.shape, ParticleShapeConfig::Circle, "Circle");
             ui.selectable_value(&mut visuals.shape, ParticleShapeConfig::CircleHard, "Circle Hard");
             ui.selectable_value(&mut visuals.shape, ParticleShapeConfig::Square, "Square");
@@ -32,6 +34,7 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, visuals: &mut VisualsConfig) {
             ui.selectable_value(&mut visuals.shape, ParticleShapeConfig::Diamond, "Diamond");
             ui.selectable_value(&mut visuals.shape, ParticleShapeConfig::Point, "Point");
         });
+    });
 
     ui.add_space(4.0);
 

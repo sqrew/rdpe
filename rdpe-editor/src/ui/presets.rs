@@ -1,8 +1,11 @@
 //! Simulation presets
 
 use crate::config::{
-    ColorMode, InitialVelocity, RuleConfig, SimConfig, SpawnConfig, SpawnShape, VisualsConfig,
+    ColorMode, CustomShaderConfig, FieldConfigEntry, FieldTypeConfig, InitialVelocity,
+    PaletteConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape, UniformValueConfig,
+    VisualsConfig, VolumeRenderConfig,
 };
+use std::collections::HashMap;
 
 pub struct Preset {
     pub name: &'static str,
@@ -35,6 +38,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -60,6 +67,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -85,6 +96,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -111,6 +126,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -137,6 +156,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -162,6 +185,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -189,6 +216,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -214,6 +245,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -242,6 +277,10 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
         },
     },
     Preset {
@@ -267,6 +306,164 @@ pub static PRESETS: &[Preset] = &[
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+        },
+    },
+    Preset {
+        name: "Custom Shader Demo",
+        description: "Demonstrates custom uniforms and shader code",
+        config: || SimConfig {
+            name: "Custom Shader Demo".into(),
+            particle_count: 8000,
+            bounds: 1.5,
+            particle_size: 0.015,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Shell { inner: 0.3, outer: 1.0 },
+                velocity: InitialVelocity::Swirl { speed: 0.3 },
+                color_mode: ColorMode::Uniform { r: 1.0, g: 1.0, b: 1.0 },
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::AttractTo { point: [0.0, 0.0, 0.0], strength: 0.3 },
+                RuleConfig::Drag(0.2),
+                RuleConfig::BounceWalls,
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::from([
+                ("pulse_speed".to_string(), UniformValueConfig::F32(3.0)),
+                ("pulse_amount".to_string(), UniformValueConfig::F32(0.4)),
+                ("tint".to_string(), UniformValueConfig::Vec3([1.0, 0.6, 0.2])),
+            ]),
+            custom_shaders: CustomShaderConfig {
+                vertex_code: "// Pulsing size effect\nsize_mult *= 1.0 + uniforms.pulse_amount * sin(uniforms.time * uniforms.pulse_speed);".to_string(),
+                fragment_code: "// Apply tint color\nfrag_color *= uniforms.tint;".to_string(),
+            },
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+        },
+    },
+    Preset {
+        name: "Volume Field Demo",
+        description: "3D field with volume rendering - particles leave glowing trails",
+        config: || SimConfig {
+            name: "Volume Field Demo".into(),
+            particle_count: 5000,
+            bounds: 1.2,
+            particle_size: 0.008,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Shell { inner: 0.3, outer: 0.8 },
+                velocity: InitialVelocity::Swirl { speed: 0.3 },
+                color_mode: ColorMode::ByVelocity,
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::PointGravity { point: [0.0, 0.0, 0.0], strength: 1.0, softening: 0.1 },
+                RuleConfig::Curl { scale: 3.0, strength: 0.5 },
+                RuleConfig::Drag(0.1),
+                RuleConfig::SpeedLimit { min: 0.05, max: 0.8 },
+                RuleConfig::BounceWalls,
+                // Write particle presence to the field - each particle deposits a value
+                RuleConfig::Custom { code: "field_write(0u, p.position, 1.0);".into() },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: vec![
+                FieldConfigEntry {
+                    name: "density".into(),
+                    resolution: 64,
+                    extent: 1.2,
+                    decay: 0.96,
+                    blur: 0.3,
+                    blur_iterations: 2,
+                    field_type: FieldTypeConfig::Scalar,
+                },
+            ],
+            volume_render: VolumeRenderConfig {
+                enabled: true,
+                field_index: 0,
+                steps: 64,
+                density_scale: 3.0,
+                palette: PaletteConfig::Inferno,
+                threshold: 0.01,
+                additive: true,
+            },
+        },
+    },
+    Preset {
+        name: "Pheromone Trails",
+        description: "Particles follow and deposit pheromone trails like ants",
+        config: || SimConfig {
+            name: "Pheromone Trails".into(),
+            particle_count: 8000,
+            bounds: 1.0,
+            particle_size: 0.006,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Cube { size: 0.8 },
+                velocity: InitialVelocity::RandomDirection { speed: 0.3 },
+                color_mode: ColorMode::Uniform { r: 0.3, g: 1.0, b: 0.5 },
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::Drag(0.3),
+                RuleConfig::SpeedLimit { min: 0.1, max: 0.5 },
+                RuleConfig::WrapWalls,
+                // Pheromone sensing and following - steer toward stronger scent
+                RuleConfig::Custom { code: r#"
+let speed = length(p.velocity);
+if speed > 0.001 {
+    let dir = normalize(p.velocity);
+    let side = normalize(cross(dir, vec3f(0.0, 1.0, 0.0)));
+    let sensor_dist = 0.1;
+
+    let ahead = field_read(0u, p.position + dir * sensor_dist);
+    let left = field_read(0u, p.position + (dir + side) * sensor_dist * 0.7);
+    let right = field_read(0u, p.position + (dir - side) * sensor_dist * 0.7);
+
+    // Steer toward stronger scent
+    let steer = (left - right) * 2.0;
+    p.velocity += side * steer * uniforms.delta_time;
+}
+
+// Deposit pheromone
+field_write(0u, p.position, 0.5);
+"#.into() },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: vec![
+                FieldConfigEntry {
+                    name: "pheromone".into(),
+                    resolution: 64,
+                    extent: 1.0,
+                    decay: 0.99,
+                    blur: 0.2,
+                    blur_iterations: 1,
+                    field_type: FieldTypeConfig::Scalar,
+                },
+            ],
+            volume_render: VolumeRenderConfig {
+                enabled: true,
+                field_index: 0,
+                steps: 48,
+                density_scale: 5.0,
+                palette: PaletteConfig::Neon,
+                threshold: 0.02,
+                additive: true,
+            },
         },
     },
 ];
