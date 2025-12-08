@@ -18,7 +18,7 @@ use crate::particle::MetaParticle;
 use crate::shader_gen;
 use crate::shader_validate;
 use crate::spawn;
-use rdpe::{FieldSystemGpu, VolumeRenderState, create_particle_field_bind_group_layout};
+use rdpe::{FieldSystemGpu, VolumeRenderState, create_particle_field_bind_group_layout, SpatialGpu, SpatialConfig};
 use crate::config::VolumeRenderConfig;
 
 const WORKGROUP_SIZE: u32 = 256;
@@ -547,10 +547,14 @@ pub struct SimulationResources {
     // Volume rendering (optional)
     volume_render_state: Option<VolumeRenderState>,
     volume_config: Option<VolumeRenderConfig>,
+
+    // Spatial hashing (optional, for neighbor queries)
+    spatial: Option<SpatialGpu>,
 }
 
 impl SimulationResources {
     /// Create new simulation resources.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
@@ -564,6 +568,10 @@ impl SimulationResources {
         custom_uniforms_map: &HashMap<String, UniformValueConfig>,
         field_registry: &rdpe::FieldRegistry,
         volume_config: &VolumeRenderConfig,
+        needs_spatial: bool,
+        spatial_cell_size: f32,
+        spatial_resolution: u32,
+        particle_wgsl_struct: &str,
     ) -> Self {
         // Create particle buffer
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -574,6 +582,24 @@ impl SimulationResources {
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
         });
+
+        // Create spatial hashing system if needed
+        let spatial = if needs_spatial {
+            let spatial_config = SpatialConfig {
+                cell_size: spatial_cell_size,
+                grid_resolution: spatial_resolution,
+                max_neighbors: 0, // unlimited
+            };
+            Some(SpatialGpu::new(
+                device,
+                &particle_buffer,
+                num_particles,
+                spatial_config,
+                particle_wgsl_struct,
+            ))
+        } else {
+            None
+        };
 
         // Sort custom uniforms by name for deterministic order (must match shader generation)
         let mut custom_uniforms: Vec<_> = custom_uniforms_map.iter()
@@ -604,24 +630,71 @@ impl SimulationResources {
             (None, None)
         };
 
-        // Create compute bind group layout
-        let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Compute Bind Group Layout"),
-            entries: &[
-                // Particles (storage, read-write)
+        // Create compute bind group layout (with optional spatial bindings)
+        let mut compute_layout_entries = vec![
+            // Particles (storage, read-write)
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            // Uniforms
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ];
+
+        // Add spatial bindings if needed (bindings 2-5)
+        if spatial.is_some() {
+            compute_layout_entries.extend([
+                // Sorted particle indices
                 wgpu::BindGroupLayoutEntry {
-                    binding: 0,
+                    binding: 2,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
                         has_dynamic_offset: false,
                         min_binding_size: None,
                     },
                     count: None,
                 },
-                // Uniforms
+                // Cell start
                 wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Cell end
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Spatial params
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -630,22 +703,52 @@ impl SimulationResources {
                     },
                     count: None,
                 },
-            ],
+            ]);
+        }
+
+        let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Compute Bind Group Layout"),
+            entries: &compute_layout_entries,
         });
+
+        // Create compute bind group entries
+        let mut compute_bind_entries = vec![
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: particle_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: uniform_buffer.as_entire_binding(),
+            },
+        ];
+
+        // Add spatial bind entries if needed
+        if let Some(ref sp) = spatial {
+            compute_bind_entries.extend([
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: sp.particle_indices_a.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: sp.cell_start.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: sp.cell_end.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: sp.spatial_params_buffer.as_entire_binding(),
+                },
+            ]);
+        }
 
         let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Compute Bind Group"),
             layout: &compute_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: particle_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
+            entries: &compute_bind_entries,
         });
 
         // Create field bind group if fields exist
@@ -847,6 +950,7 @@ impl SimulationResources {
             field_bind_group,
             volume_render_state,
             volume_config: stored_volume_config,
+            spatial,
         }
     }
 
@@ -891,6 +995,11 @@ impl SimulationResources {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Compute Encoder"),
             });
+
+            // Run spatial hashing passes (if enabled) before particle compute
+            if let Some(ref spatial) = self.spatial {
+                spatial.execute(&mut encoder, queue);
+            }
 
             // Run particle compute pass
             {
@@ -1220,6 +1329,7 @@ impl EmbeddedSimulation {
         self.shader_error = None;
 
         let field_registry = config.to_field_registry();
+        let particle_wgsl_struct = MetaParticle::wgsl_struct();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
@@ -1233,6 +1343,10 @@ impl EmbeddedSimulation {
             &config.custom_uniforms,
             &field_registry,
             &config.volume_render,
+            config.needs_spatial(),
+            config.spatial_cell_size,
+            config.spatial_resolution,
+            particle_wgsl_struct,
         );
 
         wgpu_render_state
@@ -1302,6 +1416,7 @@ impl EmbeddedSimulation {
 
         // Create new resources
         let field_registry = config.to_field_registry();
+        let particle_wgsl_struct = MetaParticle::wgsl_struct();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
@@ -1315,6 +1430,10 @@ impl EmbeddedSimulation {
             &config.custom_uniforms,
             &field_registry,
             &config.volume_render,
+            config.needs_spatial(),
+            config.spatial_cell_size,
+            config.spatial_resolution,
+            particle_wgsl_struct,
         );
 
         // Replace resources
@@ -1358,6 +1477,7 @@ impl EmbeddedSimulation {
 
         // Create new resources
         let field_registry = config.to_field_registry();
+        let particle_wgsl_struct = MetaParticle::wgsl_struct();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
@@ -1371,6 +1491,10 @@ impl EmbeddedSimulation {
             &config.custom_uniforms,
             &field_registry,
             &config.volume_render,
+            config.needs_spatial(),
+            config.spatial_cell_size,
+            config.spatial_resolution,
+            particle_wgsl_struct,
         );
 
         // Replace resources

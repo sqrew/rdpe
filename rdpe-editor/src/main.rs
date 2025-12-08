@@ -13,6 +13,17 @@ use rdpe_editor::ui::{
     render_volume_panel, AddUniformState, ExportPanelState, PRESETS,
 };
 
+/// Sidebar tabs for organizing the editor panels
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum SidebarTab {
+    #[default]
+    Spawn,
+    Rules,
+    Fields,
+    Visuals,
+    Custom,
+}
+
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -36,6 +47,10 @@ fn main() -> eframe::Result<()> {
 
 struct EditorApp {
     config: SimConfig,
+    /// Config that's currently running in the simulation
+    applied_config: SimConfig,
+    /// Config from last frame (for detecting changes)
+    previous_config: SimConfig,
     current_file: Option<String>,
     status_message: Option<(String, std::time::Instant)>,
     simulation: EmbeddedSimulation,
@@ -47,6 +62,10 @@ struct EditorApp {
     add_uniform_state: AddUniformState,
     /// State for the export panel
     export_panel_state: ExportPanelState,
+    /// Currently selected sidebar tab
+    selected_tab: SidebarTab,
+    /// Debounce timer for auto-rebuild (seconds remaining)
+    rebuild_timer: Option<f32>,
 }
 
 impl EditorApp {
@@ -60,9 +79,13 @@ impl EditorApp {
         }
 
         let last_background_color = config.visuals.background_color;
+        let applied_config = config.clone();
+        let previous_config = config.clone();
 
         Self {
             config,
+            applied_config,
+            previous_config,
             current_file: None,
             status_message: None,
             simulation,
@@ -71,6 +94,8 @@ impl EditorApp {
             last_background_color,
             add_uniform_state: AddUniformState::default(),
             export_panel_state: ExportPanelState::default(),
+            selected_tab: SidebarTab::default(),
+            rebuild_timer: None,
         }
     }
 }
@@ -130,11 +155,14 @@ impl EditorApp {
         // Reinitialize with state preservation (if particle count unchanged)
         self.simulation.reinitialize(wgpu_render_state, &self.config);
         self.needs_rebuild = false;
+        self.rebuild_timer = None;
 
         if self.simulation.shader_error().is_some() {
             self.show_status("Rebuild failed: shader error");
         } else {
-            self.show_status("Simulation rebuilt (particles preserved)");
+            // Update applied config on success
+            self.applied_config = self.config.clone();
+            self.show_status("Simulation rebuilt");
         }
     }
 
@@ -142,21 +170,74 @@ impl EditorApp {
         // Full reset: regenerate all particles
         self.simulation.reset(wgpu_render_state, &self.config);
         self.needs_reset = false;
+        self.rebuild_timer = None;
 
         if self.simulation.shader_error().is_some() {
             self.show_status("Reset failed: shader error");
         } else {
-            self.show_status("Simulation reset (fresh particles)");
+            // Update applied config on success
+            self.applied_config = self.config.clone();
+            self.show_status("Simulation reset");
         }
     }
 }
+
+/// Debounce delay for auto-rebuild in seconds
+const REBUILD_DEBOUNCE: f32 = 0.4;
 
 impl eframe::App for EditorApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // Get wgpu render state for the viewport
         let wgpu_render_state = frame.wgpu_render_state();
+        let delta_time = ctx.input(|i| i.stable_dt);
 
-        // Check if rebuild needed
+        // Auto-rebuild: detect config changes from previous frame and start/reset debounce timer
+        // Compare against previous_config (not applied_config) so we only reset timer on actual changes
+        let config_changed = {
+            // Check everything except background_color and custom_uniforms (which are hot-swapped)
+            self.config.name != self.previous_config.name
+                || self.config.particle_count != self.previous_config.particle_count
+                || self.config.bounds != self.previous_config.bounds
+                || self.config.particle_size != self.previous_config.particle_size
+                || self.config.spatial_cell_size != self.previous_config.spatial_cell_size
+                || self.config.spatial_resolution != self.previous_config.spatial_resolution
+                || self.config.spawn != self.previous_config.spawn
+                || self.config.rules != self.previous_config.rules
+                || self.config.vertex_effects != self.previous_config.vertex_effects
+                || self.config.visuals.blend_mode != self.previous_config.visuals.blend_mode
+                || self.config.visuals.shape != self.previous_config.visuals.shape
+                || self.config.visuals.palette != self.previous_config.visuals.palette
+                || self.config.visuals.color_mapping != self.previous_config.visuals.color_mapping
+                || self.config.visuals.trail_length != self.previous_config.visuals.trail_length
+                || self.config.visuals.connections_enabled != self.previous_config.visuals.connections_enabled
+                || self.config.visuals.connections_radius != self.previous_config.visuals.connections_radius
+                || self.config.visuals.velocity_stretch != self.previous_config.visuals.velocity_stretch
+                || self.config.visuals.velocity_stretch_factor != self.previous_config.visuals.velocity_stretch_factor
+                || self.config.visuals.spatial_grid_opacity != self.previous_config.visuals.spatial_grid_opacity
+                || self.config.visuals.wireframe != self.previous_config.visuals.wireframe
+                || self.config.visuals.wireframe_thickness != self.previous_config.visuals.wireframe_thickness
+                || self.config.custom_shaders != self.previous_config.custom_shaders
+                || self.config.fields != self.previous_config.fields
+                || self.config.volume_render != self.previous_config.volume_render
+        };
+
+        if config_changed {
+            // Start or reset debounce timer when config changes
+            self.rebuild_timer = Some(REBUILD_DEBOUNCE);
+            // Update previous_config to track this change
+            self.previous_config = self.config.clone();
+        }
+
+        // Tick down rebuild timer
+        if let Some(ref mut timer) = self.rebuild_timer {
+            *timer -= delta_time;
+            if *timer <= 0.0 {
+                self.needs_rebuild = true;
+                self.rebuild_timer = None;
+            }
+        }
+
+        // Check if rebuild needed (either from timer or manual)
         if self.needs_rebuild {
             if let Some(ref state) = wgpu_render_state {
                 self.rebuild_simulation(state);
@@ -188,7 +269,6 @@ impl eframe::App for EditorApp {
         }
 
         // Export window (floating)
-        let delta_time = ctx.input(|i| i.stable_dt);
         render_export_window(ctx, &mut self.export_panel_state, &self.config, delta_time);
 
         // Menu bar
@@ -238,9 +318,10 @@ impl eframe::App for EditorApp {
                         self.needs_reset = true;
                     }
 
-                    // Rebuild button (preserves particles)
-                    if ui.button("Rebuild").on_hover_text("Rebuild pipelines, preserve particles").clicked() {
-                        self.needs_rebuild = true;
+                    // Show pending rebuild indicator
+                    if self.rebuild_timer.is_some() {
+                        ui.label(egui::RichText::new("⟳").color(egui::Color32::YELLOW))
+                            .on_hover_text("Rebuild pending...");
                     }
 
                     // Pause/Play
@@ -366,90 +447,95 @@ impl eframe::App for EditorApp {
                 });
         }
 
-        // Right panel: Settings
+        // Right panel: Settings with tabs
         egui::SidePanel::right("settings")
             .min_width(350.0)
             .default_width(400.0)
             .show(ctx, |ui| {
+                // Simulation name at top (always visible)
+                ui.horizontal(|ui| {
+                    ui.label("Name:");
+                    ui.text_edit_singleline(&mut self.config.name);
+                });
+                ui.separator();
+
+                // Tab bar
+                ui.horizontal_wrapped(|ui| {
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Spawn, "Spawn");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Rules, "Rules");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Custom, "Custom");
+                });
+                ui.separator();
+
+                // Tab content
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    // Simulation name
-                    ui.horizontal(|ui| {
-                        ui.label("Name:");
-                        ui.text_edit_singleline(&mut self.config.name);
-                    });
-                    ui.separator();
+                    match self.selected_tab {
+                        SidebarTab::Spawn => {
+                            render_spawn_panel(ui, &mut self.config);
 
-                    // Spawn panel
-                    render_spawn_panel(ui, &mut self.config);
+                            // Spatial settings (if needed)
+                            if self.config.needs_spatial() {
+                                ui.separator();
+                                ui.heading("Spatial Hashing");
+                                ui.add(egui::Slider::new(&mut self.config.spatial_cell_size, 0.01..=0.5)
+                                    .text("Cell Size"));
 
-                    ui.separator();
+                                // Resolution must be a power of 2
+                                const VALID_RESOLUTIONS: &[u32] = &[8, 16, 32, 64, 128];
+                                let mut res_idx = VALID_RESOLUTIONS
+                                    .iter()
+                                    .position(|&r| r == self.config.spatial_resolution)
+                                    .unwrap_or(2); // Default to 32
 
-                    // Spatial settings (if needed)
-                    if self.config.needs_spatial() {
-                        ui.heading("Spatial Hashing");
-                        ui.add(egui::Slider::new(&mut self.config.spatial_cell_size, 0.01..=0.5)
-                            .text("Cell Size"));
+                                egui::ComboBox::from_label("Resolution")
+                                    .selected_text(format!("{}", VALID_RESOLUTIONS[res_idx]))
+                                    .show_ui(ui, |ui| {
+                                        for (i, &res) in VALID_RESOLUTIONS.iter().enumerate() {
+                                            if ui.selectable_value(&mut res_idx, i, format!("{}", res)).clicked() {
+                                                self.config.spatial_resolution = res;
+                                            }
+                                        }
+                                    });
+                            }
+                        }
+                        SidebarTab::Rules => {
+                            render_rules_panel(ui, &mut self.config.rules);
+                        }
+                        SidebarTab::Fields => {
+                            render_fields_panel(ui, &mut self.config.fields);
 
-                        // Resolution must be a power of 2
-                        const VALID_RESOLUTIONS: &[u32] = &[8, 16, 32, 64, 128];
-                        let mut res_idx = VALID_RESOLUTIONS
-                            .iter()
-                            .position(|&r| r == self.config.spatial_resolution)
-                            .unwrap_or(2); // Default to 32
+                            ui.separator();
 
-                        egui::ComboBox::from_label("Resolution")
-                            .selected_text(format!("{}", VALID_RESOLUTIONS[res_idx]))
-                            .show_ui(ui, |ui| {
-                                for (i, &res) in VALID_RESOLUTIONS.iter().enumerate() {
-                                    if ui.selectable_value(&mut res_idx, i, format!("{}", res)).clicked() {
-                                        self.config.spatial_resolution = res;
-                                    }
-                                }
+                            // Volume rendering panel
+                            let num_fields = self.config.fields.len();
+                            render_volume_panel(ui, &mut self.config.volume_render, num_fields);
+                        }
+                        SidebarTab::Visuals => {
+                            render_visuals_panel(ui, &mut self.config.visuals);
+
+                            ui.separator();
+
+                            // Vertex effects
+                            render_effects_panel(ui, &mut self.config.vertex_effects);
+                        }
+                        SidebarTab::Custom => {
+                            render_custom_panel(
+                                ui,
+                                &mut self.config.custom_uniforms,
+                                &mut self.config.custom_shaders,
+                                &mut self.add_uniform_state,
+                            );
+
+                            ui.separator();
+
+                            // Export button
+                            ui.horizontal(|ui| {
+                                render_export_button(ui, &mut self.export_panel_state, &self.config);
                             });
-
-                        ui.separator();
+                        }
                     }
-
-                    // Rules panel
-                    render_rules_panel(ui, &mut self.config.rules);
-
-                    ui.separator();
-
-                    // Vertex effects panel
-                    render_effects_panel(ui, &mut self.config.vertex_effects);
-
-                    ui.separator();
-
-                    // Fields panel
-                    render_fields_panel(ui, &mut self.config.fields);
-
-                    ui.separator();
-
-                    // Volume rendering panel
-                    let num_fields = self.config.fields.len();
-                    render_volume_panel(ui, &mut self.config.volume_render, num_fields);
-
-                    ui.separator();
-
-                    // Visuals panel
-                    render_visuals_panel(ui, &mut self.config.visuals);
-
-                    ui.separator();
-
-                    // Custom uniforms and shaders panel
-                    render_custom_panel(
-                        ui,
-                        &mut self.config.custom_uniforms,
-                        &mut self.config.custom_shaders,
-                        &mut self.add_uniform_state,
-                    );
-
-                    ui.separator();
-
-                    // Export button
-                    ui.horizontal(|ui| {
-                        render_export_button(ui, &mut self.export_panel_state, &self.config);
-                    });
                 });
             });
 
@@ -509,7 +595,7 @@ impl eframe::App for EditorApp {
                                     ui.separator();
 
                                     ui.label(
-                                        egui::RichText::new("Fix the error in your custom shader code, then click Rebuild")
+                                        egui::RichText::new("Fix the error in your custom shader code - will auto-rebuild when corrected")
                                             .small()
                                             .italics()
                                             .color(egui::Color32::GRAY)

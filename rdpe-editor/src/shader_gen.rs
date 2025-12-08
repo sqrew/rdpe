@@ -148,17 +148,28 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
 
 /// Generate compute shader with spatial hashing for neighbor queries.
 fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], particle_struct: &str) -> String {
-    // For now, fall back to simple shader without neighbor support
-    // Full neighbor support requires the spatial hashing system
-    // which is complex to set up outside the full Simulation
-
-    // Filter to non-neighbor rules and generate those
+    // Separate rules into neighbor and non-neighbor
+    let neighbor_rules: Vec<&Rule> = rules.iter().filter(|r| r.requires_neighbors()).collect();
     let simple_rules: Vec<&Rule> = rules.iter().filter(|r| !r.requires_neighbors()).collect();
-    let rules_code: String = simple_rules
+
+    // Generate rule code
+    let simple_rules_code: String = simple_rules
         .iter()
         .map(|r| r.to_wgsl(config.bounds))
         .collect::<Vec<_>>()
         .join("\n\n");
+
+    let neighbor_rules_code: String = neighbor_rules
+        .iter()
+        .map(|r| r.to_neighbor_wgsl())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    // Generate accumulator variables for neighbor rules
+    let accumulator_vars = generate_accumulator_vars(&neighbor_rules);
+
+    // Generate post-neighbor code for rules that need final processing
+    let post_neighbor_code = generate_post_neighbor_code(&neighbor_rules);
 
     // Generate custom uniform fields
     let custom_uniform_fields = generate_custom_uniform_fields(config);
@@ -167,17 +178,9 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
     let field_code = generate_field_code(config);
     let has_fields = !config.fields.is_empty();
 
-    // TODO: Add proper spatial hashing support
-    // For now, just warn that neighbor rules won't work
-    let neighbor_warning = if rules.iter().any(|r| r.requires_neighbors()) {
-        "// WARNING: Some rules require neighbor access (Separate, Cohere, Align, etc.)\n    // These rules are not yet supported in the embedded editor.\n"
-    } else {
-        ""
-    };
-
     format!(r#"
 // ============================================
-// RDPE Compute Shader (Generated)
+// RDPE Compute Shader (Generated with Spatial Hashing)
 // ============================================
 
 // Particle struct
@@ -190,12 +193,36 @@ struct Uniforms {{
     delta_time: f32,
 {custom_uniform_fields}}}
 
+// Spatial params for neighbor queries
+struct SpatialParams {{
+    cell_size: f32,
+    grid_resolution: u32,
+    num_particles: u32,
+    max_neighbors: u32,
+}}
+
 // Bindings
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> uniforms: Uniforms;
+@group(0) @binding(2) var<storage, read> sorted_indices: array<u32>;
+@group(0) @binding(3) var<storage, read> cell_start: array<u32>;
+@group(0) @binding(4) var<storage, read> cell_end: array<u32>;
+@group(0) @binding(5) var<uniform> spatial: SpatialParams;
 
 {field_code}
+// ============================================
+// Morton encoding utilities
+// ============================================
+{morton_utils}
+
+// ============================================
+// Neighbor iteration utilities
+// ============================================
+{neighbor_utils}
+
+// ============================================
 // Utility functions
+// ============================================
 {shader_utils}
 
 // Main compute shader
@@ -219,11 +246,82 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
     let bounds = {bounds:.6};
     {field_count_decl}
 
-    {neighbor_warning}
+    let my_pos = p.position;
+    let my_cell = pos_to_cell(my_pos, spatial.cell_size, spatial.grid_resolution);
+
     // ============================================
-    // Apply rules
+    // Accumulator variables for neighbor rules
     // ============================================
-{rules_code}
+{accumulator_vars}
+
+    // ============================================
+    // Neighbor iteration
+    // ============================================
+    var neighbor_count = 0u;
+    let max_neighbors = spatial.max_neighbors;
+
+    for (var offset_idx = 0u; offset_idx < 27u; offset_idx++) {{
+        // Early exit if max neighbors reached (0 = unlimited)
+        if max_neighbors > 0u && neighbor_count >= max_neighbors {{
+            break;
+        }}
+
+        let neighbor_morton = neighbor_cell_morton(my_cell, offset_idx, spatial.grid_resolution);
+
+        if neighbor_morton == 0xFFFFFFFFu {{
+            continue; // Out of bounds
+        }}
+
+        let start = cell_start[neighbor_morton];
+        let end = cell_end[neighbor_morton];
+
+        if start == 0xFFFFFFFFu {{
+            continue; // Empty cell
+        }}
+
+        for (var j = start; j < end; j++) {{
+            // Early exit if max neighbors reached
+            if max_neighbors > 0u && neighbor_count >= max_neighbors {{
+                break;
+            }}
+
+            let other_idx = sorted_indices[j];
+
+            if other_idx == index {{
+                continue; // Skip self
+            }}
+
+            let other = particles[other_idx];
+
+            // Skip dead neighbors
+            if other.alive == 0u {{
+                continue;
+            }}
+
+            let neighbor_pos = other.position;
+            let neighbor_vel = other.velocity;
+            let diff = my_pos - neighbor_pos;
+            let neighbor_dist = length(diff);
+            let neighbor_dir = select(vec3<f32>(0.0), diff / neighbor_dist, neighbor_dist > 0.0001);
+
+            neighbor_count += 1u;
+
+            // ============================================
+            // Apply neighbor rules
+            // ============================================
+{neighbor_rules_code}
+        }}
+    }}
+
+    // ============================================
+    // Post-neighbor processing
+    // ============================================
+{post_neighbor_code}
+
+    // ============================================
+    // Apply non-neighbor rules
+    // ============================================
+{simple_rules_code}
 
     // ============================================
     // Integrate velocity
@@ -240,12 +338,65 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
         particle_struct = particle_struct,
         custom_uniform_fields = custom_uniform_fields,
         field_code = if has_fields { &field_code } else { "// No fields\n" },
+        morton_utils = MORTON_WGSL,
+        neighbor_utils = NEIGHBOR_UTILS_WGSL,
         shader_utils = SHADER_UTILS,
         bounds = config.bounds,
         field_count_decl = if has_fields { format!("let field_count = {}u;", config.fields.len()) } else { String::new() },
-        neighbor_warning = neighbor_warning,
-        rules_code = indent_code(&rules_code, "    "),
+        accumulator_vars = indent_code(&accumulator_vars, "    "),
+        neighbor_rules_code = indent_code(&neighbor_rules_code, "            "),
+        post_neighbor_code = indent_code(&post_neighbor_code, "    "),
+        simple_rules_code = indent_code(&simple_rules_code, "    "),
     )
+}
+
+/// Generate accumulator variables needed by neighbor rules.
+fn generate_accumulator_vars(rules: &[&Rule]) -> String {
+    // Check which accumulators are needed
+    let needs_cohesion = rules.iter().any(|r| matches!(r, Rule::Cohere { .. } | Rule::Flock { .. }));
+    let needs_alignment = rules.iter().any(|r| matches!(r, Rule::Align { .. } | Rule::Flock { .. }));
+    let needs_chase = rules.iter().any(|r| matches!(r, Rule::Chase { .. }));
+    let needs_evade = rules.iter().any(|r| matches!(r, Rule::Evade { .. }));
+    let needs_viscosity = rules.iter().any(|r| matches!(r, Rule::Viscosity { .. }));
+    let needs_pressure = rules.iter().any(|r| matches!(r, Rule::Pressure { .. }));
+    let needs_surface_tension = rules.iter().any(|r| matches!(r, Rule::SurfaceTension { .. }));
+
+    let mut vars = String::new();
+
+    if needs_cohesion {
+        vars.push_str("    var cohesion_sum = vec3<f32>(0.0);\n    var cohesion_count = 0.0;\n");
+    }
+    if needs_alignment {
+        vars.push_str("    var alignment_sum = vec3<f32>(0.0);\n    var alignment_count = 0.0;\n");
+    }
+    if needs_chase {
+        vars.push_str("    var chase_nearest_dist = 1000.0;\n    var chase_nearest_pos = vec3<f32>(0.0);\n");
+    }
+    if needs_evade {
+        vars.push_str("    var evade_nearest_dist = 1000.0;\n    var evade_nearest_pos = vec3<f32>(0.0);\n");
+    }
+    if needs_viscosity {
+        vars.push_str("    var viscosity_sum = vec3<f32>(0.0);\n    var viscosity_weight = 0.0;\n");
+    }
+    if needs_pressure {
+        vars.push_str("    var pressure_density = 0.0;\n    var pressure_force = vec3<f32>(0.0);\n");
+    }
+    if needs_surface_tension {
+        vars.push_str("    var surface_neighbor_count = 0.0;\n    var surface_center_sum = vec3<f32>(0.0);\n");
+    }
+
+    vars
+}
+
+/// Generate post-neighbor processing code for rules that need it.
+/// Uses rdpe's Rule::to_post_neighbor_wgsl() for consistency.
+fn generate_post_neighbor_code(rules: &[&Rule]) -> String {
+    rules
+        .iter()
+        .map(|r| r.to_post_neighbor_wgsl())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// Generate render shader from visual config.
@@ -640,4 +791,89 @@ let alpha = 1.0 - smoothstep(0.45, 0.5, diamond);
 
 const SHAPE_POINT: &str = r#"
 let alpha = 1.0;
+"#;
+
+// ============================================
+// Spatial hashing utilities
+// ============================================
+
+/// WGSL code for Morton encoding utilities
+const MORTON_WGSL: &str = r#"
+// Expand 10-bit integer to 30 bits by inserting 2 zeros between each bit
+fn expand_bits(v: u32) -> u32 {
+    var x = v & 0x000003FFu; // 10 bits
+    x = (x | (x << 16u)) & 0x030000FFu;
+    x = (x | (x <<  8u)) & 0x0300F00Fu;
+    x = (x | (x <<  4u)) & 0x030C30C3u;
+    x = (x | (x <<  2u)) & 0x09249249u;
+    return x;
+}
+
+// Compute 30-bit Morton code for 3D point (each coord 0-1023)
+fn morton_encode(x: u32, y: u32, z: u32) -> u32 {
+    return expand_bits(x) | (expand_bits(y) << 1u) | (expand_bits(z) << 2u);
+}
+
+// Convert world position to cell coordinates
+fn pos_to_cell(pos: vec3<f32>, cell_size: f32, grid_res: u32) -> vec3<u32> {
+    // Offset by half grid to center around origin
+    let half_grid = f32(grid_res) * cell_size * 0.5;
+    let normalized = (pos + vec3<f32>(half_grid)) / cell_size;
+    let clamped = clamp(normalized, vec3<f32>(0.0), vec3<f32>(f32(grid_res - 1u)));
+    return vec3<u32>(clamped);
+}
+
+// Get Morton code for a world position
+fn pos_to_morton(pos: vec3<f32>, cell_size: f32, grid_res: u32) -> u32 {
+    let cell = pos_to_cell(pos, cell_size, grid_res);
+    return morton_encode(cell.x, cell.y, cell.z);
+}
+
+// Compact 30 bits to 10 bits by extracting every third bit
+fn compact_bits(v: u32) -> u32 {
+    var x = v & 0x09249249u;
+    x = (x | (x >>  2u)) & 0x030C30C3u;
+    x = (x | (x >>  4u)) & 0x0300F00Fu;
+    x = (x | (x >>  8u)) & 0x030000FFu;
+    x = (x | (x >> 16u)) & 0x000003FFu;
+    return x;
+}
+
+// Decode Morton code back to cell coordinates
+fn morton_decode(code: u32) -> vec3<u32> {
+    return vec3<u32>(
+        compact_bits(code),
+        compact_bits(code >> 1u),
+        compact_bits(code >> 2u)
+    );
+}
+"#;
+
+/// WGSL code for neighbor iteration utilities
+const NEIGHBOR_UTILS_WGSL: &str = r#"
+// Offsets for 27 neighboring cells (including self)
+const NEIGHBOR_OFFSETS: array<vec3<i32>, 27> = array<vec3<i32>, 27>(
+    vec3<i32>(-1, -1, -1), vec3<i32>(0, -1, -1), vec3<i32>(1, -1, -1),
+    vec3<i32>(-1,  0, -1), vec3<i32>(0,  0, -1), vec3<i32>(1,  0, -1),
+    vec3<i32>(-1,  1, -1), vec3<i32>(0,  1, -1), vec3<i32>(1,  1, -1),
+    vec3<i32>(-1, -1,  0), vec3<i32>(0, -1,  0), vec3<i32>(1, -1,  0),
+    vec3<i32>(-1,  0,  0), vec3<i32>(0,  0,  0), vec3<i32>(1,  0,  0),
+    vec3<i32>(-1,  1,  0), vec3<i32>(0,  1,  0), vec3<i32>(1,  1,  0),
+    vec3<i32>(-1, -1,  1), vec3<i32>(0, -1,  1), vec3<i32>(1, -1,  1),
+    vec3<i32>(-1,  0,  1), vec3<i32>(0,  0,  1), vec3<i32>(1,  0,  1),
+    vec3<i32>(-1,  1,  1), vec3<i32>(0,  1,  1), vec3<i32>(1,  1,  1),
+);
+
+// Get Morton code for a neighboring cell (returns 0xFFFFFFFF if out of bounds)
+fn neighbor_cell_morton(cell: vec3<u32>, offset_idx: u32, grid_res: u32) -> u32 {
+    let offset = NEIGHBOR_OFFSETS[offset_idx];
+    let neighbor = vec3<i32>(cell) + offset;
+
+    if neighbor.x < 0 || neighbor.y < 0 || neighbor.z < 0 ||
+       neighbor.x >= i32(grid_res) || neighbor.y >= i32(grid_res) || neighbor.z >= i32(grid_res) {
+        return 0xFFFFFFFFu; // Invalid marker
+    }
+
+    return morton_encode(u32(neighbor.x), u32(neighbor.y), u32(neighbor.z));
+}
 "#;

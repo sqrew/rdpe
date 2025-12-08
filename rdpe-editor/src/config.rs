@@ -10,7 +10,7 @@ use std::fs;
 use std::path::Path;
 
 /// Custom uniform value types for shader parameters.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum UniformValueConfig {
     F32(f32),
     Vec2([f32; 2]),
@@ -71,7 +71,7 @@ impl UniformValueConfig {
 }
 
 /// Custom shader code configuration.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct CustomShaderConfig {
     /// Custom vertex shader code (injected after vertex effects).
     #[serde(default)]
@@ -103,7 +103,7 @@ impl FieldTypeConfig {
 }
 
 /// Configuration for a single 3D spatial field.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FieldConfigEntry {
     /// Field name (for reference in code).
     pub name: String,
@@ -152,7 +152,7 @@ impl FieldConfigEntry {
 }
 
 /// Spawn shape configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum SpawnShape {
     Cube { size: f32 },
     Sphere { radius: f32 },
@@ -188,7 +188,7 @@ impl SpawnShape {
 }
 
 /// Initial velocity configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum InitialVelocity {
     Zero,
     RandomDirection { speed: f32 },
@@ -222,7 +222,7 @@ impl InitialVelocity {
 }
 
 /// How to assign particle colors
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum ColorMode {
     Uniform { r: f32, g: f32, b: f32 },
     RandomHue { saturation: f32, value: f32 },
@@ -257,7 +257,7 @@ impl ColorMode {
 }
 
 /// Configuration for spawning particles
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SpawnConfig {
     pub shape: SpawnShape,
     pub velocity: InitialVelocity,
@@ -402,7 +402,7 @@ impl PaletteConfig {
 }
 
 /// Configuration for volume rendering (ray marching visualization of fields).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct VolumeRenderConfig {
     /// Whether volume rendering is enabled.
     pub enabled: bool,
@@ -515,7 +515,7 @@ impl WireframeMeshConfig {
 }
 
 /// Visual configuration for particle rendering
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct VisualsConfig {
     pub blend_mode: BlendModeConfig,
     pub shape: ParticleShapeConfig,
@@ -559,7 +559,7 @@ impl Default for VisualsConfig {
 }
 
 /// Vertex effect configuration for visual enhancements
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum VertexEffectConfig {
     Rotate { speed: f32 },
     Wobble { frequency: f32, amplitude: f32 },
@@ -640,7 +640,7 @@ impl VertexEffectConfig {
 }
 
 /// Serializable rule configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum RuleConfig {
     // === Basic Forces ===
     Gravity(f32),
@@ -1223,7 +1223,7 @@ impl RuleConfig {
 }
 
 /// Complete simulation configuration
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimConfig {
     pub name: String,
     pub particle_count: u32,
