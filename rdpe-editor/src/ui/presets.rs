@@ -1,6 +1,8 @@
 //! Simulation presets
 
-use crate::config::*;
+use crate::config::{
+    ColorMode, InitialVelocity, RuleConfig, SimConfig, SpawnConfig, SpawnShape, VisualsConfig,
+};
 
 pub struct Preset {
     pub name: &'static str,
@@ -31,6 +33,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::SpeedLimit { min: 0.1, max: 0.5 },
                 RuleConfig::BounceWalls,
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -54,6 +58,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Drag(0.1),
                 RuleConfig::SpeedLimit { min: 0.0, max: 2.0 },
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -77,6 +83,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Drag(0.3),
                 RuleConfig::BounceWalls,
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -101,6 +109,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Viscosity { radius: 0.08, strength: 0.5 },
                 RuleConfig::BounceWalls,
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -125,6 +135,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Drag(0.5),
                 RuleConfig::BounceWalls,
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -148,6 +160,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Drag(0.2),
                 RuleConfig::BounceWalls,
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -173,6 +187,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::SpeedLimit { min: 0.1, max: 1.0 },
                 RuleConfig::BounceWalls,
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -196,6 +212,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Drag(0.2),
                 RuleConfig::WrapWalls,
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -222,6 +240,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Lifetime(3.0),
                 RuleConfig::RespawnBelow { threshold_y: -1.0, spawn_y: 0.5, reset_velocity: true },
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
     Preset {
@@ -245,6 +265,8 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Collide { radius: 0.03, restitution: 0.5 },
                 RuleConfig::Drag(0.05),
             ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig::default(),
         },
     },
 ];

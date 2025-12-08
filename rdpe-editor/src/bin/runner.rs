@@ -169,10 +169,6 @@ fn main() {
         }
     };
 
-    println!("Running simulation: {}", config.name);
-    println!("  Particles: {}", config.particle_count);
-    println!("  Rules: {}", config.rules.len());
-
     // Clone spawn config for the spawner closure
     let spawn_config = config.spawn.clone();
 
@@ -196,6 +192,49 @@ fn main() {
     for rule in rules {
         sim = sim.with_rule(rule);
     }
+
+    // Add vertex effects
+    for effect_config in &config.vertex_effects {
+        sim = sim.with_vertex_effect(effect_config.to_effect());
+    }
+
+    // Apply visuals
+    let visuals = config.visuals.clone();
+    sim = sim.with_visuals(|v| {
+        v.blend_mode(visuals.blend_mode.to_blend_mode());
+        v.shape(visuals.shape.to_shape());
+        v.background(glam::Vec3::from_array(visuals.background_color));
+
+        // Apply palette and color mapping
+        if visuals.palette != rdpe_editor::config::PaletteConfig::None {
+            v.palette(visuals.palette.to_palette(), visuals.color_mapping.to_color_mapping());
+        }
+
+        // Apply trails
+        if visuals.trail_length > 0 {
+            v.trails(visuals.trail_length);
+        }
+
+        // Apply connections
+        if visuals.connections_enabled {
+            v.connections(visuals.connections_radius);
+        }
+
+        // Apply velocity stretch
+        if visuals.velocity_stretch {
+            v.velocity_stretch(visuals.velocity_stretch_factor);
+        }
+
+        // Apply spatial grid debug
+        if visuals.spatial_grid_opacity > 0.0 {
+            v.spatial_grid(visuals.spatial_grid_opacity);
+        }
+
+        // Apply wireframe
+        if let Some(mesh) = visuals.wireframe.to_mesh() {
+            v.wireframe(mesh, visuals.wireframe_thickness);
+        }
+    });
 
     // Run with inspectors enabled
     sim.with_particle_inspector()

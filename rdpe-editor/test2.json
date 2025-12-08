@@ -1,0 +1,71 @@
+{
+  "name": "test2",
+  "particle_count": 1000,
+  "bounds": 1.0,
+  "particle_size": 0.01,
+  "spatial_cell_size": 0.1,
+  "spatial_resolution": 32,
+  "spawn": {
+    "shape": {
+      "Sphere": {
+        "radius": 0.5
+      }
+    },
+    "velocity": {
+      "RandomDirection": {
+        "speed": 0.1
+      }
+    },
+    "mass_range": [
+      1.0,
+      1.0
+    ],
+    "energy_range": [
+      1.0,
+      1.0
+    ],
+    "color_mode": {
+      "RandomHue": {
+        "saturation": 0.8,
+        "value": 0.9
+      }
+    }
+  },
+  "rules": [
+    {
+      "Gravity": 2.0
+    },
+    {
+      "Drag": 0.5
+    },
+    "BounceWalls",
+    {
+      "Vortex": {
+        "center": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "axis": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "strength": 1.0
+      }
+    },
+    {
+      "Wander": {
+        "strength": 1.0,
+        "frequency": 3.0
+      }
+    },
+    {
+      "NBodyGravity": {
+        "strength": 0.5,
+        "softening": 0.05,
+        "radius": 1.0
+      }
+    }
+  ]
+}

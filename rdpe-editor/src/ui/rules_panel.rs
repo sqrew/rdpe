@@ -86,6 +86,29 @@ pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
         ("Neighbor Custom", || RuleConfig::NeighborCustom { code: "// Applied for each neighbor\nlet diff = n.position - p.position;".into() }),
         ("On Collision", || RuleConfig::OnCollision { radius: 0.1, response: "p.color = vec3(1.0, 0.0, 0.0);".into() }),
     ]),
+    ("Event Hooks", &[
+        ("On Condition", || RuleConfig::OnCondition { condition: "p.age > 1.0".into(), action: "p.color = vec3(1.0, 0.0, 0.0);".into() }),
+        ("On Death", || RuleConfig::OnDeath { action: "// particle died".into() }),
+        ("On Interval", || RuleConfig::OnInterval { interval: 1.0, action: "p.color = vec3(1.0, 1.0, 0.0);".into() }),
+        ("On Spawn", || RuleConfig::OnSpawn { action: "// particle spawned".into() }),
+    ]),
+    ("Growth & Decay", &[
+        ("Grow", || RuleConfig::Grow { rate: 0.5, min: 0.1, max: 2.0 }),
+        ("Decay", || RuleConfig::Decay { field: "energy".into(), rate: 0.5 }),
+        ("Die", || RuleConfig::Die { condition: "p.age > 5.0".into() }),
+        ("DLA", || RuleConfig::DLA { seed_type: 0, mobile_type: 1, stick_radius: 0.1, diffusion_strength: 0.5 }),
+    ]),
+    ("Fields", &[
+        ("Copy Field", || RuleConfig::CopyField { from: "velocity".into(), to: "prev_velocity".into() }),
+        ("Current", || RuleConfig::Current { field: "flow".into(), strength: 1.0 }),
+    ]),
+    ("Math", &[
+        ("Lerp", || RuleConfig::Lerp { field: "energy".into(), target: 0.0, rate: 1.0 }),
+        ("Clamp", || RuleConfig::Clamp { field: "energy".into(), min: 0.0, max: 1.0 }),
+        ("Remap", || RuleConfig::Remap { field: "age".into(), in_min: 0.0, in_max: 5.0, out_min: 1.0, out_max: 0.0 }),
+        ("Quantize", || RuleConfig::Quantize { field: "energy".into(), step: 0.25 }),
+        ("Noise", || RuleConfig::Noise { field: "energy".into(), amplitude: 0.1, frequency: 2.0 }),
+    ]),
 ];
 
 pub fn render_rules_panel(ui: &mut Ui, rules: &mut Vec<RuleConfig>) -> bool {
@@ -497,6 +520,143 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     }
                 });
             }
+        }
+
+        // === Event Hooks ===
+        RuleConfig::OnCondition { condition, action } => {
+            ui.label("Condition (WGSL):");
+            if ui.text_edit_singleline(condition).changed() {
+                changed = true;
+            }
+            ui.label("Action (WGSL):");
+            if ui.text_edit_multiline(action).changed() {
+                changed = true;
+            }
+        }
+        RuleConfig::OnDeath { action } => {
+            ui.label("On Death Action (WGSL):");
+            if ui.text_edit_multiline(action).changed() {
+                changed = true;
+            }
+        }
+        RuleConfig::OnInterval { interval, action } => {
+            changed |= ui.add(egui::Slider::new(interval, 0.01..=10.0).text("Interval (s)")).changed();
+            ui.label("Action (WGSL):");
+            if ui.text_edit_multiline(action).changed() {
+                changed = true;
+            }
+        }
+        RuleConfig::OnSpawn { action } => {
+            ui.label("On Spawn Action (WGSL):");
+            if ui.text_edit_multiline(action).changed() {
+                changed = true;
+            }
+        }
+
+        // === Growth & Decay ===
+        RuleConfig::Grow { rate, min, max } => {
+            changed |= ui.add(egui::Slider::new(rate, -2.0..=2.0).text("Rate")).changed();
+            changed |= ui.add(egui::Slider::new(min, 0.0..=1.0).text("Min Scale")).changed();
+            changed |= ui.add(egui::Slider::new(max, 0.1..=5.0).text("Max Scale")).changed();
+        }
+        RuleConfig::Decay { field, rate } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(rate, 0.0..=5.0).text("Rate")).changed();
+        }
+        RuleConfig::Die { condition } => {
+            ui.label("Death Condition (WGSL):");
+            if ui.text_edit_singleline(condition).changed() {
+                changed = true;
+            }
+        }
+        RuleConfig::DLA { seed_type, mobile_type, stick_radius, diffusion_strength } => {
+            changed |= ui.add(egui::Slider::new(seed_type, 0..=7).text("Seed Type")).changed();
+            changed |= ui.add(egui::Slider::new(mobile_type, 0..=7).text("Mobile Type")).changed();
+            changed |= ui.add(egui::Slider::new(stick_radius, 0.01..=0.5).text("Stick Radius")).changed();
+            changed |= ui.add(egui::Slider::new(diffusion_strength, 0.0..=2.0).text("Diffusion")).changed();
+        }
+
+        // === Field Operations ===
+        RuleConfig::CopyField { from, to } => {
+            ui.horizontal(|ui| {
+                ui.label("From:");
+                if ui.text_edit_singleline(from).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("To:");
+                if ui.text_edit_singleline(to).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Current { field, strength } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+        }
+
+        // === Math / Signal ===
+        RuleConfig::Lerp { field, target, rate } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(target, -10.0..=10.0).text("Target")).changed();
+            changed |= ui.add(egui::Slider::new(rate, 0.0..=10.0).text("Rate")).changed();
+        }
+        RuleConfig::Clamp { field, min, max } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(min, -10.0..=10.0).text("Min")).changed();
+            changed |= ui.add(egui::Slider::new(max, -10.0..=10.0).text("Max")).changed();
+        }
+        RuleConfig::Remap { field, in_min, in_max, out_min, out_max } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(in_min, -10.0..=10.0).text("In Min")).changed();
+            changed |= ui.add(egui::Slider::new(in_max, -10.0..=10.0).text("In Max")).changed();
+            changed |= ui.add(egui::Slider::new(out_min, -10.0..=10.0).text("Out Min")).changed();
+            changed |= ui.add(egui::Slider::new(out_max, -10.0..=10.0).text("Out Max")).changed();
+        }
+        RuleConfig::Quantize { field, step } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(step, 0.01..=1.0).text("Step Size")).changed();
+        }
+        RuleConfig::Noise { field, amplitude, frequency } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(amplitude, 0.0..=2.0).text("Amplitude")).changed();
+            changed |= ui.add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency")).changed();
         }
     }
 

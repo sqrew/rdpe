@@ -2,7 +2,7 @@
 
 use eframe::egui;
 use rdpe_editor::config::*;
-use rdpe_editor::ui::{render_rules_panel, render_spawn_panel, PRESETS};
+use rdpe_editor::ui::{render_effects_panel, render_rules_panel, render_spawn_panel, render_visuals_panel, PRESETS};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
@@ -330,13 +330,39 @@ impl eframe::App for EditorApp {
                     ui.heading("Spatial Hashing");
                     ui.add(egui::Slider::new(&mut self.config.spatial_cell_size, 0.01..=0.5)
                         .text("Cell Size"));
-                    ui.add(egui::Slider::new(&mut self.config.spatial_resolution, 8..=128)
-                        .text("Resolution"));
+
+                    // Resolution must be a power of 2
+                    const VALID_RESOLUTIONS: &[u32] = &[8, 16, 32, 64, 128];
+                    let mut res_idx = VALID_RESOLUTIONS
+                        .iter()
+                        .position(|&r| r == self.config.spatial_resolution)
+                        .unwrap_or(2); // Default to 32
+
+                    egui::ComboBox::from_label("Resolution")
+                        .selected_text(format!("{}", VALID_RESOLUTIONS[res_idx]))
+                        .show_ui(ui, |ui| {
+                            for (i, &res) in VALID_RESOLUTIONS.iter().enumerate() {
+                                if ui.selectable_value(&mut res_idx, i, format!("{}", res)).clicked() {
+                                    self.config.spatial_resolution = res;
+                                }
+                            }
+                        });
+
                     ui.separator();
                 }
 
                 // Rules panel
                 render_rules_panel(ui, &mut self.config.rules);
+
+                ui.separator();
+
+                // Vertex effects panel
+                render_effects_panel(ui, &mut self.config.vertex_effects);
+
+                ui.separator();
+
+                // Visuals panel
+                render_visuals_panel(ui, &mut self.config.visuals);
             });
         });
     }
