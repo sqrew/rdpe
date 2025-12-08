@@ -123,6 +123,8 @@ pub use emitter::Emitter;
 pub use field::{FieldConfig, FieldRegistry, FieldType};
 pub use glam::{Vec2, Vec3, Vec4};
 pub use gpu::VolumeConfig;
+pub use gpu::VolumeRenderState;
+pub use gpu::{FieldSystemGpu, create_particle_field_bind_group_layout};
 pub use interactions::InteractionMatrix;
 pub use lifecycle::Lifecycle;
 pub use rdpe_derive::{MultiParticle, Particle, ParticleType};
@@ -132,7 +134,7 @@ pub use spawn::SpawnContext;
 pub use sub_emitter::{SpawnTrigger, SubEmitter};
 pub use textures::{AddressMode, FilterMode, TextureConfig, TextureRegistry};
 pub use uniforms::{CustomUniforms, UniformValue, UpdateContext};
-pub use visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VertexEffect, VisualConfig, WireframeMesh};
+pub use visuals::{BlendMode, ColorMapping, ConfigDiff, HotSwapChange, Palette, ParticleShape, VertexEffect, VisualConfig, WireframeMesh};
 
 /// Trait automatically implemented by `#[derive(Particle)]`.
 ///
@@ -269,7 +271,7 @@ pub mod prelude {
     pub use crate::textures::{AddressMode, FilterMode, TextureConfig, TextureRegistry};
     pub use crate::time::Time;
     pub use crate::uniforms::{CustomUniforms, UpdateContext};
-    pub use crate::visuals::{BlendMode, ColorMapping, Palette, ParticleShape, VertexEffect, VisualConfig, WireframeMesh};
+    pub use crate::visuals::{BlendMode, ColorMapping, ConfigDiff, HotSwapChange, Palette, ParticleShape, VertexEffect, VisualConfig, WireframeMesh};
     pub use crate::ParticleTrait;
     pub use crate::{Vec2, Vec3, Vec4};
     pub use rdpe_derive::{MultiParticle, Particle, ParticleType};

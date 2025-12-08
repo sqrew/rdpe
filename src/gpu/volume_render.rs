@@ -330,6 +330,15 @@ impl VolumeRenderState {
 
         queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&params));
     }
+
+    /// Render the volume into an existing render pass.
+    ///
+    /// Call this before drawing particles for volume to appear behind them.
+    pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.draw(0..3, 0..1); // Fullscreen triangle
+    }
 }
 
 /// Ray marching volume shader.

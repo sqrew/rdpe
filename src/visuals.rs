@@ -638,6 +638,76 @@ impl VisualConfig {
         self.wireframe_thickness = line_thickness;
         self
     }
+
+    /// Compare this config with another to determine what kind of rebuild is needed.
+    ///
+    /// Returns a `ConfigDiff` describing which changes can be hot-swapped and
+    /// which require pipeline rebuilds.
+    pub fn diff(&self, other: &VisualConfig) -> ConfigDiff {
+        let mut hot_swappable = Vec::new();
+
+        // Check hot-swappable changes
+        if self.background_color != other.background_color {
+            hot_swappable.push(HotSwapChange::BackgroundColor(other.background_color));
+        }
+        if self.spatial_grid_opacity != other.spatial_grid_opacity {
+            hot_swappable.push(HotSwapChange::GridOpacity(other.spatial_grid_opacity));
+        }
+
+        // Check if render pipeline rebuild is needed
+        let needs_render_rebuild = self.blend_mode != other.blend_mode
+            || self.shape != other.shape
+            || self.palette != other.palette
+            || self.color_mapping != other.color_mapping
+            || self.trail_length != other.trail_length
+            || self.connections_enabled != other.connections_enabled
+            || self.connections_radius != other.connections_radius
+            || self.velocity_stretch != other.velocity_stretch
+            || self.velocity_stretch_factor != other.velocity_stretch_factor
+            || self.wireframe_mesh != other.wireframe_mesh
+            || self.wireframe_thickness != other.wireframe_thickness
+            || self.post_process_shader != other.post_process_shader;
+
+        ConfigDiff {
+            needs_render_rebuild,
+            hot_swappable,
+        }
+    }
+}
+
+/// Result of comparing two `VisualConfig`s.
+///
+/// Describes what kind of updates are needed when changing visual settings.
+#[derive(Debug, Clone)]
+pub struct ConfigDiff {
+    /// Whether the render pipeline needs to be rebuilt.
+    ///
+    /// This is required for changes to blend mode, shape, palette, trails, etc.
+    pub needs_render_rebuild: bool,
+
+    /// Changes that can be applied without rebuilding pipelines.
+    pub hot_swappable: Vec<HotSwapChange>,
+}
+
+impl ConfigDiff {
+    /// Returns true if no changes are needed.
+    pub fn is_empty(&self) -> bool {
+        !self.needs_render_rebuild && self.hot_swappable.is_empty()
+    }
+
+    /// Returns true if any changes require a rebuild.
+    pub fn needs_rebuild(&self) -> bool {
+        self.needs_render_rebuild
+    }
+}
+
+/// A visual change that can be applied at runtime without rebuilding pipelines.
+#[derive(Debug, Clone)]
+pub enum HotSwapChange {
+    /// Change the background clear color.
+    BackgroundColor(Vec3),
+    /// Change the spatial grid debug opacity.
+    GridOpacity(f32),
 }
 
 /// A wireframe mesh for 3D particle rendering.
@@ -669,7 +739,7 @@ impl VisualConfig {
 ///     (Vec3::X, Vec3::new(1.0, 1.0, 0.0)), // Diagonal
 /// ])
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WireframeMesh {
     /// Line segments as pairs of endpoints (start, end).
     pub lines: Vec<(Vec3, Vec3)>,

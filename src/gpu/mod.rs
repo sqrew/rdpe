@@ -146,6 +146,14 @@ pub struct GpuState {
     readback_staging: Option<wgpu::Buffer>,
     // GPU picking for particle selection
     picking: PickingState,
+    // Pipeline rebuild support - store layouts and config
+    render_pipeline_layout: wgpu::PipelineLayout,
+    compute_pipeline_layout: wgpu::PipelineLayout,
+    uniform_bind_group_layout: wgpu::BindGroupLayout,
+    blend_mode: BlendMode,
+    color_offset: Option<u32>,
+    alive_offset: u32,
+    scale_offset: u32,
 }
 
 impl GpuState {
@@ -977,6 +985,14 @@ impl GpuState {
             particle_stride,
             readback_staging: None,
             picking,
+            // Pipeline rebuild support
+            render_pipeline_layout,
+            compute_pipeline_layout,
+            uniform_bind_group_layout,
+            blend_mode,
+            color_offset,
+            alive_offset,
+            scale_offset,
         }
     }
 
@@ -1010,6 +1026,142 @@ impl GpuState {
         if let Some(ref mut grid) = self.spatial_grid_viz {
             grid.set_opacity(&self.queue, opacity);
         }
+    }
+
+    /// Set the background clear color.
+    ///
+    /// This can be changed at runtime without rebuilding pipelines.
+    pub fn set_background_color(&mut self, color: Vec3) {
+        self.background_color = color;
+    }
+
+    /// Rebuild the render pipeline with new shader and blend mode.
+    ///
+    /// This preserves particle data but recompiles the render shaders.
+    /// Use this when visual settings that affect the shader change
+    /// (shape, palette, color mapping, blend mode).
+    pub fn rebuild_render_pipeline(&mut self, render_shader_src: &str, blend_mode: BlendMode) {
+        // Create new shader module
+        let render_shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Render Shader (rebuilt)"),
+            source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
+        });
+
+        // Build vertex attributes
+        let vertex_attributes: Vec<wgpu::VertexAttribute> = if let Some(offset) = self.color_offset {
+            vec![
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3, // position
+                },
+                wgpu::VertexAttribute {
+                    offset: offset as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x3, // color
+                },
+                wgpu::VertexAttribute {
+                    offset: self.alive_offset as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Uint32, // alive
+                },
+                wgpu::VertexAttribute {
+                    offset: self.scale_offset as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32, // scale
+                },
+            ]
+        } else {
+            vec![
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3, // position
+                },
+                wgpu::VertexAttribute {
+                    offset: self.alive_offset as wgpu::BufferAddress,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Uint32, // alive
+                },
+                wgpu::VertexAttribute {
+                    offset: self.scale_offset as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32, // scale
+                },
+            ]
+        };
+
+        // Create new render pipeline
+        let new_pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline (rebuilt)"),
+            layout: Some(&self.render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &render_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: self.particle_stride as wgpu::BufferAddress,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &vertex_attributes,
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &render_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: self.config.format,
+                    blend: Some(blend_mode_to_state(blend_mode)),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: !matches!(blend_mode, BlendMode::Additive),
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        self.render_pipeline = new_pipeline;
+        self.blend_mode = blend_mode;
+    }
+
+    /// Rebuild the compute pipeline with new shader.
+    ///
+    /// This preserves particle data but recompiles the compute shaders.
+    /// Use this when rules change that affect the compute shader.
+    pub fn rebuild_compute_pipeline(&mut self, compute_shader_src: &str) {
+        // Create new shader module
+        let compute_shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Compute Shader (rebuilt)"),
+            source: wgpu::ShaderSource::Wgsl(compute_shader_src.into()),
+        });
+
+        // Create new compute pipeline
+        let new_pipeline = self.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Compute Pipeline (rebuilt)"),
+            layout: Some(&self.compute_pipeline_layout),
+            module: &compute_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        self.compute_pipeline = new_pipeline;
     }
 
     /// Request particle picking at the given screen coordinates.
@@ -1086,6 +1238,26 @@ impl GpuState {
         staging.unmap();
 
         result
+    }
+
+    /// Write particle data from CPU to GPU.
+    ///
+    /// This is used to restore particle state after a pipeline rebuild.
+    /// The data should be the same format returned by `read_particles_sync()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the data size doesn't match the particle buffer size.
+    pub fn write_particles(&mut self, data: &[u8]) {
+        let expected_size = (self.num_particles as usize) * self.particle_stride;
+        assert_eq!(
+            data.len(),
+            expected_size,
+            "Particle data size mismatch: expected {} bytes, got {}",
+            expected_size,
+            data.len()
+        );
+        self.queue.write_buffer(&self.particle_buffer, 0, data);
     }
 
     /// Get the number of particles.
