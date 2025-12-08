@@ -1,19 +1,19 @@
 {
-  "name": "Untitled",
-  "particle_count": 1100,
-  "bounds": 2.5,
-  "particle_size": 0.023,
+  "name": "Explosion",
+  "particle_count": 20000,
+  "bounds": 2.0,
+  "particle_size": 0.005,
   "spatial_cell_size": 0.1,
   "spatial_resolution": 32,
   "spawn": {
     "shape": {
-      "Cube": {
-        "size": 0.5
+      "Sphere": {
+        "radius": 0.1
       }
     },
     "velocity": {
-      "Inward": {
-        "speed": 1.0
+      "Outward": {
+        "speed": 1.5
       }
     },
     "mass_range": [
@@ -26,17 +26,17 @@
     ],
     "color_mode": {
       "RandomHue": {
-        "saturation": 0.8,
-        "value": 0.9
+        "saturation": 1.0,
+        "value": 1.0
       }
     }
   },
   "rules": [
     {
-      "Separate": {
-        "radius": 0.16,
-        "strength": 11.5
-      }
+      "Gravity": 3.0
+    },
+    {
+      "Drag": 0.3
     },
     "BounceWalls"
   ]

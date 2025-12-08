@@ -161,6 +161,10 @@ fn main() {
             v.connections(0.05);
             v.shape(ParticleShape::Star);
         })
+        .with_vertex_effect(VertexEffect::Pulse {
+            frequency: 3.0,
+            amplitude: 0.3,
+        })
         .with_rule_inspector()
         .with_particle_inspector()
         .run();

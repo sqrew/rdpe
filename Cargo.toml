@@ -6,7 +6,7 @@ edition = "2021"
 license = "MIT"
 
 [workspace]
-members = [".", "rdpe-derive"]
+members = [".", "rdpe-derive", "rdpe-editor"]
 
 [features]
 default = []
