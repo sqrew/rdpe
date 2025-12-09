@@ -4794,17 +4794,17 @@ impl Rule {
             Rule::Seek { target, max_speed, max_force } => format!(
                 r#"    // Seek: steering toward target
     {{
-        let seek_target = vec3<f32>({tx}, {ty}, {tz});
+        let seek_target = vec3<f32>({tx:.6}, {ty:.6}, {tz:.6});
         let desired = seek_target - p.position;
         let dist = length(desired);
         if dist > 0.001 {{
             // Desired velocity at max speed toward target
-            let desired_vel = normalize(desired) * {max_speed};
+            let desired_vel = normalize(desired) * {max_speed:.6};
             // Steering = desired - current velocity
             var steering = desired_vel - p.velocity;
             let steer_mag = length(steering);
-            if steer_mag > {max_force} {{
-                steering = normalize(steering) * {max_force};
+            if steer_mag > {max_force:.6} {{
+                steering = normalize(steering) * {max_force:.6};
             }}
             p.velocity += steering * uniforms.delta_time;
         }}
@@ -4816,18 +4816,18 @@ impl Rule {
             Rule::Flee { target, max_speed, max_force, panic_radius } => format!(
                 r#"    // Flee: steering away from target
     {{
-        let flee_target = vec3<f32>({tx}, {ty}, {tz});
+        let flee_target = vec3<f32>({tx:.6}, {ty:.6}, {tz:.6});
         let away = p.position - flee_target;
         let dist = length(away);
-        let should_flee = {panic_radius} <= 0.0 || dist < {panic_radius};
+        let should_flee = {panic_radius:.6} <= 0.0 || dist < {panic_radius:.6};
         if should_flee && dist > 0.001 {{
             // Desired velocity at max speed away from target
-            let desired_vel = normalize(away) * {max_speed};
+            let desired_vel = normalize(away) * {max_speed:.6};
             // Steering = desired - current velocity
             var steering = desired_vel - p.velocity;
             let steer_mag = length(steering);
-            if steer_mag > {max_force} {{
-                steering = normalize(steering) * {max_force};
+            if steer_mag > {max_force:.6} {{
+                steering = normalize(steering) * {max_force:.6};
             }}
             p.velocity += steering * uniforms.delta_time;
         }}
@@ -4839,20 +4839,20 @@ impl Rule {
             Rule::Arrive { target, max_speed, max_force, slowing_radius } => format!(
                 r#"    // Arrive: seek with deceleration
     {{
-        let arrive_target = vec3<f32>({tx}, {ty}, {tz});
+        let arrive_target = vec3<f32>({tx:.6}, {ty:.6}, {tz:.6});
         let desired = arrive_target - p.position;
         let dist = length(desired);
         if dist > 0.001 {{
             // Scale desired speed based on distance
-            var target_speed = {max_speed};
-            if dist < {slowing_radius} {{
-                target_speed = {max_speed} * (dist / {slowing_radius});
+            var target_speed = {max_speed:.6};
+            if dist < {slowing_radius:.6} {{
+                target_speed = {max_speed:.6} * (dist / {slowing_radius:.6});
             }}
             let desired_vel = normalize(desired) * target_speed;
             var steering = desired_vel - p.velocity;
             let steer_mag = length(steering);
-            if steer_mag > {max_force} {{
-                steering = normalize(steering) * {max_force};
+            if steer_mag > {max_force:.6} {{
+                steering = normalize(steering) * {max_force:.6};
             }}
             p.velocity += steering * uniforms.delta_time;
         }}
