@@ -9,8 +9,8 @@ use rdpe_editor::config::*;
 use rdpe_editor::embedded::{EmbeddedSimulation, SimulationResources, ParsedParticle};
 use rdpe_editor::ui::{
     render_custom_panel, render_effects_panel, render_export_button, render_export_window,
-    render_fields_panel, render_rules_panel, render_spawn_panel, render_visuals_panel,
-    render_volume_panel, AddUniformState, ExportPanelState, PRESETS,
+    render_fields_panel, render_particle_fields_panel, render_rules_panel, render_spawn_panel,
+    render_visuals_panel, render_volume_panel, AddUniformState, ExportPanelState, PRESETS,
 };
 
 /// Sidebar tabs for organizing the editor panels
@@ -19,6 +19,7 @@ enum SidebarTab {
     #[default]
     Spawn,
     Rules,
+    Particle,
     Fields,
     Visuals,
     Custom,
@@ -66,6 +67,8 @@ struct EditorApp {
     selected_tab: SidebarTab,
     /// Debounce timer for auto-rebuild (seconds remaining)
     rebuild_timer: Option<f32>,
+    /// Editable copy of selected particle (for live editing)
+    editing_particle: Option<(u32, ParsedParticle)>,
 }
 
 impl EditorApp {
@@ -96,6 +99,7 @@ impl EditorApp {
             export_panel_state: ExportPanelState::default(),
             selected_tab: SidebarTab::default(),
             rebuild_timer: None,
+            editing_particle: None,
         }
     }
 }
@@ -218,6 +222,7 @@ impl eframe::App for EditorApp {
                 || self.config.visuals.wireframe_thickness != self.previous_config.visuals.wireframe_thickness
                 || self.config.custom_shaders != self.previous_config.custom_shaders
                 || self.config.fields != self.previous_config.fields
+                || self.config.particle_fields != self.previous_config.particle_fields
                 || self.config.volume_render != self.previous_config.volume_render
         };
 
@@ -375,76 +380,179 @@ impl eframe::App for EditorApp {
         });
 
         // Particle Inspector panel (shows when a particle is selected)
-        let selected_particle = wgpu_render_state.as_ref().and_then(|state| {
+        // Get currently selected particle info from GPU
+        let selected_info = wgpu_render_state.as_ref().and_then(|state| {
             state.renderer.read().callback_resources.get::<SimulationResources>()
                 .and_then(|sim| {
                     let idx = sim.selected_particle()?;
                     let data = sim.selected_particle_data()?;
-                    let parsed = ParsedParticle::from_bytes(data)?;
+                    let layout = self.config.particle_layout();
+                    let parsed = ParsedParticle::from_bytes_with_layout(data, &layout)?;
                     Some((idx, parsed))
                 })
         });
 
-        if let Some((idx, particle)) = selected_particle {
+        // Sync editing_particle with selection - continuously update from GPU
+        match (&mut self.editing_particle, &selected_info) {
+            (Some((edit_idx, edit_particle)), Some((sel_idx, sel_particle))) if *edit_idx == *sel_idx => {
+                // Same particle selected - update with fresh GPU data
+                *edit_particle = sel_particle.clone();
+            }
+            (Some((edit_idx, _)), Some((sel_idx, sel_particle))) if *edit_idx != *sel_idx => {
+                // Selection changed, update to new particle
+                self.editing_particle = Some((*sel_idx, sel_particle.clone()));
+            }
+            (None, Some((sel_idx, sel_particle))) => {
+                // New selection
+                self.editing_particle = Some((*sel_idx, sel_particle.clone()));
+            }
+            (Some(_), None) => {
+                // Selection cleared
+                self.editing_particle = None;
+            }
+            _ => {}
+        }
+
+        let mut should_clear_selection = false;
+        if let Some((idx, ref mut particle)) = self.editing_particle {
+            let mut particle_changed = false;
+            let mut clear_clicked = false;
+
             egui::TopBottomPanel::bottom("particle_inspector")
                 .resizable(true)
-                .min_height(60.0)
-                .max_height(200.0)
+                .min_height(80.0)
+                .max_height(250.0)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.heading(format!("Particle #{}", idx));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("Clear Selection").clicked() {
-                                if let Some(ref state) = wgpu_render_state {
-                                    if let Some(sim) = state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
-                                        sim.clear_selection();
-                                    }
-                                }
+                                clear_clicked = true;
                             }
                         });
                     });
                     ui.separator();
 
-                    ui.horizontal(|ui| {
-                        // Left column
-                        ui.vertical(|ui| {
-                            ui.label(format!("Position: ({:.3}, {:.3}, {:.3})",
-                                particle.position[0], particle.position[1], particle.position[2]));
-                            ui.label(format!("Velocity: ({:.3}, {:.3}, {:.3})",
-                                particle.velocity[0], particle.velocity[1], particle.velocity[2]));
-                            ui.label(format!("Goal: ({:.3}, {:.3}, {:.3})",
-                                particle.goal[0], particle.goal[1], particle.goal[2]));
-                        });
-
-                        ui.separator();
-
-                        // Middle column
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("Color:");
-                                let color = egui::Color32::from_rgb(
-                                    (particle.color[0] * 255.0) as u8,
-                                    (particle.color[1] * 255.0) as u8,
-                                    (particle.color[2] * 255.0) as u8,
-                                );
-                                ui.colored_label(color, format!("({:.2}, {:.2}, {:.2})",
-                                    particle.color[0], particle.color[1], particle.color[2]));
+                    egui::ScrollArea::horizontal().show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            // Position
+                            ui.vertical(|ui| {
+                                ui.label("Position");
+                                ui.horizontal(|ui| {
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.position[0]).speed(0.01).prefix("x: ")).changed();
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.position[1]).speed(0.01).prefix("y: ")).changed();
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.position[2]).speed(0.01).prefix("z: ")).changed();
+                                });
                             });
-                            ui.label(format!("Type: {}", particle.particle_type));
-                            ui.label(format!("Alive: {} | Scale: {:.2}", particle.alive, particle.scale));
-                        });
 
-                        ui.separator();
+                            ui.separator();
 
-                        // Right column
-                        ui.vertical(|ui| {
-                            ui.label(format!("Mass: {:.3}", particle.mass));
-                            ui.label(format!("Energy: {:.3}", particle.energy));
-                            ui.label(format!("Heat: {:.3}", particle.heat));
-                            ui.label(format!("Custom: {:.3}", particle.custom));
+                            // Velocity
+                            ui.vertical(|ui| {
+                                ui.label("Velocity");
+                                ui.horizontal(|ui| {
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.velocity[0]).speed(0.01).prefix("x: ")).changed();
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.velocity[1]).speed(0.01).prefix("y: ")).changed();
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.velocity[2]).speed(0.01).prefix("z: ")).changed();
+                                });
+                            });
+
+                            ui.separator();
+
+                            // Color
+                            ui.vertical(|ui| {
+                                ui.label("Color");
+                                let mut color = [particle.color[0], particle.color[1], particle.color[2]];
+                                if ui.color_edit_button_rgb(&mut color).changed() {
+                                    particle.color = color;
+                                    particle_changed = true;
+                                }
+                            });
+
+                            ui.separator();
+
+                            // Scale, Age, Type
+                            ui.vertical(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label("Scale:");
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.scale).speed(0.01).range(0.01..=10.0)).changed();
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("Age:");
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.age).speed(0.1)).changed();
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("Type:");
+                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.particle_type).range(0..=255)).changed();
+                                });
+                            });
+
+                            ui.separator();
+
+                            // Custom fields
+                            if !particle.custom_fields.is_empty() {
+                                ui.vertical(|ui| {
+                                    ui.label("Custom");
+                                    for (name, value) in &mut particle.custom_fields {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!("{}:", name));
+                                            match value {
+                                                rdpe_editor::spawn::FieldValue::F32(v) => {
+                                                    particle_changed |= ui.add(egui::DragValue::new(v).speed(0.01)).changed();
+                                                }
+                                                rdpe_editor::spawn::FieldValue::U32(v) => {
+                                                    particle_changed |= ui.add(egui::DragValue::new(v)).changed();
+                                                }
+                                                rdpe_editor::spawn::FieldValue::I32(v) => {
+                                                    particle_changed |= ui.add(egui::DragValue::new(v)).changed();
+                                                }
+                                                rdpe_editor::spawn::FieldValue::Vec2(v) => {
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x: ")).changed();
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y: ")).changed();
+                                                }
+                                                rdpe_editor::spawn::FieldValue::Vec3(v) => {
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x: ")).changed();
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y: ")).changed();
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z: ")).changed();
+                                                }
+                                                rdpe_editor::spawn::FieldValue::Vec4(v) => {
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01)).changed();
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01)).changed();
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01)).changed();
+                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[3]).speed(0.01)).changed();
+                                                }
+                                            }
+                                        });
+                                    }
+                                });
+                            }
                         });
                     });
                 });
+
+            // Write changes back to GPU if particle was modified
+            if particle_changed {
+                if let Some(ref state) = wgpu_render_state {
+                    let layout = self.config.particle_layout();
+                    let bytes = particle.to_bytes(&layout);
+                    if let Some(sim) = state.renderer.read().callback_resources.get::<SimulationResources>() {
+                        sim.write_particle_at(&state.queue, idx, &bytes);
+                    }
+                }
+            }
+
+            // Handle clear selection after the closure
+            if clear_clicked {
+                if let Some(ref state) = wgpu_render_state {
+                    if let Some(sim) = state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
+                        sim.clear_selection();
+                    }
+                }
+                should_clear_selection = true;
+            }
+        }
+        if should_clear_selection {
+            self.editing_particle = None;
         }
 
         // Right panel: Settings with tabs
@@ -463,6 +571,7 @@ impl eframe::App for EditorApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Spawn, "Spawn");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Rules, "Rules");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Particle, "Particle");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Custom, "Custom");
@@ -503,6 +612,9 @@ impl eframe::App for EditorApp {
                         SidebarTab::Rules => {
                             render_rules_panel(ui, &mut self.config.rules);
                         }
+                        SidebarTab::Particle => {
+                            render_particle_fields_panel(ui, &mut self.config);
+                        }
                         SidebarTab::Fields => {
                             render_fields_panel(ui, &mut self.config.fields);
 
@@ -513,7 +625,7 @@ impl eframe::App for EditorApp {
                             render_volume_panel(ui, &mut self.config.volume_render, num_fields);
                         }
                         SidebarTab::Visuals => {
-                            render_visuals_panel(ui, &mut self.config.visuals);
+                            let _visuals_changed = render_visuals_panel(ui, &mut self.config);
 
                             ui.separator();
 

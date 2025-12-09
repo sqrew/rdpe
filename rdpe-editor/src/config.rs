@@ -70,6 +70,177 @@ impl UniformValueConfig {
     }
 }
 
+/// Field types for custom particle fields.
+///
+/// These represent the WGSL types available for particle state.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ParticleFieldType {
+    /// Single 32-bit float
+    F32,
+    /// Two-component float vector
+    Vec2,
+    /// Three-component float vector
+    Vec3,
+    /// Four-component float vector
+    Vec4,
+    /// Unsigned 32-bit integer
+    U32,
+    /// Signed 32-bit integer
+    I32,
+}
+
+impl ParticleFieldType {
+    /// Get the WGSL type name for this field type.
+    pub fn wgsl_type(&self) -> &'static str {
+        match self {
+            ParticleFieldType::F32 => "f32",
+            ParticleFieldType::Vec2 => "vec2<f32>",
+            ParticleFieldType::Vec3 => "vec3<f32>",
+            ParticleFieldType::Vec4 => "vec4<f32>",
+            ParticleFieldType::U32 => "u32",
+            ParticleFieldType::I32 => "i32",
+        }
+    }
+
+    /// Get the size in bytes for this field type.
+    pub fn byte_size(&self) -> usize {
+        match self {
+            ParticleFieldType::F32 => 4,
+            ParticleFieldType::Vec2 => 8,
+            ParticleFieldType::Vec3 => 12,
+            ParticleFieldType::Vec4 => 16,
+            ParticleFieldType::U32 => 4,
+            ParticleFieldType::I32 => 4,
+        }
+    }
+
+    /// Get the alignment requirement in bytes (std430 layout).
+    ///
+    /// In std430:
+    /// - Scalars align to their size (4 bytes)
+    /// - vec2 aligns to 8 bytes
+    /// - vec3 and vec4 align to 16 bytes
+    pub fn alignment(&self) -> usize {
+        match self {
+            ParticleFieldType::F32 => 4,
+            ParticleFieldType::Vec2 => 8,
+            ParticleFieldType::Vec3 => 16,
+            ParticleFieldType::Vec4 => 16,
+            ParticleFieldType::U32 => 4,
+            ParticleFieldType::I32 => 4,
+        }
+    }
+
+    /// Get all available field type variants.
+    pub fn variants() -> &'static [&'static str] {
+        &["f32", "vec2", "vec3", "vec4", "u32", "i32"]
+    }
+
+    /// Parse from variant string.
+    pub fn from_variant(s: &str) -> Option<Self> {
+        match s {
+            "f32" => Some(ParticleFieldType::F32),
+            "vec2" => Some(ParticleFieldType::Vec2),
+            "vec3" => Some(ParticleFieldType::Vec3),
+            "vec4" => Some(ParticleFieldType::Vec4),
+            "u32" => Some(ParticleFieldType::U32),
+            "i32" => Some(ParticleFieldType::I32),
+            _ => None,
+        }
+    }
+
+    /// Get the display name for this type.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            ParticleFieldType::F32 => "f32",
+            ParticleFieldType::Vec2 => "vec2",
+            ParticleFieldType::Vec3 => "vec3",
+            ParticleFieldType::Vec4 => "vec4",
+            ParticleFieldType::U32 => "u32",
+            ParticleFieldType::I32 => "i32",
+        }
+    }
+}
+
+impl Default for ParticleFieldType {
+    fn default() -> Self {
+        ParticleFieldType::F32
+    }
+}
+
+/// Definition of a custom particle field.
+///
+/// Custom fields allow users to add arbitrary state to particles
+/// beyond the base fields (position, velocity, color, age, alive, scale).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ParticleFieldDef {
+    /// Field name (must be a valid WGSL identifier).
+    pub name: String,
+    /// Field type.
+    pub field_type: ParticleFieldType,
+}
+
+impl ParticleFieldDef {
+    /// Create a new field definition.
+    pub fn new(name: impl Into<String>, field_type: ParticleFieldType) -> Self {
+        Self {
+            name: name.into(),
+            field_type,
+        }
+    }
+
+    /// Create an f32 field.
+    pub fn f32(name: impl Into<String>) -> Self {
+        Self::new(name, ParticleFieldType::F32)
+    }
+
+    /// Create a vec2 field.
+    pub fn vec2(name: impl Into<String>) -> Self {
+        Self::new(name, ParticleFieldType::Vec2)
+    }
+
+    /// Create a vec3 field.
+    pub fn vec3(name: impl Into<String>) -> Self {
+        Self::new(name, ParticleFieldType::Vec3)
+    }
+
+    /// Create a vec4 field.
+    pub fn vec4(name: impl Into<String>) -> Self {
+        Self::new(name, ParticleFieldType::Vec4)
+    }
+
+    /// Create a u32 field.
+    pub fn u32(name: impl Into<String>) -> Self {
+        Self::new(name, ParticleFieldType::U32)
+    }
+
+    /// Create an i32 field.
+    pub fn i32(name: impl Into<String>) -> Self {
+        Self::new(name, ParticleFieldType::I32)
+    }
+
+    /// Validate that the field name is a valid WGSL identifier.
+    pub fn is_valid_name(&self) -> bool {
+        if self.name.is_empty() {
+            return false;
+        }
+        let first = self.name.chars().next().unwrap();
+        if !first.is_ascii_alphabetic() && first != '_' {
+            return false;
+        }
+        self.name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
+}
+
+impl Default for ParticleFieldDef {
+    fn default() -> Self {
+        Self {
+            name: "custom".into(),
+            field_type: ParticleFieldType::F32,
+        }
+    }
+}
+
 /// Custom shader code configuration.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct CustomShaderConfig {
@@ -264,6 +435,12 @@ pub struct SpawnConfig {
     pub mass_range: (f32, f32),
     pub energy_range: (f32, f32),
     pub color_mode: ColorMode,
+    /// Spawn weight for each particle type.
+    /// Index = particle_type, value = relative weight.
+    /// Empty or `[1.0]` means all particles are type 0.
+    /// `[0.8, 0.2]` means 80% type 0, 20% type 1.
+    #[serde(default)]
+    pub type_weights: Vec<f32>,
 }
 
 impl Default for SpawnConfig {
@@ -274,6 +451,7 @@ impl Default for SpawnConfig {
             mass_range: (1.0, 1.0),
             energy_range: (1.0, 1.0),
             color_mode: ColorMode::default(),
+            type_weights: vec![1.0], // All type 0 by default
         }
     }
 }
@@ -398,6 +576,11 @@ impl PaletteConfig {
             PaletteConfig::Forest => rdpe::Palette::Forest,
             PaletteConfig::Grayscale => rdpe::Palette::Grayscale,
         }
+    }
+
+    /// Get the 5 color stops for this palette as Vec3 RGB values.
+    pub fn colors(&self) -> [glam::Vec3; 5] {
+        self.to_palette().colors()
     }
 }
 
@@ -1220,6 +1403,129 @@ impl RuleConfig {
             RuleConfig::DLA { .. }
         )
     }
+
+    /// Generate custom neighbor WGSL for rules that need editor-specific handling.
+    ///
+    /// Returns `Some(wgsl)` if this rule needs custom code generation in the editor,
+    /// `None` to use the core library's default implementation.
+    ///
+    /// Note: `particle_type` is now a base field, always present.
+    pub fn to_neighbor_wgsl(&self) -> Option<String> {
+        match self {
+            RuleConfig::Magnetism { radius, strength, same_repel } => {
+                let same_sign = if *same_repel { "1.0" } else { "-1.0" };
+                Some(format!(
+                    r#"            // Magnetism
+            if neighbor_dist < {radius} && neighbor_dist > 0.001 {{
+                let same_type = select(-1.0, 1.0, p.particle_type == other.particle_type);
+                let force_dir = same_type * {same_sign}; // +1 = repel, -1 = attract
+                let falloff = 1.0 - neighbor_dist / {radius};
+                p.velocity += neighbor_dir * force_dir * falloff * {strength} * uniforms.delta_time;
+            }}"#
+                ))
+            }
+
+            RuleConfig::Chase { self_type, target_type, radius, .. } => {
+                Some(format!(
+                    r#"            // Chase: track nearest target
+            if p.particle_type == {self_type}u && other.particle_type == {target_type}u && neighbor_dist < {radius} {{
+                if neighbor_dist < chase_nearest_dist {{
+                    chase_nearest_dist = neighbor_dist;
+                    chase_nearest_pos = neighbor_pos;
+                }}
+            }}"#
+                ))
+            }
+
+            RuleConfig::Evade { self_type, threat_type, radius, .. } => {
+                Some(format!(
+                    r#"            // Evade: track nearest threat
+            if p.particle_type == {self_type}u && other.particle_type == {threat_type}u && neighbor_dist < {radius} {{
+                if neighbor_dist < evade_nearest_dist {{
+                    evade_nearest_dist = neighbor_dist;
+                    evade_nearest_pos = neighbor_pos;
+                }}
+            }}"#
+                ))
+            }
+
+            RuleConfig::Convert { from_type, trigger_type, to_type, radius, probability } => {
+                Some(format!(
+                    r#"            // Convert type {from_type} -> {to_type} (triggered by {trigger_type})
+            if p.particle_type == {from_type}u && other.particle_type == {trigger_type}u && neighbor_dist < {radius} {{
+                let hash_input = index ^ (other_idx * 1103515245u) ^ u32(uniforms.time * 1000.0);
+                let hash = (hash_input ^ (hash_input >> 16u)) * 0x45d9f3bu;
+                let rand = f32(hash & 0xFFFFu) / 65535.0;
+                if rand < {probability} {{
+                    p.particle_type = {to_type}u;
+                }}
+            }}"#
+                ))
+            }
+
+            RuleConfig::DLA { seed_type, mobile_type, stick_radius, diffusion_strength } => {
+                Some(format!(
+                    r#"            // Diffusion-Limited Aggregation
+            if p.particle_type == {mobile_type}u && other.particle_type == {seed_type}u {{
+                if neighbor_dist < {stick_radius} {{
+                    p.particle_type = {seed_type}u;
+                    p.velocity = vec3<f32>(0.0, 0.0, 0.0);
+                }}
+            }}
+            if p.particle_type == {mobile_type}u {{
+                let diff_seed = index * 1103515245u + u32(uniforms.time * 1000.0);
+                let hx = (diff_seed ^ (diff_seed >> 15u)) * 0x45d9f3bu;
+                let hy = ((diff_seed + 1u) ^ ((diff_seed + 1u) >> 15u)) * 0x45d9f3bu;
+                let hz = ((diff_seed + 2u) ^ ((diff_seed + 2u) >> 15u)) * 0x45d9f3bu;
+                let diff_force = vec3<f32>(
+                    f32(hx & 0xFFFFu) / 32768.0 - 1.0,
+                    f32(hy & 0xFFFFu) / 32768.0 - 1.0,
+                    f32(hz & 0xFFFFu) / 32768.0 - 1.0
+                );
+                p.velocity += diff_force * {diffusion_strength} * uniforms.delta_time;
+            }}"#
+                ))
+            }
+
+            _ => None,
+        }
+    }
+
+    /// Generate custom post-neighbor WGSL for rules that need editor-specific handling.
+    ///
+    /// Returns `Some(wgsl)` if this rule needs custom post-neighbor code,
+    /// `None` to use the core library's default implementation.
+    pub fn to_post_neighbor_wgsl(&self) -> Option<String> {
+        match self {
+            RuleConfig::Chase { self_type, strength, .. } => {
+                Some(format!(
+                    r#"    // Apply chase steering
+    if p.particle_type == {self_type}u && chase_nearest_dist < 1000.0 {{
+        let to_target = chase_nearest_pos - p.position;
+        let dist = length(to_target);
+        if dist > 0.001 {{
+            p.velocity += normalize(to_target) * {strength} * uniforms.delta_time;
+        }}
+    }}"#
+                ))
+            }
+
+            RuleConfig::Evade { self_type, strength, .. } => {
+                Some(format!(
+                    r#"    // Apply evade steering
+    if p.particle_type == {self_type}u && evade_nearest_dist < 1000.0 {{
+        let away_from_threat = p.position - evade_nearest_pos;
+        let dist = length(away_from_threat);
+        if dist > 0.001 {{
+            p.velocity += normalize(away_from_threat) * {strength} * uniforms.delta_time;
+        }}
+    }}"#
+                ))
+            }
+
+            _ => None,
+        }
+    }
 }
 
 /// Complete simulation configuration
@@ -1249,6 +1555,19 @@ pub struct SimConfig {
     /// Volume rendering configuration for field visualization.
     #[serde(default)]
     pub volume_render: VolumeRenderConfig,
+    /// Custom particle fields beyond the base fields.
+    ///
+    /// Base fields (always present):
+    /// - position: vec3<f32>
+    /// - velocity: vec3<f32>
+    /// - color: vec3<f32>
+    /// - age: f32
+    /// - alive: u32
+    /// - scale: f32
+    ///
+    /// Custom fields are appended after the base fields.
+    #[serde(default)]
+    pub particle_fields: Vec<ParticleFieldDef>,
 }
 
 impl Default for SimConfig {
@@ -1272,7 +1591,172 @@ impl Default for SimConfig {
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         }
+    }
+}
+
+/// Information about a single field in the particle layout.
+#[derive(Clone, Debug)]
+pub struct ParticleFieldInfo {
+    /// Field name.
+    pub name: String,
+    /// Field type.
+    pub field_type: ParticleFieldType,
+    /// Byte offset from start of struct.
+    pub offset: usize,
+    /// Whether this is a base field (vs custom).
+    pub is_base: bool,
+    /// Whether this field is marked as the color field.
+    pub is_color: bool,
+}
+
+/// Complete particle memory layout with all field offsets and stride.
+///
+/// This is computed from the base fields plus any custom fields defined
+/// in the config. The layout follows std430 alignment rules.
+#[derive(Clone, Debug)]
+pub struct ParticleLayout {
+    /// All fields in memory order.
+    pub fields: Vec<ParticleFieldInfo>,
+    /// Total stride (size) of one particle in bytes.
+    pub stride: usize,
+    /// Offset of the position field.
+    pub position_offset: usize,
+    /// Offset of the velocity field.
+    pub velocity_offset: usize,
+    /// Offset of the color field.
+    pub color_offset: usize,
+    /// Offset of the age field.
+    pub age_offset: usize,
+    /// Offset of the alive field.
+    pub alive_offset: usize,
+    /// Offset of the scale field.
+    pub scale_offset: usize,
+    /// Offset of the particle_type field.
+    pub particle_type_offset: usize,
+}
+
+impl ParticleLayout {
+    /// Add a field to the layout with proper alignment.
+    fn add_field(
+        fields: &mut Vec<ParticleFieldInfo>,
+        offset: &mut usize,
+        name: &str,
+        field_type: ParticleFieldType,
+        is_base: bool,
+        is_color: bool,
+    ) -> usize {
+        let alignment = field_type.alignment();
+        // Align offset
+        *offset = (*offset + alignment - 1) / alignment * alignment;
+
+        let field_offset = *offset;
+
+        fields.push(ParticleFieldInfo {
+            name: name.to_string(),
+            field_type,
+            offset: field_offset,
+            is_base,
+            is_color,
+        });
+
+        *offset += field_type.byte_size();
+        field_offset
+    }
+
+    /// Compute the particle layout from custom field definitions.
+    ///
+    /// Base fields are laid out first in this order:
+    /// - position: vec3<f32>
+    /// - velocity: vec3<f32>
+    /// - color: vec3<f32>
+    /// - age: f32
+    /// - alive: u32
+    /// - scale: f32
+    /// - particle_type: u32
+    ///
+    /// Custom fields are appended after, sorted by alignment (largest first)
+    /// to minimize padding.
+    pub fn compute(custom_fields: &[ParticleFieldDef]) -> Self {
+        let mut fields = Vec::new();
+        let mut offset = 0usize;
+
+        // Base fields (always present, in fixed order for vertex buffer compatibility)
+        let position_offset = Self::add_field(&mut fields, &mut offset, "position", ParticleFieldType::Vec3, true, false);
+        let velocity_offset = Self::add_field(&mut fields, &mut offset, "velocity", ParticleFieldType::Vec3, true, false);
+        let color_offset = Self::add_field(&mut fields, &mut offset, "color", ParticleFieldType::Vec3, true, true);
+        let age_offset = Self::add_field(&mut fields, &mut offset, "age", ParticleFieldType::F32, true, false);
+        let alive_offset = Self::add_field(&mut fields, &mut offset, "alive", ParticleFieldType::U32, true, false);
+        let scale_offset = Self::add_field(&mut fields, &mut offset, "scale", ParticleFieldType::F32, true, false);
+        let particle_type_offset = Self::add_field(&mut fields, &mut offset, "particle_type", ParticleFieldType::U32, true, false);
+
+        // Sort custom fields by alignment (descending) to minimize padding
+        let mut sorted_custom: Vec<_> = custom_fields.iter().collect();
+        sorted_custom.sort_by(|a, b| b.field_type.alignment().cmp(&a.field_type.alignment()));
+
+        // Add custom fields
+        for field in sorted_custom {
+            Self::add_field(&mut fields, &mut offset, &field.name, field.field_type, false, false);
+        }
+
+        // Compute final stride (must be multiple of largest alignment in struct)
+        // For structs with vec3, this is 16 bytes
+        let max_alignment = 16; // vec3 requires 16-byte struct alignment
+        let stride = (offset + max_alignment - 1) / max_alignment * max_alignment;
+
+        Self {
+            fields,
+            stride,
+            position_offset,
+            velocity_offset,
+            color_offset,
+            age_offset,
+            alive_offset,
+            scale_offset,
+            particle_type_offset,
+        }
+    }
+
+    /// Get the offset of a field by name.
+    pub fn field_offset(&self, name: &str) -> Option<usize> {
+        self.fields.iter().find(|f| f.name == name).map(|f| f.offset)
+    }
+
+    /// Get field info by name.
+    pub fn field_info(&self, name: &str) -> Option<&ParticleFieldInfo> {
+        self.fields.iter().find(|f| f.name == name)
+    }
+
+    /// Generate the WGSL struct definition.
+    pub fn to_wgsl_struct(&self) -> String {
+        let mut wgsl = String::from("struct Particle {\n");
+
+        for field in &self.fields {
+            wgsl.push_str(&format!(
+                "    {}: {},\n",
+                field.name,
+                field.field_type.wgsl_type()
+            ));
+        }
+
+        wgsl.push_str("}\n");
+        wgsl
+    }
+
+    /// Generate zero-initialized bytes for one particle.
+    pub fn zero_bytes(&self) -> Vec<u8> {
+        vec![0u8; self.stride]
+    }
+
+    /// Get all custom (non-base) fields.
+    pub fn custom_fields(&self) -> impl Iterator<Item = &ParticleFieldInfo> {
+        self.fields.iter().filter(|f| !f.is_base)
+    }
+
+    /// Get all base fields.
+    pub fn base_fields(&self) -> impl Iterator<Item = &ParticleFieldInfo> {
+        self.fields.iter().filter(|f| f.is_base)
     }
 }
 
@@ -1301,5 +1785,20 @@ impl SimConfig {
             registry.add(&field.name, field.to_field_config());
         }
         registry
+    }
+
+    /// Compute the particle memory layout based on custom fields.
+    pub fn particle_layout(&self) -> ParticleLayout {
+        ParticleLayout::compute(&self.particle_fields)
+    }
+
+    /// Generate the WGSL particle struct definition.
+    pub fn particle_wgsl_struct(&self) -> String {
+        self.particle_layout().to_wgsl_struct()
+    }
+
+    /// Check if a custom field with the given name is defined.
+    pub fn has_custom_field(&self, name: &str) -> bool {
+        self.particle_fields.iter().any(|f| f.name == name)
     }
 }

@@ -3,8 +3,7 @@
 //! This module generates WGSL compute and render shaders from SimConfig,
 //! using the actual rdpe rule system for proper behavior.
 
-use crate::config::{SimConfig, ParticleShapeConfig};
-use crate::particle::MetaParticle;
+use crate::config::{SimConfig, ParticleShapeConfig, PaletteConfig, ColorMappingConfig};
 use rdpe::Rule;
 
 /// Generate field declarations and helper functions from config.
@@ -38,12 +37,12 @@ fn generate_custom_uniform_fields(config: &SimConfig) -> String {
 /// Generate compute shader from simulation config.
 ///
 /// This generates a WGSL compute shader that:
-/// 1. Defines the MetaParticle struct (from derive macro)
-/// 2. Defines uniforms (view_proj, time, delta_time)
+/// 1. Defines the Particle struct dynamically from config
+/// 2. Defines uniforms (view_proj, time, delta_time, custom uniforms)
 /// 3. Applies all rules in order
 /// 4. Integrates velocity and updates position
 pub fn generate_compute_shader(config: &SimConfig) -> String {
-    let particle_struct = MetaParticle::wgsl_struct();
+    let particle_struct = config.particle_wgsl_struct();
 
     // Convert rules to rdpe::Rule and then to WGSL
     let rules: Vec<Rule> = config.rules.iter().map(|r| r.to_rule()).collect();
@@ -52,9 +51,9 @@ pub fn generate_compute_shader(config: &SimConfig) -> String {
     let needs_neighbors = rules.iter().any(|r| r.requires_neighbors());
 
     if needs_neighbors {
-        generate_compute_shader_with_neighbors(config, &rules, particle_struct)
+        generate_compute_shader_with_neighbors(config, &rules, &particle_struct)
     } else {
-        generate_compute_shader_simple(config, &rules, particle_struct)
+        generate_compute_shader_simple(config, &rules, &particle_struct)
     }
 }
 
@@ -159,9 +158,18 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let neighbor_rules_code: String = neighbor_rules
-        .iter()
-        .map(|r| r.to_neighbor_wgsl())
+    // Generate neighbor rules code, using custom WGSL when available
+    let neighbor_rules_code: String = config.rules.iter()
+        .filter(|r| r.requires_neighbors())
+        .map(|rule_config| {
+            // Check if this rule has custom WGSL for the editor
+            if let Some(custom_wgsl) = rule_config.to_neighbor_wgsl() {
+                custom_wgsl
+            } else {
+                // Fall back to core library's WGSL
+                rule_config.to_rule().to_neighbor_wgsl()
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n\n");
 
@@ -169,7 +177,7 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
     let accumulator_vars = generate_accumulator_vars(&neighbor_rules);
 
     // Generate post-neighbor code for rules that need final processing
-    let post_neighbor_code = generate_post_neighbor_code(&neighbor_rules);
+    let post_neighbor_code = generate_post_neighbor_code(config, &neighbor_rules);
 
     // Generate custom uniform fields
     let custom_uniform_fields = generate_custom_uniform_fields(config);
@@ -389,14 +397,100 @@ fn generate_accumulator_vars(rules: &[&Rule]) -> String {
 }
 
 /// Generate post-neighbor processing code for rules that need it.
-/// Uses rdpe's Rule::to_post_neighbor_wgsl() for consistency.
-fn generate_post_neighbor_code(rules: &[&Rule]) -> String {
-    rules
-        .iter()
-        .map(|r| r.to_post_neighbor_wgsl())
+/// Uses custom editor WGSL when available, otherwise falls back to rdpe's Rule::to_post_neighbor_wgsl().
+fn generate_post_neighbor_code(config: &SimConfig, _rules: &[&Rule]) -> String {
+    config.rules.iter()
+        .filter(|r| r.requires_neighbors())
+        .map(|rule_config| {
+            // Check if this rule has custom post-neighbor WGSL for the editor
+            if let Some(custom_wgsl) = rule_config.to_post_neighbor_wgsl() {
+                custom_wgsl
+            } else {
+                // Fall back to core library's WGSL
+                rule_config.to_rule().to_post_neighbor_wgsl()
+            }
+        })
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// Generate palette WGSL code (constants + sample function) if palette is enabled.
+/// Returns (palette_code, color_expression) where color_expression replaces particle_color.
+fn generate_palette_code(
+    palette: &PaletteConfig,
+    mapping: &ColorMappingConfig,
+    particle_count: u32,
+) -> (String, String) {
+    if *palette == PaletteConfig::None {
+        return (String::new(), "particle_color".to_string());
+    }
+
+    let colors = palette.colors();
+    let palette_consts = format!(
+        r#"
+// Palette colors
+const PALETTE_0: vec3<f32> = vec3<f32>({:.6}, {:.6}, {:.6});
+const PALETTE_1: vec3<f32> = vec3<f32>({:.6}, {:.6}, {:.6});
+const PALETTE_2: vec3<f32> = vec3<f32>({:.6}, {:.6}, {:.6});
+const PALETTE_3: vec3<f32> = vec3<f32>({:.6}, {:.6}, {:.6});
+const PALETTE_4: vec3<f32> = vec3<f32>({:.6}, {:.6}, {:.6});
+
+fn sample_palette(t: f32) -> vec3<f32> {{
+    let t_clamped = clamp(t, 0.0, 1.0);
+    let scaled = t_clamped * 4.0;
+    let idx = u32(floor(scaled));
+    let frac = fract(scaled);
+
+    var c0: vec3<f32>;
+    var c1: vec3<f32>;
+
+    switch idx {{
+        case 0u: {{ c0 = PALETTE_0; c1 = PALETTE_1; }}
+        case 1u: {{ c0 = PALETTE_1; c1 = PALETTE_2; }}
+        case 2u: {{ c0 = PALETTE_2; c1 = PALETTE_3; }}
+        case 3u: {{ c0 = PALETTE_3; c1 = PALETTE_4; }}
+        default: {{ c0 = PALETTE_4; c1 = PALETTE_4; }}
+    }}
+
+    return mix(c0, c1, frac);
+}}
+"#,
+        colors[0].x, colors[0].y, colors[0].z,
+        colors[1].x, colors[1].y, colors[1].z,
+        colors[2].x, colors[2].y, colors[2].z,
+        colors[3].x, colors[3].y, colors[3].z,
+        colors[4].x, colors[4].y, colors[4].z,
+    );
+
+    // Generate the mapping expression based on ColorMappingConfig
+    let mapping_expr = match mapping {
+        ColorMappingConfig::None => {
+            // No mapping - use particle index as default
+            format!("f32(instance_index) / f32({}u)", particle_count.max(1))
+        }
+        ColorMappingConfig::Index => {
+            format!("f32(instance_index) / f32({}u)", particle_count.max(1))
+        }
+        ColorMappingConfig::Speed { min, max } => {
+            format!("clamp((length(particle_vel) - {:.6}) / ({:.6} - {:.6}), 0.0, 1.0)", min, max, min)
+        }
+        ColorMappingConfig::Age { max_age } => {
+            format!("clamp(particle_age / {:.6}, 0.0, 1.0)", max_age)
+        }
+        ColorMappingConfig::PositionY { min, max } => {
+            format!("clamp((particle_pos.y - {:.6}) / ({:.6} - {:.6}), 0.0, 1.0)", min, max, min)
+        }
+        ColorMappingConfig::Distance { max_dist } => {
+            format!("clamp(length(particle_pos) / {:.6}, 0.0, 1.0)", max_dist)
+        }
+        ColorMappingConfig::Random => {
+            "fract(sin(f32(instance_index) * 12.9898) * 43758.5453)".to_string()
+        }
+    };
+
+    let color_expr = format!("sample_palette({})", mapping_expr);
+    (palette_consts, color_expr)
 }
 
 /// Generate render shader from visual config.
@@ -426,6 +520,13 @@ pub fn generate_render_shader(config: &SimConfig) -> String {
 
     // Generate custom uniform fields
     let custom_uniform_fields = generate_custom_uniform_fields(config);
+
+    // Generate palette code
+    let (palette_code, color_expr) = generate_palette_code(
+        &visuals.palette,
+        &visuals.color_mapping,
+        config.particle_count,
+    );
 
     // Custom shader code
     let custom_vertex_code = if config.custom_shaders.vertex_code.is_empty() {
@@ -461,15 +562,17 @@ struct VertexOutput {{
 }}
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
+{palette_code}
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
     @location(0) particle_pos: vec3<f32>,
-    @location(1) particle_color: vec3<f32>,
-    @location(2) alive: u32,
-    @location(3) scale: f32,
+    @location(1) particle_vel: vec3<f32>,
+    @location(2) particle_color: vec3<f32>,
+    @location(3) particle_age: f32,
+    @location(4) alive: u32,
+    @location(5) scale: f32,
 ) -> VertexOutput {{
     var out: VertexOutput;
 
@@ -509,7 +612,7 @@ fn vs_main(
     var pos_offset = vec3<f32>(0.0, 0.0, 0.0);
     var rotated_quad = quad_pos;
     var size_mult = 1.0;
-    var color_mod = particle_color;
+    var color_mod = {color_expr};
 
     // ============================================
     // Apply vertex effects
@@ -553,6 +656,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 "#,
         particle_size = config.particle_size,
         custom_uniform_fields = custom_uniform_fields,
+        palette_code = palette_code,
+        color_expr = color_expr,
         vertex_effects_code = indent_code(&vertex_effects_code, "    "),
         custom_vertex_code = custom_vertex_code,
         shape_code = indent_code(shape_code, "    "),

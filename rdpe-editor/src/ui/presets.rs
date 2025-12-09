@@ -2,9 +2,9 @@
 
 use crate::config::{
     BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff, FieldConfigEntry,
-    FieldTypeConfig, InitialVelocity, PaletteConfig, ParticleShapeConfig, RuleConfig, SimConfig,
-    SpawnConfig, SpawnShape, UniformValueConfig, VertexEffectConfig, VisualsConfig,
-    VolumeRenderConfig,
+    FieldTypeConfig, InitialVelocity, PaletteConfig, ParticleFieldDef, ParticleFieldType,
+    ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape, UniformValueConfig,
+    VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
 };
 use std::collections::HashMap;
 
@@ -52,6 +52,7 @@ pub static PRESETS: &[Preset] = &[
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -84,6 +85,7 @@ pub static PRESETS: &[Preset] = &[
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -125,6 +127,7 @@ pub static PRESETS: &[Preset] = &[
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -172,6 +175,7 @@ pub static PRESETS: &[Preset] = &[
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -204,6 +208,7 @@ pub static PRESETS: &[Preset] = &[
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -246,6 +251,7 @@ pub static PRESETS: &[Preset] = &[
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -283,6 +289,7 @@ pub static PRESETS: &[Preset] = &[
             },
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         }
         },
     },
@@ -348,6 +355,7 @@ pub static PRESETS: &[Preset] = &[
                 threshold: 0.01,
                 additive: true,
             },
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -420,6 +428,7 @@ field_write(0u, p.position, 0.5);
                 threshold: 0.02,
                 additive: true,
             },
+            particle_fields: Vec::new(),
         },
     },
     // === New presets from examples ===
@@ -481,6 +490,7 @@ field_write(0u, p.position, 0.5);
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -549,6 +559,7 @@ if t > 0.6 {
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -561,6 +572,12 @@ if t > 0.6 {
             particle_size: 0.015,
             spatial_cell_size: 0.08,
             spatial_resolution: 32,
+            particle_fields: vec![
+                ParticleFieldDef {
+                    name: "custom".into(),
+                    field_type: ParticleFieldType::F32,
+                },
+            ],
             spawn: SpawnConfig {
                 shape: SpawnShape::Sphere { radius: 0.8 },
                 velocity: InitialVelocity::Zero,
@@ -671,6 +688,12 @@ if p.particle_type == 0u && other.particle_type == 1u {
             particle_size: 0.004,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
+            particle_fields: vec![
+                ParticleFieldDef {
+                    name: "custom".into(),
+                    field_type: ParticleFieldType::F32,
+                },
+            ],
             spawn: SpawnConfig {
                 shape: SpawnShape::Shell {
                     inner: 0.0,
@@ -844,6 +867,7 @@ p.color *= smoothstep(0.0, 0.3, height) * (1.0 - smoothstep(0.7, 1.0, height));
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -856,6 +880,12 @@ p.color *= smoothstep(0.0, 0.3, height) * (1.0 - smoothstep(0.7, 1.0, height));
             particle_size: 0.018,
             spatial_cell_size: 0.15,
             spatial_resolution: 32,
+            particle_fields: vec![
+                ParticleFieldDef {
+                    name: "energy".into(),
+                    field_type: ParticleFieldType::F32,
+                },
+            ],
             spawn: SpawnConfig {
                 shape: SpawnShape::Cube { size: 1.5 },
                 velocity: InitialVelocity::RandomDirection { speed: 0.05 },
@@ -988,6 +1018,7 @@ if index == 0u {
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -1052,6 +1083,7 @@ p.color = mix(vec3<f32>(0.2, 0.4, 0.8), vec3<f32>(0.8, 0.9, 1.0), height);
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -1107,6 +1139,7 @@ p.scale = 0.5 + glow * 0.5;
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
     Preset {
@@ -1171,6 +1204,7 @@ if p.position.y > 1.4 {
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
         },
     },
 ];

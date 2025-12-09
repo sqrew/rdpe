@@ -102,20 +102,20 @@ pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
     ]),
     ("Growth & Decay", &[
         ("Grow", || RuleConfig::Grow { rate: 0.5, min: 0.1, max: 2.0 }),
-        ("Decay", || RuleConfig::Decay { field: "energy".into(), rate: 0.5 }),
+        ("Decay", || RuleConfig::Decay { field: "scale".into(), rate: 0.5 }),
         ("Die", || RuleConfig::Die { condition: "p.age > 5.0".into() }),
         ("DLA", || RuleConfig::DLA { seed_type: 0, mobile_type: 1, stick_radius: 0.1, diffusion_strength: 0.5 }),
     ]),
     ("Fields", &[
-        ("Copy Field", || RuleConfig::CopyField { from: "velocity".into(), to: "prev_velocity".into() }),
+        ("Copy Field", || RuleConfig::CopyField { from: "age".into(), to: "scale".into() }),
         ("Current", || RuleConfig::Current { field: "flow".into(), strength: 1.0 }),
     ]),
     ("Math", &[
-        ("Lerp", || RuleConfig::Lerp { field: "energy".into(), target: 0.0, rate: 1.0 }),
-        ("Clamp", || RuleConfig::Clamp { field: "energy".into(), min: 0.0, max: 1.0 }),
+        ("Lerp", || RuleConfig::Lerp { field: "scale".into(), target: 1.0, rate: 1.0 }),
+        ("Clamp", || RuleConfig::Clamp { field: "scale".into(), min: 0.1, max: 2.0 }),
         ("Remap", || RuleConfig::Remap { field: "age".into(), in_min: 0.0, in_max: 5.0, out_min: 1.0, out_max: 0.0 }),
-        ("Quantize", || RuleConfig::Quantize { field: "energy".into(), step: 0.25 }),
-        ("Noise", || RuleConfig::Noise { field: "energy".into(), amplitude: 0.1, frequency: 2.0 }),
+        ("Quantize", || RuleConfig::Quantize { field: "scale".into(), step: 0.25 }),
+        ("Noise", || RuleConfig::Noise { field: "scale".into(), amplitude: 0.1, frequency: 2.0 }),
     ]),
 ];
 

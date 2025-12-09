@@ -13,8 +13,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
-use crate::config::{SimConfig, UniformValueConfig};
-use crate::particle::MetaParticle;
+use crate::config::{SimConfig, UniformValueConfig, ParticleLayout};
 use crate::shader_gen;
 use crate::shader_validate;
 use crate::spawn;
@@ -131,7 +130,7 @@ impl PickingState {
         device: &wgpu::Device,
         width: u32,
         height: u32,
-        particle_stride: usize,
+        layout: &ParticleLayout,
         uniform_buffer: &wgpu::Buffer,
     ) -> Self {
         let (texture, texture_view) = Self::create_texture(device, width, height);
@@ -161,7 +160,8 @@ impl PickingState {
             }],
         });
 
-        let pipeline = Self::create_pipeline(device, &bind_group_layout, particle_stride);
+        let particle_stride = layout.stride;
+        let pipeline = Self::create_pipeline(device, &bind_group_layout, layout);
 
         // Staging buffers for readback
         let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -228,7 +228,7 @@ impl PickingState {
     fn create_pipeline(
         device: &wgpu::Device,
         bind_group_layout: &wgpu::BindGroupLayout,
-        particle_stride: usize,
+        layout: &ParticleLayout,
     ) -> wgpu::RenderPipeline {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Picking Shader"),
@@ -241,9 +241,10 @@ impl PickingState {
             push_constant_ranges: &[],
         });
 
-        let color_offset = MetaParticle::color_offset().unwrap_or(32);
-        let alive_offset = MetaParticle::alive_offset();
-        let scale_offset = MetaParticle::scale_offset();
+        let particle_stride = layout.stride;
+        let color_offset = layout.color_offset;
+        let alive_offset = layout.alive_offset;
+        let scale_offset = layout.scale_offset;
 
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Picking Pipeline"),
@@ -516,8 +517,8 @@ pub struct SimulationResources {
     render_bind_group: wgpu::BindGroup,
 
     // Configuration
-    num_particles: u32,
-    particle_stride: usize,
+    pub num_particles: u32,
+    pub particle_stride: usize,
     background_color: Vec3,
 
     // Custom uniforms (sorted by name for deterministic order)
@@ -561,7 +562,7 @@ impl SimulationResources {
         target_format: wgpu::TextureFormat,
         particle_data: &[u8],
         num_particles: u32,
-        particle_stride: usize,
+        layout: &ParticleLayout,
         compute_shader_src: &str,
         render_shader_src: &str,
         background_color: Vec3,
@@ -573,6 +574,7 @@ impl SimulationResources {
         spatial_resolution: u32,
         particle_wgsl_struct: &str,
     ) -> Self {
+        let particle_stride = layout.stride;
         // Create particle buffer
         let particle_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Particle Buffer"),
@@ -840,10 +842,12 @@ impl SimulationResources {
             push_constant_ranges: &[],
         });
 
-        // Get particle offsets from MetaParticle
-        let color_offset = MetaParticle::color_offset().unwrap_or(32); // Default if not set
-        let alive_offset = MetaParticle::alive_offset();
-        let scale_offset = MetaParticle::scale_offset();
+        // Get particle offsets from layout
+        let velocity_offset = layout.velocity_offset;
+        let color_offset = layout.color_offset;
+        let age_offset = layout.age_offset;
+        let alive_offset = layout.alive_offset;
+        let scale_offset = layout.scale_offset;
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
@@ -861,22 +865,34 @@ impl SimulationResources {
                             shader_location: 0,
                             format: wgpu::VertexFormat::Float32x3,
                         },
+                        // Velocity
+                        wgpu::VertexAttribute {
+                            offset: velocity_offset as wgpu::BufferAddress,
+                            shader_location: 1,
+                            format: wgpu::VertexFormat::Float32x3,
+                        },
                         // Color
                         wgpu::VertexAttribute {
                             offset: color_offset as wgpu::BufferAddress,
-                            shader_location: 1,
+                            shader_location: 2,
                             format: wgpu::VertexFormat::Float32x3,
+                        },
+                        // Age
+                        wgpu::VertexAttribute {
+                            offset: age_offset as wgpu::BufferAddress,
+                            shader_location: 3,
+                            format: wgpu::VertexFormat::Float32,
                         },
                         // Alive flag
                         wgpu::VertexAttribute {
                             offset: alive_offset as wgpu::BufferAddress,
-                            shader_location: 2,
+                            shader_location: 4,
                             format: wgpu::VertexFormat::Uint32,
                         },
                         // Scale
                         wgpu::VertexAttribute {
                             offset: scale_offset as wgpu::BufferAddress,
-                            shader_location: 3,
+                            shader_location: 5,
                             format: wgpu::VertexFormat::Float32,
                         },
                     ],
@@ -908,7 +924,7 @@ impl SimulationResources {
             device,
             800,  // Default width, will resize
             600,  // Default height, will resize
-            particle_stride,
+            layout,
             &uniform_buffer,
         );
 
@@ -1174,6 +1190,18 @@ impl SimulationResources {
         queue.write_buffer(&self.particle_buffer, 0, data);
     }
 
+    /// Write a single particle's data at the given index.
+    pub fn write_particle_at(&self, queue: &wgpu::Queue, index: u32, data: &[u8]) {
+        if data.len() != self.particle_stride {
+            return; // Data size mismatch
+        }
+        if index >= self.num_particles {
+            return; // Out of bounds
+        }
+        let offset = index as u64 * self.particle_stride as u64;
+        queue.write_buffer(&self.particle_buffer, offset, data);
+    }
+
     /// Sync custom uniform values from config (hot-swap without rebuild).
     ///
     /// This updates the values of existing uniforms. Adding/removing uniforms
@@ -1307,9 +1335,11 @@ impl EmbeddedSimulation {
             return;
         }
 
+        // Get particle layout from config
+        let layout = config.particle_layout();
+
         // Generate particle data using proper spawn config
         let particle_data = spawn::generate_particles(config);
-        let particle_stride = MetaParticle::gpu_stride();
 
         // Generate shaders using the actual rule system
         let compute_shader = shader_gen::generate_compute_shader(config);
@@ -1329,14 +1359,14 @@ impl EmbeddedSimulation {
         self.shader_error = None;
 
         let field_registry = config.to_field_registry();
-        let particle_wgsl_struct = MetaParticle::wgsl_struct();
+        let particle_wgsl_struct = config.particle_wgsl_struct();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
             wgpu_render_state.target_format,
             &particle_data,
             config.particle_count,
-            particle_stride,
+            &layout,
             &compute_shader,
             &render_shader,
             Vec3::from_array(config.visuals.background_color),
@@ -1346,7 +1376,7 @@ impl EmbeddedSimulation {
             config.needs_spatial(),
             config.spatial_cell_size,
             config.spatial_resolution,
-            particle_wgsl_struct,
+            &particle_wgsl_struct,
         );
 
         wgpu_render_state
@@ -1389,20 +1419,26 @@ impl EmbeddedSimulation {
         // Clear any previous error
         self.shader_error = None;
 
-        // Read existing particles if we're already initialized and count matches
-        let existing_particles = if self.initialized {
+        // Get particle layout from config
+        let layout = config.particle_layout();
+
+        // Read existing particles and camera state if we're already initialized
+        // If stride changed (due to adding/removing custom fields), we can't preserve existing particle data
+        let (existing_particles, old_camera) = if self.initialized {
             let resources = wgpu_render_state.renderer.read();
             if let Some(sim) = resources.callback_resources.get::<SimulationResources>() {
-                if sim.num_particles == config.particle_count {
+                let particles = if sim.num_particles == config.particle_count && sim.particle_stride == layout.stride {
                     Some(sim.read_particles(&wgpu_render_state.device, &wgpu_render_state.queue))
                 } else {
-                    None // Particle count changed, can't preserve
-                }
+                    None // Particle count or stride changed, can't preserve
+                };
+                let camera = Some((sim.camera_distance, sim.camera_yaw, sim.camera_pitch));
+                (particles, camera)
             } else {
-                None
+                (None, None)
             }
         } else {
-            None
+            (None, None)
         };
 
         // Generate particle data (use existing or new)
@@ -1412,18 +1448,16 @@ impl EmbeddedSimulation {
             spawn::generate_particles(config)
         };
 
-        let particle_stride = MetaParticle::gpu_stride();
-
         // Create new resources
         let field_registry = config.to_field_registry();
-        let particle_wgsl_struct = MetaParticle::wgsl_struct();
+        let particle_wgsl_struct = config.particle_wgsl_struct();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
             wgpu_render_state.target_format,
             &particle_data,
             config.particle_count,
-            particle_stride,
+            &layout,
             &compute_shader,
             &render_shader,
             Vec3::from_array(config.visuals.background_color),
@@ -1433,7 +1467,7 @@ impl EmbeddedSimulation {
             config.needs_spatial(),
             config.spatial_cell_size,
             config.spatial_resolution,
-            particle_wgsl_struct,
+            &particle_wgsl_struct,
         );
 
         // Replace resources
@@ -1442,6 +1476,15 @@ impl EmbeddedSimulation {
             .write()
             .callback_resources
             .insert(resources);
+
+        // Restore camera state if we had one
+        if let Some((distance, yaw, pitch)) = old_camera {
+            if let Some(sim) = wgpu_render_state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
+                sim.camera_distance = distance;
+                sim.camera_yaw = yaw;
+                sim.camera_pitch = pitch;
+            }
+        }
 
         self.initialized = true;
     }
@@ -1471,20 +1514,29 @@ impl EmbeddedSimulation {
         // Clear any previous error
         self.shader_error = None;
 
+        // Get particle layout from config
+        let layout = config.particle_layout();
+
+        // Save camera state before replacing resources
+        let old_camera = {
+            let resources = wgpu_render_state.renderer.read();
+            resources.callback_resources.get::<SimulationResources>()
+                .map(|sim| (sim.camera_distance, sim.camera_yaw, sim.camera_pitch))
+        };
+
         // Always generate fresh particles
         let particle_data = spawn::generate_particles(config);
-        let particle_stride = MetaParticle::gpu_stride();
 
         // Create new resources
         let field_registry = config.to_field_registry();
-        let particle_wgsl_struct = MetaParticle::wgsl_struct();
+        let particle_wgsl_struct = config.particle_wgsl_struct();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
             wgpu_render_state.target_format,
             &particle_data,
             config.particle_count,
-            particle_stride,
+            &layout,
             &compute_shader,
             &render_shader,
             Vec3::from_array(config.visuals.background_color),
@@ -1494,7 +1546,7 @@ impl EmbeddedSimulation {
             config.needs_spatial(),
             config.spatial_cell_size,
             config.spatial_resolution,
-            particle_wgsl_struct,
+            &particle_wgsl_struct,
         );
 
         // Replace resources
@@ -1503,6 +1555,15 @@ impl EmbeddedSimulation {
             .write()
             .callback_resources
             .insert(resources);
+
+        // Restore camera state if we had one
+        if let Some((distance, yaw, pitch)) = old_camera {
+            if let Some(sim) = wgpu_render_state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
+                sim.camera_distance = distance;
+                sim.camera_yaw = yaw;
+                sim.camera_pitch = pitch;
+            }
+        }
 
         self.initialized = true;
     }
@@ -1590,68 +1651,95 @@ impl Default for EmbeddedSimulation {
 }
 
 /// Parsed particle data for display in the inspector.
+///
+/// This struct holds parsed values for all fields (base and custom)
+/// using dynamic layout information.
 #[derive(Debug, Clone)]
 pub struct ParsedParticle {
+    /// Base fields (always present)
     pub position: [f32; 3],
     pub velocity: [f32; 3],
     pub color: [f32; 3],
-    pub particle_type: u32,
-    pub mass: f32,
-    pub energy: f32,
-    pub heat: f32,
-    pub custom: f32,
-    pub goal: [f32; 3],
+    pub age: f32,
     pub alive: u32,
     pub scale: f32,
+    pub particle_type: u32,
+    /// Custom field values (name -> value)
+    pub custom_fields: Vec<(String, crate::spawn::FieldValue)>,
 }
 
 impl ParsedParticle {
-    /// Parse raw particle bytes into a structured format.
+    /// Parse raw particle bytes using the given layout.
     ///
-    /// This assumes the MetaParticle layout from the Particle derive macro.
-    pub fn from_bytes(data: &[u8]) -> Option<Self> {
-        if data.len() < 64 {  // Minimum expected size
+    /// This dynamically parses based on the layout, supporting any particle configuration.
+    pub fn from_bytes_with_layout(data: &[u8], layout: &ParticleLayout) -> Option<Self> {
+        if data.len() < layout.stride {
             return None;
         }
 
-        // Parse fields based on MetaParticle layout
-        // The layout from the Particle derive macro is:
-        // position: Vec3 (12 bytes) - offset 0
-        // velocity: Vec3 (12 bytes) - offset 12
-        // color: Vec3 (12 bytes) - offset 24
-        // particle_type: u32 (4 bytes) - offset 36
-        // mass: f32 (4 bytes) - offset 40
-        // energy: f32 (4 bytes) - offset 44
-        // heat: f32 (4 bytes) - offset 48
-        // custom: f32 (4 bytes) - offset 52
-        // goal: Vec3 (12 bytes) - offset 56
-        // alive: u32 (4 bytes) - offset 68
-        // scale: f32 (4 bytes) - offset 72
+        use crate::spawn::{read_vec3, read_f32, read_u32, read_field_value};
 
-        fn read_f32(data: &[u8], offset: usize) -> f32 {
-            f32::from_le_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]])
-        }
+        // Read base fields
+        let position = read_vec3(data, layout.position_offset);
+        let velocity = read_vec3(data, layout.velocity_offset);
+        let color = read_vec3(data, layout.color_offset);
+        let age = read_f32(data, layout.age_offset);
+        let alive = read_u32(data, layout.alive_offset);
+        let scale = read_f32(data, layout.scale_offset);
+        let particle_type = read_u32(data, layout.particle_type_offset);
 
-        fn read_u32(data: &[u8], offset: usize) -> u32 {
-            u32::from_le_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]])
-        }
-
-        fn read_vec3(data: &[u8], offset: usize) -> [f32; 3] {
-            [read_f32(data, offset), read_f32(data, offset+4), read_f32(data, offset+8)]
-        }
+        // Read custom fields
+        let custom_fields: Vec<_> = layout
+            .custom_fields()
+            .map(|f| {
+                let value = read_field_value(data, f.offset, f.field_type);
+                (f.name.clone(), value)
+            })
+            .collect();
 
         Some(Self {
-            position: read_vec3(data, 0),
-            velocity: read_vec3(data, 12),
-            color: read_vec3(data, 24),
-            particle_type: read_u32(data, 36),
-            mass: read_f32(data, 40),
-            energy: read_f32(data, 44),
-            heat: read_f32(data, 48),
-            custom: read_f32(data, 52),
-            goal: read_vec3(data, 56),
-            alive: read_u32(data, 68),
-            scale: read_f32(data, 72),
+            position: [position.x, position.y, position.z],
+            velocity: [velocity.x, velocity.y, velocity.z],
+            color: [color.x, color.y, color.z],
+            age,
+            alive,
+            scale,
+            particle_type,
+            custom_fields,
         })
+    }
+
+    /// Parse raw particle bytes using default base layout (for backwards compatibility).
+    ///
+    /// This uses a minimal layout with just base fields.
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        let layout = ParticleLayout::compute(&[]);
+        Self::from_bytes_with_layout(data, &layout)
+    }
+
+    /// Serialize this particle back to bytes using the given layout.
+    pub fn to_bytes(&self, layout: &ParticleLayout) -> Vec<u8> {
+        use crate::spawn::{write_vec3_pub, write_f32_pub, write_u32_pub, write_field_value_pub};
+        use glam::Vec3;
+
+        let mut bytes = vec![0u8; layout.stride];
+
+        // Write base fields
+        write_vec3_pub(&mut bytes, layout.position_offset, Vec3::from_array(self.position));
+        write_vec3_pub(&mut bytes, layout.velocity_offset, Vec3::from_array(self.velocity));
+        write_vec3_pub(&mut bytes, layout.color_offset, Vec3::from_array(self.color));
+        write_f32_pub(&mut bytes, layout.age_offset, self.age);
+        write_u32_pub(&mut bytes, layout.alive_offset, self.alive);
+        write_f32_pub(&mut bytes, layout.scale_offset, self.scale);
+        write_u32_pub(&mut bytes, layout.particle_type_offset, self.particle_type);
+
+        // Write custom fields
+        for (name, value) in &self.custom_fields {
+            if let Some(offset) = layout.field_offset(name) {
+                write_field_value_pub(&mut bytes, offset, value);
+            }
+        }
+
+        bytes
     }
 }

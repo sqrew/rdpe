@@ -138,62 +138,80 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
     }
 
     ui.separator();
-    ui.heading("Color");
+    ui.heading("Particle Types");
 
-    let color_variants = ColorMode::variants();
-    let mut color_idx = match &config.spawn.color_mode {
-        ColorMode::Uniform { .. } => 0,
-        ColorMode::RandomHue { .. } => 1,
-        ColorMode::ByPosition => 2,
-        ColorMode::ByVelocity => 3,
-        ColorMode::Gradient { .. } => 4,
-    };
+    // Ensure at least one type exists
+    if config.spawn.type_weights.is_empty() {
+        config.spawn.type_weights.push(1.0);
+    }
 
-    if egui::ComboBox::from_label("Color Mode")
-        .show_index(ui, &mut color_idx, color_variants.len(), |i| color_variants[i])
-        .changed()
-    {
-        config.spawn.color_mode = match color_idx {
-            0 => ColorMode::Uniform { r: 1.0, g: 0.5, b: 0.2 },
-            1 => ColorMode::RandomHue { saturation: 0.8, value: 0.9 },
-            2 => ColorMode::ByPosition,
-            3 => ColorMode::ByVelocity,
-            4 => ColorMode::Gradient { start: [1.0, 0.0, 0.0], end: [0.0, 0.0, 1.0] },
-            _ => ColorMode::RandomHue { saturation: 0.8, value: 0.9 },
-        };
+    let total_weight: f32 = config.spawn.type_weights.iter().sum();
+    let num_types = config.spawn.type_weights.len();
+
+    // Show each type with weight slider
+    let mut remove_idx: Option<usize> = None;
+    for (i, weight) in config.spawn.type_weights.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            // Calculate percentage
+            let pct = if total_weight > 0.0 { *weight / total_weight * 100.0 } else { 0.0 };
+
+            ui.label(format!("Type {}:", i));
+            if ui.add(egui::DragValue::new(weight).speed(0.1).range(0.0..=100.0)).changed() {
+                changed = true;
+            }
+            ui.label(format!("({:.0}%)", pct));
+
+            // Remove button (only if more than 1 type)
+            if num_types > 1 && ui.small_button("×").clicked() {
+                remove_idx = Some(i);
+            }
+        });
+    }
+
+    // Remove type if requested
+    if let Some(idx) = remove_idx {
+        config.spawn.type_weights.remove(idx);
         changed = true;
     }
 
-    match &mut config.spawn.color_mode {
-        ColorMode::Uniform { r, g, b } => {
-            let mut color = [*r, *g, *b];
-            if ui.color_edit_button_rgb(&mut color).changed() {
-                *r = color[0];
-                *g = color[1];
-                *b = color[2];
+    // Add type button
+    ui.horizontal(|ui| {
+        if ui.button("+ Add Type").clicked() {
+            // New type gets same weight as average
+            let avg = total_weight / num_types as f32;
+            config.spawn.type_weights.push(avg.max(1.0));
+            changed = true;
+        }
+
+        // Quick presets
+        ui.menu_button("Presets", |ui| {
+            if ui.button("50/50 (2 types)").clicked() {
+                config.spawn.type_weights = vec![1.0, 1.0];
                 changed = true;
+                ui.close_menu();
             }
-        }
-        ColorMode::RandomHue { saturation, value } => {
-            changed |= ui.add(egui::Slider::new(saturation, 0.0..=1.0).text("Saturation")).changed();
-            changed |= ui.add(egui::Slider::new(value, 0.0..=1.0).text("Value")).changed();
-        }
-        ColorMode::Gradient { start, end } => {
-            ui.horizontal(|ui| {
-                ui.label("Start:");
-                if ui.color_edit_button_rgb(start).changed() {
-                    changed = true;
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.label("End:");
-                if ui.color_edit_button_rgb(end).changed() {
-                    changed = true;
-                }
-            });
-        }
-        _ => {}
-    }
+            if ui.button("Predator/Prey (20/80)").clicked() {
+                config.spawn.type_weights = vec![4.0, 1.0]; // 80% type 0, 20% type 1
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("DLA (1/99 seed/mobile)").clicked() {
+                config.spawn.type_weights = vec![1.0, 99.0]; // 1% seeds, 99% mobile
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("3 Types Equal").clicked() {
+                config.spawn.type_weights = vec![1.0, 1.0, 1.0];
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Reset (All Type 0)").clicked() {
+                config.spawn.type_weights = vec![1.0];
+                changed = true;
+                ui.close_menu();
+            }
+        });
+    });
 
     changed
 }

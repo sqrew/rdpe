@@ -2,11 +2,14 @@
 
 use eframe::egui;
 use crate::config::{
-    BlendModeConfig, ColorMappingConfig, PaletteConfig, ParticleShapeConfig, VisualsConfig,
-    WireframeMeshConfig,
+    BlendModeConfig, ColorMappingConfig, ColorMode, PaletteConfig, ParticleShapeConfig,
+    SimConfig, WireframeMeshConfig,
 };
 
-pub fn render_visuals_panel(ui: &mut egui::Ui, visuals: &mut VisualsConfig) {
+pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
+    let mut changed = false;
+    let visuals = &mut config.visuals;
+
     ui.heading("Visuals");
 
     // Blend Mode
@@ -126,6 +129,68 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, visuals: &mut VisualsConfig) {
     ui.add_space(4.0);
     ui.separator();
 
+    // Spawn Color (initial particle color - requires reset to apply)
+    ui.heading("Spawn Color");
+    ui.label("(Requires reset to apply)");
+
+    let color_variants = ColorMode::variants();
+    let mut color_idx = match &config.spawn.color_mode {
+        ColorMode::Uniform { .. } => 0,
+        ColorMode::RandomHue { .. } => 1,
+        ColorMode::ByPosition => 2,
+        ColorMode::ByVelocity => 3,
+        ColorMode::Gradient { .. } => 4,
+    };
+
+    if egui::ComboBox::from_label("Color Mode")
+        .show_index(ui, &mut color_idx, color_variants.len(), |i| color_variants[i])
+        .changed()
+    {
+        config.spawn.color_mode = match color_idx {
+            0 => ColorMode::Uniform { r: 1.0, g: 0.5, b: 0.2 },
+            1 => ColorMode::RandomHue { saturation: 0.8, value: 0.9 },
+            2 => ColorMode::ByPosition,
+            3 => ColorMode::ByVelocity,
+            4 => ColorMode::Gradient { start: [1.0, 0.0, 0.0], end: [0.0, 0.0, 1.0] },
+            _ => ColorMode::RandomHue { saturation: 0.8, value: 0.9 },
+        };
+        changed = true;
+    }
+
+    match &mut config.spawn.color_mode {
+        ColorMode::Uniform { r, g, b } => {
+            let mut color = [*r, *g, *b];
+            if ui.color_edit_button_rgb(&mut color).changed() {
+                *r = color[0];
+                *g = color[1];
+                *b = color[2];
+                changed = true;
+            }
+        }
+        ColorMode::RandomHue { saturation, value } => {
+            changed |= ui.add(egui::Slider::new(saturation, 0.0..=1.0).text("Saturation")).changed();
+            changed |= ui.add(egui::Slider::new(value, 0.0..=1.0).text("Value")).changed();
+        }
+        ColorMode::Gradient { start, end } => {
+            ui.horizontal(|ui| {
+                ui.label("Start:");
+                if ui.color_edit_button_rgb(start).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("End:");
+                if ui.color_edit_button_rgb(end).changed() {
+                    changed = true;
+                }
+            });
+        }
+        _ => {}
+    }
+
+    ui.add_space(4.0);
+    ui.separator();
+
     // Trail Length
     ui.add(egui::Slider::new(&mut visuals.trail_length, 0..=50).text("Trail Length"));
 
@@ -161,4 +226,6 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, visuals: &mut VisualsConfig) {
     if visuals.wireframe != WireframeMeshConfig::None {
         ui.add(egui::Slider::new(&mut visuals.wireframe_thickness, 0.001..=0.02).text("Line Thickness"));
     }
+
+    changed
 }

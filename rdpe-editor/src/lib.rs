@@ -20,6 +20,6 @@ pub use code_export::generate_code;
 pub use config::*;
 pub use particle::MetaParticle;
 pub use shader_gen::{generate_compute_shader, generate_render_shader};
-pub use spawn::generate_particles;
+pub use spawn::{generate_particles, FieldValue};
 #[cfg(feature = "egui")]
 pub use embedded::{EmbeddedSimulation, SimulationResources, SimulationCallback, ParsedParticle};
