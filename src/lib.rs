@@ -136,6 +136,7 @@ pub use textures::{AddressMode, FilterMode, TextureConfig, TextureRegistry};
 pub use uniforms::{CustomUniforms, UniformValue, UpdateContext};
 pub use visuals::{BlendMode, ColorMapping, ConfigDiff, HotSwapChange, Palette, ParticleShape, VertexEffect, VisualConfig, WireframeMesh};
 pub use gpu::SpatialGpu;
+pub use gpu::SpatialGridViz;
 pub use spatial::SpatialConfig;
 
 /// Trait automatically implemented by `#[derive(Particle)]`.

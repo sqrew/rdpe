@@ -528,6 +528,43 @@ pub fn generate_render_shader(config: &SimConfig) -> String {
         config.particle_count,
     );
 
+    // Velocity stretch code
+    let velocity_stretch_code = if visuals.velocity_stretch {
+        format!(r#"
+    // ============================================
+    // Velocity stretch
+    // ============================================
+    let vel_speed = length(particle_vel);
+    if (vel_speed > 0.001) {{
+        // Get velocity direction in clip space
+        let world_pos_ahead = particle_pos + normalize(particle_vel) * 0.1;
+        let clip_ahead = uniforms.view_proj * vec4<f32>(world_pos_ahead, 1.0);
+        let clip_current = uniforms.view_proj * vec4<f32>(particle_pos, 1.0);
+
+        // Screen-space velocity direction
+        let screen_ahead = clip_ahead.xy / clip_ahead.w;
+        let screen_current = clip_current.xy / clip_current.w;
+        var screen_dir = screen_ahead - screen_current;
+
+        let screen_len = length(screen_dir);
+        if (screen_len > 0.0001) {{
+            screen_dir = screen_dir / screen_len;
+
+            // Stretch factor based on speed
+            let stretch = 1.0 + vel_speed * {factor:.6};
+
+            // Rotate and stretch the quad
+            // x component: stretch along velocity direction
+            // y component: keep perpendicular size
+            let perp = vec2<f32>(-screen_dir.y, screen_dir.x);
+            rotated_quad = screen_dir * rotated_quad.x * stretch + perp * rotated_quad.y;
+        }}
+    }}
+"#, factor = visuals.velocity_stretch_factor)
+    } else {
+        String::new()
+    };
+
     // Custom shader code
     let custom_vertex_code = if config.custom_shaders.vertex_code.is_empty() {
         String::new()
@@ -619,6 +656,7 @@ fn vs_main(
     // ============================================
 {vertex_effects_code}
 {custom_vertex_code}
+{velocity_stretch_code}
     // ============================================
     // Compute final position
     // ============================================
@@ -660,6 +698,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         color_expr = color_expr,
         vertex_effects_code = indent_code(&vertex_effects_code, "    "),
         custom_vertex_code = custom_vertex_code,
+        velocity_stretch_code = velocity_stretch_code,
         shape_code = indent_code(shape_code, "    "),
         custom_fragment_code = custom_fragment_code,
     )

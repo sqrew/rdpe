@@ -13,7 +13,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
-use crate::config::{SimConfig, UniformValueConfig, ParticleLayout};
+use crate::config::{BlendModeConfig, SimConfig, UniformValueConfig, ParticleLayout};
 use crate::shader_gen;
 use crate::shader_validate;
 use crate::spawn;
@@ -499,6 +499,1388 @@ fn build_uniform_data(
     data
 }
 
+/// Simple spatial grid visualization (no depth buffer required).
+struct GridVisualization {
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
+    line_buffer: wgpu::Buffer,
+    params_buffer: wgpu::Buffer,
+    line_count: u32,
+    opacity: f32,
+}
+
+impl GridVisualization {
+    fn new(
+        device: &wgpu::Device,
+        uniform_buffer: &wgpu::Buffer,
+        cell_size: f32,
+        resolution: u32,
+        opacity: f32,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
+        // Generate grid lines
+        let lines = Self::generate_lines(cell_size, resolution);
+        let line_count = lines.len() as u32 / 2;
+
+        let line_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Grid Line Buffer"),
+            contents: bytemuck::cast_slice(&lines),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Grid Params Buffer"),
+            contents: bytemuck::bytes_of(&[opacity, 0.0_f32, 0.0, 0.0]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Grid Shader"),
+            source: wgpu::ShaderSource::Wgsl(GRID_SHADER.into()),
+        });
+
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Grid Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Grid Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: line_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Grid Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Grid Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        Self {
+            pipeline,
+            bind_group,
+            line_buffer,
+            params_buffer,
+            line_count,
+            opacity,
+        }
+    }
+
+    fn generate_lines(cell_size: f32, resolution: u32) -> Vec<[f32; 4]> {
+        let res = resolution as i32;
+        let half_extent = (res as f32 * cell_size) / 2.0;
+        let mut lines = Vec::new();
+
+        // Lines parallel to X axis
+        for y in 0..=res {
+            for z in 0..=res {
+                let y_pos = -half_extent + y as f32 * cell_size;
+                let z_pos = -half_extent + z as f32 * cell_size;
+                lines.push([-half_extent, y_pos, z_pos, 1.0]);
+                lines.push([half_extent, y_pos, z_pos, 1.0]);
+            }
+        }
+
+        // Lines parallel to Y axis
+        for x in 0..=res {
+            for z in 0..=res {
+                let x_pos = -half_extent + x as f32 * cell_size;
+                let z_pos = -half_extent + z as f32 * cell_size;
+                lines.push([x_pos, -half_extent, z_pos, 1.0]);
+                lines.push([x_pos, half_extent, z_pos, 1.0]);
+            }
+        }
+
+        // Lines parallel to Z axis
+        for x in 0..=res {
+            for y in 0..=res {
+                let x_pos = -half_extent + x as f32 * cell_size;
+                let y_pos = -half_extent + y as f32 * cell_size;
+                lines.push([x_pos, y_pos, -half_extent, 1.0]);
+                lines.push([x_pos, y_pos, half_extent, 1.0]);
+            }
+        }
+
+        lines
+    }
+
+    fn set_opacity(&mut self, queue: &wgpu::Queue, opacity: f32) {
+        self.opacity = opacity;
+        queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&[opacity, 0.0_f32, 0.0, 0.0]));
+    }
+
+    fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+        if self.opacity > 0.0 {
+            render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_bind_group(0, &self.bind_group, &[]);
+            render_pass.draw(0..6, 0..self.line_count);
+        }
+    }
+}
+
+const GRID_SHADER: &str = r#"
+struct Uniforms {
+    view_proj: mat4x4<f32>,
+    time: f32,
+    delta_time: f32,
+};
+
+struct GridParams {
+    opacity: f32,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> lines: array<vec4<f32>>;
+@group(0) @binding(2) var<uniform> grid_params: GridParams;
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+};
+
+@vertex
+fn vs_main(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {
+    var out: VertexOutput;
+
+    let pos_a = lines[instance_index * 2u].xyz;
+    let pos_b = lines[instance_index * 2u + 1u].xyz;
+
+    let line_dir = pos_b - pos_a;
+    let line_len = length(line_dir);
+
+    if line_len < 0.0001 {
+        out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
+        return out;
+    }
+
+    let dir = line_dir / line_len;
+
+    var perp = cross(dir, vec3<f32>(0.0, 1.0, 0.0));
+    if length(perp) < 0.001 {
+        perp = cross(dir, vec3<f32>(1.0, 0.0, 0.0));
+    }
+    perp = normalize(perp) * 0.002;
+
+    var pos: vec3<f32>;
+    switch vertex_index {
+        case 0u: { pos = pos_a - perp; }
+        case 1u: { pos = pos_a + perp; }
+        case 2u: { pos = pos_b - perp; }
+        case 3u: { pos = pos_a + perp; }
+        case 4u: { pos = pos_b - perp; }
+        default: { pos = pos_b + perp; }
+    }
+
+    out.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(0.4, 0.6, 0.8, grid_params.opacity);
+}
+"#;
+
+/// Connection rendering between nearby particles.
+struct ConnectionVisualization {
+    /// Buffer storing connection line segments.
+    connection_buffer: wgpu::Buffer,
+    /// Atomic counter for connections found.
+    count_buffer: wgpu::Buffer,
+    /// Compute pipeline to find connections.
+    compute_pipeline: wgpu::ComputePipeline,
+    /// Compute bind group.
+    compute_bind_group: wgpu::BindGroup,
+    /// Render pipeline for drawing connections.
+    render_pipeline: wgpu::RenderPipeline,
+    /// Render bind group.
+    render_bind_group: wgpu::BindGroup,
+    /// Maximum connections.
+    max_connections: u32,
+    /// Connection radius.
+    radius: f32,
+    /// Number of particles.
+    num_particles: u32,
+}
+
+impl ConnectionVisualization {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        device: &wgpu::Device,
+        particle_buffer: &wgpu::Buffer,
+        uniform_buffer: &wgpu::Buffer,
+        spatial: &SpatialGpu,
+        num_particles: u32,
+        radius: f32,
+        particle_stride: usize,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
+        let max_connections = num_particles * 8;
+        let particle_stride_vec4 = particle_stride / 16;
+
+        // Connection buffer: stores line segments as vec4 pairs
+        let buffer_size = (max_connections as usize) * 32; // 2 vec4s per connection
+        let connection_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Connection Buffer"),
+            size: buffer_size as u64,
+            usage: wgpu::BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
+        // Atomic counter
+        let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Connection Count Buffer"),
+            contents: &[0u8; 4],
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Params buffer
+        let params_data: [f32; 4] = [radius, f32::from_bits(max_connections), f32::from_bits(num_particles), 0.0];
+        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Connection Params Buffer"),
+            contents: bytemuck::cast_slice(&params_data),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        // Create compute shader
+        let compute_shader_src = Self::generate_compute_shader(particle_stride_vec4);
+        let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Connection Compute Shader"),
+            source: wgpu::ShaderSource::Wgsl(compute_shader_src.into()),
+        });
+
+        // Compute bind group layout
+        let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Connection Compute Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 7, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            ],
+        });
+
+        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Connection Compute Bind Group"),
+            layout: &compute_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: particle_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: connection_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: count_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: params_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: spatial.particle_indices_a.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: spatial.cell_start.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: spatial.cell_end.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 7, resource: spatial.spatial_params_buffer.as_entire_binding() },
+            ],
+        });
+
+        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Connection Compute Pipeline Layout"),
+            bind_group_layouts: &[&compute_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Connection Compute Pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &compute_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        // Create render shader
+        let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Connection Render Shader"),
+            source: wgpu::ShaderSource::Wgsl(CONNECTION_RENDER_SHADER.into()),
+        });
+
+        let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Connection Render Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::VERTEX, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::VERTEX, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            ],
+        });
+
+        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Connection Render Bind Group"),
+            layout: &render_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: uniform_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: connection_buffer.as_entire_binding() },
+            ],
+        });
+
+        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Connection Render Pipeline Layout"),
+            bind_group_layouts: &[&render_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Connection Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &render_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &render_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        Self {
+            connection_buffer,
+            count_buffer,
+            compute_pipeline,
+            compute_bind_group,
+            render_pipeline,
+            render_bind_group,
+            max_connections,
+            radius,
+            num_particles,
+        }
+    }
+
+    fn generate_compute_shader(particle_stride_vec4: usize) -> String {
+        format!(r#"
+struct ConnectionParams {{
+    radius: f32,
+    max_connections: u32,
+    num_particles: u32,
+}};
+
+struct SpatialParams {{
+    cell_size: f32,
+    grid_resolution: u32,
+    num_particles: u32,
+    max_neighbors: u32,
+}};
+
+fn morton_encode_10bit(x: u32, y: u32, z: u32) -> u32 {{
+    var xx = x & 0x3FFu;
+    var yy = y & 0x3FFu;
+    var zz = z & 0x3FFu;
+    xx = (xx | (xx << 16u)) & 0x030000FFu;
+    xx = (xx | (xx << 8u)) & 0x0300F00Fu;
+    xx = (xx | (xx << 4u)) & 0x030C30C3u;
+    xx = (xx | (xx << 2u)) & 0x09249249u;
+    yy = (yy | (yy << 16u)) & 0x030000FFu;
+    yy = (yy | (yy << 8u)) & 0x0300F00Fu;
+    yy = (yy | (yy << 4u)) & 0x030C30C3u;
+    yy = (yy | (yy << 2u)) & 0x09249249u;
+    zz = (zz | (zz << 16u)) & 0x030000FFu;
+    zz = (zz | (zz << 8u)) & 0x0300F00Fu;
+    zz = (zz | (zz << 4u)) & 0x030C30C3u;
+    zz = (zz | (zz << 2u)) & 0x09249249u;
+    return xx | (yy << 1u) | (zz << 2u);
+}}
+
+fn pos_to_cell(pos: vec3<f32>, cell_size: f32, grid_res: u32) -> vec3<i32> {{
+    let half_grid = f32(grid_res) * 0.5;
+    let grid_pos = (pos / cell_size) + half_grid;
+    return vec3<i32>(
+        clamp(i32(floor(grid_pos.x)), 0, i32(grid_res) - 1),
+        clamp(i32(floor(grid_pos.y)), 0, i32(grid_res) - 1),
+        clamp(i32(floor(grid_pos.z)), 0, i32(grid_res) - 1)
+    );
+}}
+
+@group(0) @binding(0) var<storage, read> particles: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read_write> connections: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read_write> connection_count: atomic<u32>;
+@group(0) @binding(3) var<uniform> params: ConnectionParams;
+@group(0) @binding(4) var<storage, read> sorted_indices: array<u32>;
+@group(0) @binding(5) var<storage, read> cell_start: array<u32>;
+@group(0) @binding(6) var<storage, read> cell_end: array<u32>;
+@group(0) @binding(7) var<uniform> spatial: SpatialParams;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
+    let idx = global_id.x;
+    if idx >= params.num_particles {{
+        return;
+    }}
+
+    let my_pos = particles[idx * {particle_stride_vec4}u].xyz;
+    let my_cell = pos_to_cell(my_pos, spatial.cell_size, spatial.grid_resolution);
+    let radius_sq = params.radius * params.radius;
+
+    for (var dx = -1; dx <= 1; dx++) {{
+        for (var dy = -1; dy <= 1; dy++) {{
+            for (var dz = -1; dz <= 1; dz++) {{
+                let neighbor_cell = my_cell + vec3<i32>(dx, dy, dz);
+                if neighbor_cell.x < 0 || neighbor_cell.x >= i32(spatial.grid_resolution) ||
+                   neighbor_cell.y < 0 || neighbor_cell.y >= i32(spatial.grid_resolution) ||
+                   neighbor_cell.z < 0 || neighbor_cell.z >= i32(spatial.grid_resolution) {{
+                    continue;
+                }}
+                let morton = morton_encode_10bit(u32(neighbor_cell.x), u32(neighbor_cell.y), u32(neighbor_cell.z));
+                let start = cell_start[morton];
+                let end = cell_end[morton];
+                if start == 0xFFFFFFFFu {{
+                    continue;
+                }}
+                for (var j = start; j < end; j++) {{
+                    let other_idx = sorted_indices[j];
+                    if other_idx <= idx {{
+                        continue;
+                    }}
+                    let other_pos = particles[other_idx * {particle_stride_vec4}u].xyz;
+                    let diff = other_pos - my_pos;
+                    let dist_sq = dot(diff, diff);
+                    if dist_sq < radius_sq && dist_sq > 0.0001 {{
+                        let conn_idx = atomicAdd(&connection_count, 1u);
+                        if conn_idx < params.max_connections {{
+                            let dist = sqrt(dist_sq);
+                            let alpha = 1.0 - dist / params.radius;
+                            connections[conn_idx * 2u] = vec4<f32>(my_pos, alpha);
+                            connections[conn_idx * 2u + 1u] = vec4<f32>(other_pos, 0.0);
+                        }}
+                    }}
+                }}
+            }}
+        }}
+    }}
+}}
+"#, particle_stride_vec4 = particle_stride_vec4)
+    }
+
+    fn compute(&self, encoder: &mut wgpu::CommandEncoder, queue: &wgpu::Queue) {
+        // Reset connection count
+        queue.write_buffer(&self.count_buffer, 0, &[0u8; 4]);
+
+        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Connection Compute Pass"),
+            timestamp_writes: None,
+        });
+        compute_pass.set_pipeline(&self.compute_pipeline);
+        compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.num_particles + 255) / 256, 1, 1);
+    }
+
+    fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_bind_group(0, &self.render_bind_group, &[]);
+        // Draw max_connections instances (empty ones will be culled by alpha check)
+        render_pass.draw(0..6, 0..self.max_connections);
+    }
+}
+
+const CONNECTION_RENDER_SHADER: &str = r#"
+struct Uniforms {
+    view_proj: mat4x4<f32>,
+    time: f32,
+    delta_time: f32,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> connections: array<vec4<f32>>;
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) alpha: f32,
+};
+
+@vertex
+fn vs_main(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {
+    var out: VertexOutput;
+
+    let conn_data_a = connections[instance_index * 2u];
+    let conn_data_b = connections[instance_index * 2u + 1u];
+
+    let pos_a = conn_data_a.xyz;
+    let pos_b = conn_data_b.xyz;
+    let alpha = conn_data_a.w;
+
+    if alpha < 0.001 {
+        out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
+        out.alpha = 0.0;
+        return out;
+    }
+
+    let line_dir = normalize(pos_b - pos_a);
+
+    var perp = cross(line_dir, vec3<f32>(0.0, 1.0, 0.0));
+    if length(perp) < 0.001 {
+        perp = cross(line_dir, vec3<f32>(1.0, 0.0, 0.0));
+    }
+    perp = normalize(perp) * 0.003;
+
+    var pos: vec3<f32>;
+    switch vertex_index {
+        case 0u: { pos = pos_a - perp; }
+        case 1u: { pos = pos_a + perp; }
+        case 2u: { pos = pos_b - perp; }
+        case 3u: { pos = pos_a + perp; }
+        case 4u: { pos = pos_b - perp; }
+        default: { pos = pos_b + perp; }
+    }
+
+    out.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
+    out.alpha = alpha * 0.6;
+
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(0.5, 0.7, 1.0, in.alpha);
+}
+"#;
+
+/// Wireframe mesh visualization for particles.
+struct WireframeVisualization {
+    /// Buffer storing mesh line segments (6 floats per line: x0,y0,z0,x1,y1,z1).
+    mesh_buffer: wgpu::Buffer,
+    /// Number of lines per mesh.
+    lines_per_mesh: u32,
+    /// Render pipeline.
+    pipeline: wgpu::RenderPipeline,
+    /// Bind group.
+    bind_group: wgpu::BindGroup,
+    /// Params buffer.
+    params_buffer: wgpu::Buffer,
+    /// Number of particles.
+    num_particles: u32,
+    /// Base particle size.
+    base_size: f32,
+}
+
+impl WireframeVisualization {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        device: &wgpu::Device,
+        particle_buffer: &wgpu::Buffer,
+        uniform_buffer: &wgpu::Buffer,
+        mesh: &rdpe::WireframeMesh,
+        line_thickness: f32,
+        particle_size: f32,
+        num_particles: u32,
+        particle_stride: usize,
+        color_offset: Option<u32>,
+        alive_offset: u32,
+        scale_offset: u32,
+        target_format: wgpu::TextureFormat,
+        blend_mode: &BlendModeConfig,
+    ) -> Self {
+        // Convert mesh lines to flat f32 array
+        let mesh_data = mesh.to_vertices();
+        let lines_per_mesh = mesh.line_count();
+
+        let mesh_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Wireframe Mesh Buffer"),
+            contents: bytemuck::cast_slice(&mesh_data),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
+
+        // Wireframe params: [line_thickness, lines_per_mesh, base_size, _pad]
+        let params: [f32; 4] = [
+            line_thickness,
+            f32::from_bits(lines_per_mesh),
+            particle_size,
+            0.0,
+        ];
+        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Wireframe Params Buffer"),
+            contents: bytemuck::cast_slice(&params),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Generate shader
+        let shader_src = Self::generate_shader(
+            particle_stride,
+            color_offset,
+            alive_offset,
+            scale_offset,
+        );
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Wireframe Shader"),
+            source: wgpu::ShaderSource::Wgsl(shader_src.into()),
+        });
+
+        // Bind group layout
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Wireframe Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Wireframe Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: particle_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: mesh_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: params_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Wireframe Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        // Convert blend mode
+        let blend_state = blend_mode.to_wgpu_blend_state();
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Wireframe Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(blend_state),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None, // No depth buffer in egui_wgpu
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        Self {
+            mesh_buffer,
+            lines_per_mesh,
+            pipeline,
+            bind_group,
+            params_buffer,
+            num_particles,
+            base_size: particle_size,
+        }
+    }
+
+    fn generate_shader(
+        particle_stride: usize,
+        color_offset: Option<u32>,
+        alive_offset: u32,
+        scale_offset: u32,
+    ) -> String {
+        let stride_u32 = particle_stride / 4;
+        let alive_idx = alive_offset / 4;
+        let scale_idx = scale_offset / 4;
+
+        let color_code = if let Some(offset) = color_offset {
+            let color_idx = offset / 4;
+            format!(
+                r#"
+    // Read particle color (3 floats)
+    let color = vec3<f32>(
+        bitcast<f32>(particle_data[base + {color_idx}u]),
+        bitcast<f32>(particle_data[base + {color_idx}u + 1u]),
+        bitcast<f32>(particle_data[base + {color_idx}u + 2u])
+    );"#,
+                color_idx = color_idx
+            )
+        } else {
+            r#"
+    let color = normalize(particle_pos) * 0.5 + 0.5;"#.to_string()
+        };
+
+        format!(
+            r#"struct Uniforms {{
+    view_proj: mat4x4<f32>,
+    time: f32,
+    delta_time: f32,
+}};
+
+struct WireframeParams {{
+    line_thickness: f32,
+    lines_per_mesh: u32,
+    base_size: f32,
+}};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> particle_data: array<u32>;
+@group(0) @binding(2) var<storage, read> mesh_lines: array<f32>;
+@group(0) @binding(3) var<uniform> params: WireframeParams;
+
+struct VertexOutput {{
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) color: vec3<f32>,
+}};
+
+const PARTICLE_STRIDE: u32 = {stride_u32}u;
+
+@vertex
+fn vs_main(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {{
+    var out: VertexOutput;
+
+    // Decode particle index and line index from instance
+    let particle_idx = instance_index / params.lines_per_mesh;
+    let line_idx = instance_index % params.lines_per_mesh;
+
+    // Read particle data
+    let base = particle_idx * PARTICLE_STRIDE;
+
+    // Read alive flag
+    let alive = particle_data[base + {alive_idx}u];
+    if alive == 0u {{
+        out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
+        out.color = vec3<f32>(0.0);
+        return out;
+    }}
+
+    // Read particle position (first 3 floats)
+    let particle_pos = vec3<f32>(
+        bitcast<f32>(particle_data[base]),
+        bitcast<f32>(particle_data[base + 1u]),
+        bitcast<f32>(particle_data[base + 2u])
+    );
+
+    // Read particle scale
+    let scale = bitcast<f32>(particle_data[base + {scale_idx}u]);
+{color_code}
+
+    // Read line endpoints from mesh buffer (6 floats per line)
+    let line_base = line_idx * 6u;
+    let local_a = vec3<f32>(
+        mesh_lines[line_base],
+        mesh_lines[line_base + 1u],
+        mesh_lines[line_base + 2u]
+    );
+    let local_b = vec3<f32>(
+        mesh_lines[line_base + 3u],
+        mesh_lines[line_base + 4u],
+        mesh_lines[line_base + 5u]
+    );
+
+    // Transform to world space
+    let mesh_scale = params.base_size * scale;
+    let world_a = particle_pos + local_a * mesh_scale;
+    let world_b = particle_pos + local_b * mesh_scale;
+
+    // Create thin quad along the line
+    let line_dir = world_b - world_a;
+    let line_len = length(line_dir);
+
+    if line_len < 0.0001 {{
+        out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
+        out.color = vec3<f32>(0.0);
+        return out;
+    }}
+
+    let dir = line_dir / line_len;
+
+    // Find perpendicular direction for line width
+    var perp = cross(dir, vec3<f32>(0.0, 1.0, 0.0));
+    if length(perp) < 0.001 {{
+        perp = cross(dir, vec3<f32>(1.0, 0.0, 0.0));
+    }}
+    perp = normalize(perp) * params.line_thickness;
+
+    // Second perpendicular for camera-facing quads
+    let perp2 = normalize(cross(dir, perp)) * params.line_thickness;
+
+    // Build quad vertices (2 triangles, 6 vertices)
+    var pos: vec3<f32>;
+    switch vertex_index {{
+        case 0u: {{ pos = world_a - perp - perp2; }}
+        case 1u: {{ pos = world_a + perp + perp2; }}
+        case 2u: {{ pos = world_b - perp - perp2; }}
+        case 3u: {{ pos = world_a + perp + perp2; }}
+        case 4u: {{ pos = world_b - perp - perp2; }}
+        default: {{ pos = world_b + perp + perp2; }}
+    }}
+
+    out.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
+    out.color = color;
+    return out;
+}}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
+    return vec4<f32>(in.color, 1.0);
+}}
+"#,
+            stride_u32 = stride_u32,
+            alive_idx = alive_idx,
+            scale_idx = scale_idx,
+            color_code = color_code,
+        )
+    }
+
+    fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        // 6 vertices per line, lines_per_mesh * num_particles instances
+        render_pass.draw(0..6, 0..(self.lines_per_mesh * self.num_particles));
+    }
+
+    fn set_line_thickness(&mut self, queue: &wgpu::Queue, thickness: f32) {
+        let params: [f32; 4] = [
+            thickness,
+            f32::from_bits(self.lines_per_mesh),
+            self.base_size,
+            0.0,
+        ];
+        queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&params));
+    }
+}
+
+/// Trail visualization - renders particle motion trails.
+struct TrailVisualization {
+    /// Buffer storing past positions for each particle.
+    /// Layout: [p0_t0, p0_t1, ..., p0_tN, p1_t0, p1_t1, ..., p1_tN, ...]
+    /// Each position is vec4 (xyz + alpha).
+    trail_buffer: wgpu::Buffer,
+    /// Compute pipeline to update trail history.
+    compute_pipeline: wgpu::ComputePipeline,
+    /// Compute bind group.
+    compute_bind_group: wgpu::BindGroup,
+    /// Render pipeline for drawing trails.
+    render_pipeline: wgpu::RenderPipeline,
+    /// Render bind group.
+    render_bind_group: wgpu::BindGroup,
+    /// Number of particles.
+    num_particles: u32,
+    /// Trail length (number of past positions stored).
+    trail_length: u32,
+}
+
+impl TrailVisualization {
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        device: &wgpu::Device,
+        particle_buffer: &wgpu::Buffer,
+        uniform_buffer: &wgpu::Buffer,
+        num_particles: u32,
+        trail_length: u32,
+        particle_stride: usize,
+        alive_offset: u32,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
+        let particle_stride_u32 = particle_stride / 4;
+
+        // Trail buffer: num_particles * trail_length * vec4 (16 bytes each)
+        let buffer_size = (num_particles as usize) * (trail_length as usize) * 16;
+        let trail_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Trail Buffer"),
+            size: buffer_size as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Params buffer: [num_particles, trail_length, particle_stride, alive_offset]
+        let params: [u32; 4] = [num_particles, trail_length, particle_stride_u32 as u32, alive_offset];
+        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Trail Params Buffer"),
+            contents: bytemuck::cast_slice(&params),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        // Create compute shader
+        let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Trail Compute Shader"),
+            source: wgpu::ShaderSource::Wgsl(TRAIL_COMPUTE_SHADER.into()),
+        });
+
+        // Compute bind group layout
+        let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Trail Compute Bind Group Layout"),
+            entries: &[
+                // Particle buffer (read)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Trail buffer (read/write)
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Params
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Trail Compute Bind Group"),
+            layout: &compute_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: particle_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: trail_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: params_buffer.as_entire_binding() },
+            ],
+        });
+
+        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Trail Compute Pipeline Layout"),
+            bind_group_layouts: &[&compute_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Trail Compute Pipeline"),
+            layout: Some(&compute_pipeline_layout),
+            module: &compute_shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        // Create render shader
+        let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Trail Render Shader"),
+            source: wgpu::ShaderSource::Wgsl(TRAIL_RENDER_SHADER.into()),
+        });
+
+        // Render bind group layout
+        let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Trail Render Bind Group Layout"),
+            entries: &[
+                // Uniforms
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Trail buffer
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                // Params
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Trail Render Bind Group"),
+            layout: &render_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: uniform_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: trail_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: params_buffer.as_entire_binding() },
+            ],
+        });
+
+        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Trail Render Pipeline Layout"),
+            bind_group_layouts: &[&render_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Trail Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &render_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &render_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        Self {
+            trail_buffer,
+            compute_pipeline,
+            compute_bind_group,
+            render_pipeline,
+            render_bind_group,
+            num_particles,
+            trail_length,
+        }
+    }
+
+    fn compute(&self, encoder: &mut wgpu::CommandEncoder) {
+        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Trail Compute Pass"),
+            timestamp_writes: None,
+        });
+        compute_pass.set_pipeline(&self.compute_pipeline);
+        compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.num_particles + 255) / 256, 1, 1);
+    }
+
+    fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_bind_group(0, &self.render_bind_group, &[]);
+        // Draw 6 vertices per line segment, (trail_length - 1) segments per particle
+        let segments_per_particle = self.trail_length.saturating_sub(1);
+        let total_segments = self.num_particles * segments_per_particle;
+        render_pass.draw(0..6, 0..total_segments);
+    }
+}
+
+const TRAIL_COMPUTE_SHADER: &str = r#"
+struct TrailParams {
+    num_particles: u32,
+    trail_length: u32,
+    particle_stride: u32,
+    alive_offset: u32,
+};
+
+@group(0) @binding(0) var<storage, read> particles: array<u32>;
+@group(0) @binding(1) var<storage, read_write> trails: array<vec4<f32>>;
+@group(0) @binding(2) var<uniform> params: TrailParams;
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let particle_idx = global_id.x;
+    if particle_idx >= params.num_particles {
+        return;
+    }
+
+    // Read particle data
+    let base = particle_idx * params.particle_stride;
+    let alive = particles[base + params.alive_offset];
+
+    // Read position
+    let pos = vec3<f32>(
+        bitcast<f32>(particles[base]),
+        bitcast<f32>(particles[base + 1u]),
+        bitcast<f32>(particles[base + 2u])
+    );
+
+    // Trail base index for this particle
+    let trail_base = particle_idx * params.trail_length;
+
+    // Shift trail positions (from end to start, so we don't overwrite)
+    for (var i = params.trail_length - 1u; i > 0u; i = i - 1u) {
+        trails[trail_base + i] = trails[trail_base + i - 1u];
+    }
+
+    // Write current position to front of trail
+    // Alpha is 1.0 for alive particles, 0.0 for dead
+    let alpha = select(0.0, 1.0, alive != 0u);
+    trails[trail_base] = vec4<f32>(pos, alpha);
+}
+"#;
+
+const TRAIL_RENDER_SHADER: &str = r#"
+struct Uniforms {
+    view_proj: mat4x4<f32>,
+    time: f32,
+    delta_time: f32,
+};
+
+struct TrailParams {
+    num_particles: u32,
+    trail_length: u32,
+    particle_stride: u32,
+    alive_offset: u32,
+};
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var<storage, read> trails: array<vec4<f32>>;
+@group(0) @binding(2) var<uniform> params: TrailParams;
+
+struct VertexOutput {
+    @builtin(position) clip_position: vec4<f32>,
+    @location(0) alpha: f32,
+};
+
+@vertex
+fn vs_main(
+    @builtin(vertex_index) vertex_index: u32,
+    @builtin(instance_index) instance_index: u32,
+) -> VertexOutput {
+    var out: VertexOutput;
+
+    // Decode particle index and segment index from instance
+    let segments_per_particle = params.trail_length - 1u;
+    let particle_idx = instance_index / segments_per_particle;
+    let segment_idx = instance_index % segments_per_particle;
+
+    // Trail base for this particle
+    let trail_base = particle_idx * params.trail_length;
+
+    // Get the two positions for this segment
+    let pos_a = trails[trail_base + segment_idx];
+    let pos_b = trails[trail_base + segment_idx + 1u];
+
+    // Check if segment is valid (both ends have alpha > 0)
+    if pos_a.w < 0.001 || pos_b.w < 0.001 {
+        out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
+        out.alpha = 0.0;
+        return out;
+    }
+
+    // Calculate alpha based on segment position (fade toward end)
+    let segment_t = f32(segment_idx) / f32(segments_per_particle);
+    let base_alpha = 1.0 - segment_t * 0.9; // Fade from 1.0 to 0.1
+
+    // Build line segment quad
+    let line_dir = pos_b.xyz - pos_a.xyz;
+    let line_len = length(line_dir);
+
+    if line_len < 0.0001 {
+        out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
+        out.alpha = 0.0;
+        return out;
+    }
+
+    let dir = line_dir / line_len;
+
+    // Perpendicular for line thickness (thinner for older segments)
+    let thickness = 0.003 * (1.0 - segment_t * 0.7);
+    var perp = cross(dir, vec3<f32>(0.0, 1.0, 0.0));
+    if length(perp) < 0.001 {
+        perp = cross(dir, vec3<f32>(1.0, 0.0, 0.0));
+    }
+    perp = normalize(perp) * thickness;
+
+    // Build quad vertices
+    var pos: vec3<f32>;
+    switch vertex_index {
+        case 0u: { pos = pos_a.xyz - perp; }
+        case 1u: { pos = pos_a.xyz + perp; }
+        case 2u: { pos = pos_b.xyz - perp; }
+        case 3u: { pos = pos_a.xyz + perp; }
+        case 4u: { pos = pos_b.xyz - perp; }
+        default: { pos = pos_b.xyz + perp; }
+    }
+
+    out.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
+    out.alpha = base_alpha * min(pos_a.w, pos_b.w);
+
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(0.7, 0.85, 1.0, in.alpha * 0.6);
+}
+"#;
+
 /// Persistent GPU resources for the simulation.
 ///
 /// This is stored in egui_wgpu's CallbackResources and persists across frames.
@@ -551,6 +1933,18 @@ pub struct SimulationResources {
 
     // Spatial hashing (optional, for neighbor queries)
     spatial: Option<SpatialGpu>,
+
+    // Spatial grid visualization (debug overlay)
+    grid_viz: Option<GridVisualization>,
+
+    // Connection visualization
+    connections: Option<ConnectionVisualization>,
+
+    // Wireframe mesh visualization
+    wireframe: Option<WireframeVisualization>,
+
+    // Trail visualization
+    trails: Option<TrailVisualization>,
 }
 
 impl SimulationResources {
@@ -573,6 +1967,14 @@ impl SimulationResources {
         spatial_cell_size: f32,
         spatial_resolution: u32,
         particle_wgsl_struct: &str,
+        blend_mode: &BlendModeConfig,
+        spatial_grid_opacity: f32,
+        connections_enabled: bool,
+        connections_radius: f32,
+        wireframe_mesh: Option<&rdpe::WireframeMesh>,
+        wireframe_thickness: f32,
+        particle_size: f32,
+        trail_length: u32,
     ) -> Self {
         let particle_stride = layout.stride;
         // Create particle buffer
@@ -622,6 +2024,73 @@ impl SimulationResources {
             contents: &uniform_data,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+
+        // Create spatial grid visualization (for debug overlay)
+        let grid_viz = if needs_spatial {
+            Some(GridVisualization::new(
+                device,
+                &uniform_buffer,
+                spatial_cell_size,
+                spatial_resolution,
+                spatial_grid_opacity,
+                target_format,
+            ))
+        } else {
+            None
+        };
+
+        // Create connection visualization if enabled (requires spatial)
+        let connections = if connections_enabled && spatial.is_some() {
+            Some(ConnectionVisualization::new(
+                device,
+                &particle_buffer,
+                &uniform_buffer,
+                spatial.as_ref().unwrap(),
+                num_particles,
+                connections_radius,
+                particle_stride,
+                target_format,
+            ))
+        } else {
+            None
+        };
+
+        // Create wireframe visualization if mesh is provided
+        let wireframe = if let Some(mesh) = wireframe_mesh {
+            Some(WireframeVisualization::new(
+                device,
+                &particle_buffer,
+                &uniform_buffer,
+                mesh,
+                wireframe_thickness,
+                particle_size,
+                num_particles,
+                particle_stride,
+                Some(layout.color_offset as u32),
+                layout.alive_offset as u32,
+                layout.scale_offset as u32,
+                target_format,
+                blend_mode,
+            ))
+        } else {
+            None
+        };
+
+        // Create trail visualization if trail_length > 0
+        let trails = if trail_length > 1 {
+            Some(TrailVisualization::new(
+                device,
+                &particle_buffer,
+                &uniform_buffer,
+                num_particles,
+                trail_length,
+                particle_stride,
+                layout.alive_offset as u32,
+                target_format,
+            ))
+        } else {
+            None
+        };
 
         // Create field system if fields are defined
         let (field_system, field_bind_group_layout) = if !field_registry.is_empty() {
@@ -910,7 +2379,7 @@ impl SimulationResources {
                 entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: target_format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    blend: Some(blend_mode.to_wgpu_blend_state()),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: Default::default(),
@@ -967,6 +2436,10 @@ impl SimulationResources {
             volume_render_state,
             volume_config: stored_volume_config,
             spatial,
+            grid_viz,
+            connections,
+            wireframe,
+            trails,
         }
     }
 
@@ -1046,6 +2519,16 @@ impl SimulationResources {
                 }
             }
 
+            // Run connection finding compute pass (after spatial update)
+            if let Some(ref connections) = self.connections {
+                connections.compute(&mut encoder, queue);
+            }
+
+            // Run trail update compute pass
+            if let Some(ref trails) = self.trails {
+                trails.compute(&mut encoder);
+            }
+
             vec![encoder.finish()]
         } else {
             vec![]
@@ -1077,12 +2560,31 @@ impl SimulationResources {
             render_pass.draw(0..3, 0..1); // Fullscreen triangle
         }
 
-        // Render particles
-        render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_bind_group(0, &self.render_bind_group, &[]);
-        render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
-        // Draw 4 vertices (quad) per particle instance
-        render_pass.draw(0..4, 0..self.num_particles);
+        // Render spatial grid (debug overlay) - before particles so it's behind
+        if let Some(ref grid) = self.grid_viz {
+            grid.render(render_pass);
+        }
+
+        // Render trails (before particles so they're behind)
+        if let Some(ref trails) = self.trails {
+            trails.render(render_pass);
+        }
+
+        // Render particles (wireframe or billboard)
+        if let Some(ref wireframe) = self.wireframe {
+            wireframe.render(render_pass);
+        } else {
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.render_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
+            // Draw 4 vertices (quad) per particle instance
+            render_pass.draw(0..4, 0..self.num_particles);
+        }
+
+        // Render connections (after particles so they overlay)
+        if let Some(ref connections) = self.connections {
+            connections.render(render_pass);
+        }
     }
 
     /// Check if volume rendering is enabled.
@@ -1108,6 +2610,13 @@ impl SimulationResources {
     /// Get background color.
     pub fn background_color(&self) -> Vec3 {
         self.background_color
+    }
+
+    /// Set grid visualization opacity.
+    pub fn set_grid_opacity(&mut self, queue: &wgpu::Queue, opacity: f32) {
+        if let Some(ref mut grid) = self.grid_viz {
+            grid.set_opacity(queue, opacity);
+        }
     }
 
     /// Rotate camera.
@@ -1360,6 +2869,7 @@ impl EmbeddedSimulation {
 
         let field_registry = config.to_field_registry();
         let particle_wgsl_struct = config.particle_wgsl_struct();
+        let wireframe_mesh = config.visuals.wireframe.to_mesh();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
@@ -1377,6 +2887,14 @@ impl EmbeddedSimulation {
             config.spatial_cell_size,
             config.spatial_resolution,
             &particle_wgsl_struct,
+            &config.visuals.blend_mode,
+            config.visuals.spatial_grid_opacity,
+            config.visuals.connections_enabled,
+            config.visuals.connections_radius,
+            wireframe_mesh.as_ref(),
+            config.visuals.wireframe_thickness,
+            config.particle_size,
+            config.visuals.trail_length,
         );
 
         wgpu_render_state
@@ -1451,6 +2969,7 @@ impl EmbeddedSimulation {
         // Create new resources
         let field_registry = config.to_field_registry();
         let particle_wgsl_struct = config.particle_wgsl_struct();
+        let wireframe_mesh = config.visuals.wireframe.to_mesh();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
@@ -1468,6 +2987,14 @@ impl EmbeddedSimulation {
             config.spatial_cell_size,
             config.spatial_resolution,
             &particle_wgsl_struct,
+            &config.visuals.blend_mode,
+            config.visuals.spatial_grid_opacity,
+            config.visuals.connections_enabled,
+            config.visuals.connections_radius,
+            wireframe_mesh.as_ref(),
+            config.visuals.wireframe_thickness,
+            config.particle_size,
+            config.visuals.trail_length,
         );
 
         // Replace resources
@@ -1530,6 +3057,7 @@ impl EmbeddedSimulation {
         // Create new resources
         let field_registry = config.to_field_registry();
         let particle_wgsl_struct = config.particle_wgsl_struct();
+        let wireframe_mesh = config.visuals.wireframe.to_mesh();
         let resources = SimulationResources::new(
             &wgpu_render_state.device,
             &wgpu_render_state.queue,
@@ -1547,6 +3075,14 @@ impl EmbeddedSimulation {
             config.spatial_cell_size,
             config.spatial_resolution,
             &particle_wgsl_struct,
+            &config.visuals.blend_mode,
+            config.visuals.spatial_grid_opacity,
+            config.visuals.connections_enabled,
+            config.visuals.connections_radius,
+            wireframe_mesh.as_ref(),
+            config.visuals.wireframe_thickness,
+            config.particle_size,
+            config.visuals.trail_length,
         );
 
         // Replace resources

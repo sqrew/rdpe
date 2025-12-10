@@ -451,6 +451,37 @@ fn rule_code(rule: &RuleConfig) -> String {
         RuleConfig::Noise { field, amplitude, frequency } => {
             format!("Rule::Noise {{ field: {:?}.into(), amplitude: {:.3}, frequency: {:.3} }}", field, amplitude, frequency)
         }
+
+        // Springs
+        RuleConfig::ChainSprings { stiffness, damping, rest_length, max_stretch } => {
+            if let Some(max_s) = max_stretch {
+                format!("Rule::ChainSprings {{ stiffness: {:.2}, damping: {:.3}, rest_length: {:.4}, max_stretch: Some({:.2}) }}",
+                    stiffness, damping, rest_length, max_s)
+            } else {
+                format!("Rule::ChainSprings {{ stiffness: {:.2}, damping: {:.3}, rest_length: {:.4}, max_stretch: None }}",
+                    stiffness, damping, rest_length)
+            }
+        }
+        RuleConfig::RadialSprings { hub_stiffness, ring_stiffness, damping, hub_length, ring_length } => {
+            format!("Rule::RadialSprings {{ hub_stiffness: {:.2}, ring_stiffness: {:.2}, damping: {:.3}, hub_length: {:.4}, ring_length: {:.4} }}",
+                hub_stiffness, ring_stiffness, damping, hub_length, ring_length)
+        }
+
+        // Advanced Physics
+        RuleConfig::DensityBuoyancy { density_field, medium_density, strength } => {
+            format!("Rule::DensityBuoyancy {{ density_field: {:?}.into(), medium_density: {:.3}, strength: {:.3} }}",
+                density_field, medium_density, strength)
+        }
+        RuleConfig::Diffuse { field, rate, radius } => {
+            format!("Rule::Diffuse {{ field: {:?}.into(), rate: {:.3}, radius: {:.3} }}", field, rate, radius)
+        }
+        RuleConfig::Mass { field } => {
+            format!("Rule::Mass {{ field: {:?}.into() }}", field)
+        }
+        RuleConfig::Refractory { trigger, charge, active_threshold, depletion_rate, regen_rate } => {
+            format!("Rule::Refractory {{ trigger: {:?}.into(), charge: {:?}.into(), active_threshold: {:.3}, depletion_rate: {:.3}, regen_rate: {:.3} }}",
+                trigger, charge, active_threshold, depletion_rate, regen_rate)
+        }
     }
 }
 

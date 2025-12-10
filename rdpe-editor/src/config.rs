@@ -499,6 +499,33 @@ impl BlendModeConfig {
             BlendModeConfig::Multiply => rdpe::BlendMode::Multiply,
         }
     }
+
+    /// Convert to wgpu BlendState for render pipeline.
+    pub fn to_wgpu_blend_state(&self) -> wgpu::BlendState {
+        match self {
+            BlendModeConfig::Alpha => wgpu::BlendState::ALPHA_BLENDING,
+            BlendModeConfig::Additive => wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
+                },
+            },
+            BlendModeConfig::Multiply => wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::Dst,
+                    dst_factor: wgpu::BlendFactor::Zero,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            },
+        }
+    }
 }
 
 /// Particle shape for rendering
@@ -919,6 +946,16 @@ pub enum RuleConfig {
     Decay { field: String, rate: f32 },
     Die { condition: String },
     DLA { seed_type: u32, mobile_type: u32, stick_radius: f32, diffusion_strength: f32 },
+    Refractory { trigger: String, charge: String, active_threshold: f32, depletion_rate: f32, regen_rate: f32 },
+
+    // === Springs ===
+    ChainSprings { stiffness: f32, damping: f32, rest_length: f32, max_stretch: Option<f32> },
+    RadialSprings { hub_stiffness: f32, ring_stiffness: f32, damping: f32, hub_length: f32, ring_length: f32 },
+
+    // === Advanced Physics ===
+    DensityBuoyancy { density_field: String, medium_density: f32, strength: f32 },
+    Diffuse { field: String, rate: f32, radius: f32 },
+    Mass { field: String },
 
     // === Field Operations ===
     CopyField { from: String, to: String },
@@ -1015,6 +1052,14 @@ impl RuleConfig {
             RuleConfig::Decay { .. } => "Decay",
             RuleConfig::Die { .. } => "Die",
             RuleConfig::DLA { .. } => "DLA",
+            RuleConfig::Refractory { .. } => "Refractory",
+            // Springs
+            RuleConfig::ChainSprings { .. } => "Chain Springs",
+            RuleConfig::RadialSprings { .. } => "Radial Springs",
+            // Advanced Physics
+            RuleConfig::DensityBuoyancy { .. } => "Density Buoyancy",
+            RuleConfig::Diffuse { .. } => "Diffuse",
+            RuleConfig::Mass { .. } => "Mass",
             // Field Operations
             RuleConfig::CopyField { .. } => "Copy Field",
             RuleConfig::Current { .. } => "Current",
@@ -1057,7 +1102,9 @@ impl RuleConfig {
             RuleConfig::OnCondition { .. } | RuleConfig::OnDeath { .. } | RuleConfig::OnInterval { .. } |
             RuleConfig::OnSpawn { .. } => "Event Hooks",
             RuleConfig::Grow { .. } | RuleConfig::Decay { .. } | RuleConfig::Die { .. } |
-            RuleConfig::DLA { .. } => "Growth & Decay",
+            RuleConfig::DLA { .. } | RuleConfig::Refractory { .. } => "Growth & Decay",
+            RuleConfig::ChainSprings { .. } | RuleConfig::RadialSprings { .. } => "Springs",
+            RuleConfig::DensityBuoyancy { .. } | RuleConfig::Diffuse { .. } | RuleConfig::Mass { .. } => "Physics",
             RuleConfig::CopyField { .. } | RuleConfig::Current { .. } => "Fields",
             RuleConfig::Lerp { .. } | RuleConfig::Clamp { .. } | RuleConfig::Remap { .. } |
             RuleConfig::Quantize { .. } | RuleConfig::Noise { .. } => "Math",
@@ -1387,6 +1434,41 @@ impl RuleConfig {
                 frequency: *frequency,
                 time_scale: 1.0,
             },
+            // Springs
+            RuleConfig::ChainSprings { stiffness, damping, rest_length, max_stretch } => Rule::ChainSprings {
+                stiffness: *stiffness,
+                damping: *damping,
+                rest_length: *rest_length,
+                max_stretch: *max_stretch,
+            },
+            RuleConfig::RadialSprings { hub_stiffness, ring_stiffness, damping, hub_length, ring_length } => Rule::RadialSprings {
+                hub_stiffness: *hub_stiffness,
+                ring_stiffness: *ring_stiffness,
+                damping: *damping,
+                hub_length: *hub_length,
+                ring_length: *ring_length,
+            },
+            // Advanced Physics
+            RuleConfig::DensityBuoyancy { density_field, medium_density, strength } => Rule::DensityBuoyancy {
+                density_field: density_field.clone(),
+                medium_density: *medium_density,
+                strength: *strength,
+            },
+            RuleConfig::Diffuse { field, rate, radius } => Rule::Diffuse {
+                field: field.clone(),
+                rate: *rate,
+                radius: *radius,
+            },
+            RuleConfig::Mass { field } => Rule::Mass {
+                field: field.clone(),
+            },
+            RuleConfig::Refractory { trigger, charge, active_threshold, depletion_rate, regen_rate } => Rule::Refractory {
+                trigger: trigger.clone(),
+                charge: charge.clone(),
+                active_threshold: *active_threshold,
+                depletion_rate: *depletion_rate,
+                regen_rate: *regen_rate,
+            },
         }
     }
 
@@ -1400,7 +1482,8 @@ impl RuleConfig {
             RuleConfig::SurfaceTension { .. } | RuleConfig::Magnetism { .. } |
             RuleConfig::Chase { .. } | RuleConfig::Evade { .. } | RuleConfig::Convert { .. } |
             RuleConfig::NeighborCustom { .. } | RuleConfig::OnCollision { .. } |
-            RuleConfig::DLA { .. }
+            RuleConfig::DLA { .. } | RuleConfig::Diffuse { .. } |
+            RuleConfig::NeighborCustomDynamic { .. }
         )
     }
 
@@ -1773,9 +1856,11 @@ impl SimConfig {
         Ok(config)
     }
 
-    /// Check if any rules require spatial hashing
+    /// Check if any rules or features require spatial hashing
     pub fn needs_spatial(&self) -> bool {
-        self.rules.iter().any(|r| r.requires_neighbors())
+        self.visuals.connections_enabled
+            || self.visuals.spatial_grid_opacity > 0.0
+            || self.rules.iter().any(|r| r.requires_neighbors())
     }
 
     /// Create a FieldRegistry from the config.

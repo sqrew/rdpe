@@ -583,6 +583,20 @@ fn field_gradient(field_idx: u32, pos: vec3<f32>, epsilon: f32) -> vec3<f32> {
 }
 "#);
 
+        // Generate named gradient helper functions for each field
+        // These are convenience wrappers used by Rule::Current
+        code.push_str("\n// Named gradient helpers for Rule::Current\n");
+        for (i, (name, _)) in self.fields.iter().enumerate() {
+            code.push_str(&format!(
+                r#"fn field_{name}_gradient(pos: vec3<f32>) -> vec3<f32> {{
+    return field_gradient({i}u, pos, 0.05);
+}}
+"#,
+                name = name,
+                i = i,
+            ));
+        }
+
         code
     }
 }

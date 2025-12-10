@@ -733,6 +733,81 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
             changed |= ui.add(egui::Slider::new(amplitude, 0.0..=2.0).text("Amplitude")).changed();
             changed |= ui.add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency")).changed();
         }
+
+        // Springs
+        RuleConfig::ChainSprings { stiffness, damping, rest_length, max_stretch } => {
+            changed |= ui.add(egui::Slider::new(stiffness, 1.0..=1000.0).logarithmic(true).text("Stiffness")).changed();
+            changed |= ui.add(egui::Slider::new(damping, 0.0..=50.0).text("Damping")).changed();
+            changed |= ui.add(egui::Slider::new(rest_length, 0.001..=0.5).text("Rest Length")).changed();
+            ui.horizontal(|ui| {
+                let mut has_max = max_stretch.is_some();
+                if ui.checkbox(&mut has_max, "Max Stretch").changed() {
+                    if has_max {
+                        *max_stretch = Some(1.5);
+                    } else {
+                        *max_stretch = None;
+                    }
+                    changed = true;
+                }
+                if let Some(max_s) = max_stretch {
+                    changed |= ui.add(egui::Slider::new(max_s, 1.0..=3.0).text("")).changed();
+                }
+            });
+        }
+        RuleConfig::RadialSprings { hub_stiffness, ring_stiffness, damping, hub_length, ring_length } => {
+            changed |= ui.add(egui::Slider::new(hub_stiffness, 1.0..=500.0).logarithmic(true).text("Hub Stiffness")).changed();
+            changed |= ui.add(egui::Slider::new(ring_stiffness, 1.0..=500.0).logarithmic(true).text("Ring Stiffness")).changed();
+            changed |= ui.add(egui::Slider::new(damping, 0.0..=50.0).text("Damping")).changed();
+            changed |= ui.add(egui::Slider::new(hub_length, 0.01..=1.0).text("Hub Length")).changed();
+            changed |= ui.add(egui::Slider::new(ring_length, 0.01..=1.0).text("Ring Length")).changed();
+        }
+
+        // Advanced Physics
+        RuleConfig::DensityBuoyancy { density_field, medium_density, strength } => {
+            ui.horizontal(|ui| {
+                ui.label("Density Field:");
+                if ui.text_edit_singleline(density_field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(medium_density, 0.1..=10.0).text("Medium Density")).changed();
+            changed |= ui.add(egui::Slider::new(strength, 0.1..=20.0).text("Strength")).changed();
+        }
+        RuleConfig::Diffuse { field, rate, radius } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(rate, 0.0..=1.0).text("Rate")).changed();
+            changed |= ui.add(egui::Slider::new(radius, 0.01..=0.5).text("Radius")).changed();
+        }
+        RuleConfig::Mass { field } => {
+            ui.horizontal(|ui| {
+                ui.label("Mass Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Refractory { trigger, charge, active_threshold, depletion_rate, regen_rate } => {
+            ui.horizontal(|ui| {
+                ui.label("Trigger Field:");
+                if ui.text_edit_singleline(trigger).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Charge Field:");
+                if ui.text_edit_singleline(charge).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui.add(egui::Slider::new(active_threshold, 0.0..=1.0).text("Active Threshold")).changed();
+            changed |= ui.add(egui::Slider::new(depletion_rate, 0.0..=5.0).text("Depletion Rate")).changed();
+            changed |= ui.add(egui::Slider::new(regen_rate, 0.0..=2.0).text("Regen Rate")).changed();
+        }
     }
 
     changed

@@ -5597,8 +5597,8 @@ impl Rule {
                 r#"    // Scale by speed
     {{
         let speed = length(p.velocity);
-        let t = clamp(speed / {max_speed}, 0.0, 1.0);
-        p.scale = mix({min_scale}, {max_scale}, t);
+        let t = clamp(speed / {max_speed:.6}, 0.0, 1.0);
+        p.scale = mix({min_scale:.6}, {max_scale:.6}, t);
     }}"#
             ),
 
@@ -5668,7 +5668,7 @@ impl Rule {
             Rule::Die { condition, field } => format!(
                 r#"    // Die (conditional death)
     if {condition} {{
-        p.{field} = false;
+        p.{field} = 0u;
     }}"#
             ),
 
@@ -5836,12 +5836,12 @@ impl Rule {
 
             Rule::Grow { rate, min, max } => format!(
                 r#"    // Grow (scale over time)
-    p.scale = clamp(p.scale + {rate} * uniforms.delta_time, {min}, {max});"#
+    p.scale = clamp(p.scale + {rate:.6} * uniforms.delta_time, {min:.6}, {max:.6});"#
             ),
 
             Rule::Decay { field, rate } => format!(
                 r#"    // Decay (multiplicative)
-    p.{field} *= pow({rate}, uniforms.delta_time);"#
+    p.{field} *= pow({rate:.6}, uniforms.delta_time);"#
             ),
 
             Rule::DensityBuoyancy { density_field, medium_density, strength } => format!(

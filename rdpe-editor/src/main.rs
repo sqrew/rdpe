@@ -59,6 +59,8 @@ struct EditorApp {
     needs_reset: bool,
     /// Track previous background color for live updates
     last_background_color: [f32; 3],
+    /// Track previous grid opacity for live updates
+    last_grid_opacity: f32,
     /// State for the add uniform UI
     add_uniform_state: AddUniformState,
     /// State for the export panel
@@ -82,6 +84,7 @@ impl EditorApp {
         }
 
         let last_background_color = config.visuals.background_color;
+        let last_grid_opacity = config.visuals.spatial_grid_opacity;
         let applied_config = config.clone();
         let previous_config = config.clone();
 
@@ -95,6 +98,7 @@ impl EditorApp {
             needs_rebuild: false,
             needs_reset: false,
             last_background_color,
+            last_grid_opacity,
             add_uniform_state: AddUniformState::default(),
             export_panel_state: ExportPanelState::default(),
             selected_tab: SidebarTab::default(),
@@ -217,7 +221,7 @@ impl eframe::App for EditorApp {
                 || self.config.visuals.connections_radius != self.previous_config.visuals.connections_radius
                 || self.config.visuals.velocity_stretch != self.previous_config.visuals.velocity_stretch
                 || self.config.visuals.velocity_stretch_factor != self.previous_config.visuals.velocity_stretch_factor
-                || self.config.visuals.spatial_grid_opacity != self.previous_config.visuals.spatial_grid_opacity
+                // Note: spatial_grid_opacity is hot-swappable, not here
                 || self.config.visuals.wireframe != self.previous_config.visuals.wireframe
                 || self.config.visuals.wireframe_thickness != self.previous_config.visuals.wireframe_thickness
                 || self.config.custom_shaders != self.previous_config.custom_shaders
@@ -264,6 +268,16 @@ impl eframe::App for EditorApp {
                 }
             }
             self.last_background_color = self.config.visuals.background_color;
+        }
+
+        // Live update: grid opacity (hot-swappable)
+        if self.config.visuals.spatial_grid_opacity != self.last_grid_opacity {
+            if let Some(ref state) = wgpu_render_state {
+                if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
+                    sim.set_grid_opacity(&state.queue, self.config.visuals.spatial_grid_opacity);
+                }
+            }
+            self.last_grid_opacity = self.config.visuals.spatial_grid_opacity;
         }
 
         // Live update: custom uniform values (hot-swappable)
