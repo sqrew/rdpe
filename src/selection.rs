@@ -31,6 +31,7 @@
 //!     .run();
 //! ```
 
+#[cfg(feature = "egui")]
 use crate::ParticleTrait;
 
 /// Internal wrapper for storing selection index in egui's data.

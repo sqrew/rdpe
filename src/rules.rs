@@ -4515,6 +4515,37 @@ impl Rule {
     }
 }
 
+// Macro to generate accumulator checker methods for the Rule enum.
+// Each generated method returns true if the rule uses a specific accumulator type.
+macro_rules! define_accumulator_checker {
+    ($fn_name:ident, $($variant:ident),+) => {
+        macro_rules! $fn_name {
+            ($self:ident) => {
+                pub(crate) fn $fn_name(&$self) -> bool {
+                    match $self {
+                        $(Rule::$variant { .. })|+ => true,
+                        Rule::Typed { rule, .. } => rule.$fn_name(),
+                        _ => false,
+                    }
+                }
+            };
+        }
+    };
+}
+
+define_accumulator_checker!(needs_cohesion_accumulator, Cohere, Flock);
+define_accumulator_checker!(needs_alignment_accumulator, Align, Flock);
+define_accumulator_checker!(needs_chase_accumulator, Chase);
+define_accumulator_checker!(needs_evade_accumulator, Evade);
+define_accumulator_checker!(needs_viscosity_accumulator, Viscosity);
+define_accumulator_checker!(needs_pressure_accumulator, Pressure);
+define_accumulator_checker!(needs_surface_tension_accumulator, SurfaceTension);
+define_accumulator_checker!(needs_avoid_accumulator, Avoid);
+define_accumulator_checker!(needs_diffuse_accumulator, Diffuse);
+define_accumulator_checker!(needs_accumulate_accumulator, Accumulate);
+define_accumulator_checker!(needs_signal_accumulator, Signal);
+define_accumulator_checker!(needs_absorb_accumulator, Absorb);
+
 impl Rule {
     /// Returns `true` if this is an OnDeath rule.
     pub fn is_on_death(&self) -> bool {
@@ -4590,113 +4621,18 @@ impl Rule {
         }
     }
 
-    /// Returns `true` if this rule uses cohesion accumulators.
-    pub(crate) fn needs_cohesion_accumulator(&self) -> bool {
-        match self {
-            Rule::Cohere { .. } | Rule::Flock { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_cohesion_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses alignment accumulators.
-    pub(crate) fn needs_alignment_accumulator(&self) -> bool {
-        match self {
-            Rule::Align { .. } | Rule::Flock { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_alignment_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses chase accumulators.
-    pub(crate) fn needs_chase_accumulator(&self) -> bool {
-        match self {
-            Rule::Chase { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_chase_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses evade accumulators.
-    pub(crate) fn needs_evade_accumulator(&self) -> bool {
-        match self {
-            Rule::Evade { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_evade_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses viscosity accumulators.
-    pub(crate) fn needs_viscosity_accumulator(&self) -> bool {
-        match self {
-            Rule::Viscosity { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_viscosity_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses pressure accumulators.
-    pub(crate) fn needs_pressure_accumulator(&self) -> bool {
-        match self {
-            Rule::Pressure { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_pressure_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses surface tension accumulators.
-    pub(crate) fn needs_surface_tension_accumulator(&self) -> bool {
-        match self {
-            Rule::SurfaceTension { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_surface_tension_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses avoid accumulators.
-    pub(crate) fn needs_avoid_accumulator(&self) -> bool {
-        match self {
-            Rule::Avoid { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_avoid_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses diffuse accumulators.
-    pub(crate) fn needs_diffuse_accumulator(&self) -> bool {
-        match self {
-            Rule::Diffuse { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_diffuse_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses accumulate accumulators.
-    pub(crate) fn needs_accumulate_accumulator(&self) -> bool {
-        match self {
-            Rule::Accumulate { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_accumulate_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses signal accumulators.
-    pub(crate) fn needs_signal_accumulator(&self) -> bool {
-        match self {
-            Rule::Signal { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_signal_accumulator(),
-            _ => false,
-        }
-    }
-
-    /// Returns `true` if this rule uses absorb accumulators.
-    pub(crate) fn needs_absorb_accumulator(&self) -> bool {
-        match self {
-            Rule::Absorb { .. } => true,
-            Rule::Typed { rule, .. } => rule.needs_absorb_accumulator(),
-            _ => false,
-        }
-    }
+    needs_cohesion_accumulator!(self);
+    needs_alignment_accumulator!(self);
+    needs_chase_accumulator!(self);
+    needs_evade_accumulator!(self);
+    needs_viscosity_accumulator!(self);
+    needs_pressure_accumulator!(self);
+    needs_surface_tension_accumulator!(self);
+    needs_avoid_accumulator!(self);
+    needs_diffuse_accumulator!(self);
+    needs_accumulate_accumulator!(self);
+    needs_signal_accumulator!(self);
+    needs_absorb_accumulator!(self);
 
     /// Generate WGSL code for non-neighbor rules.
     pub fn to_wgsl(&self, bounds: f32) -> String {
