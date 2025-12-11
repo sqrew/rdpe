@@ -52,6 +52,7 @@ Most particle systems are either too low-level (raw compute shaders) or too rigi
 - **Composable** — Stack rules, mix built-ins with custom WGSL
 - **Fast** — GPU-resident simulation with O(N) neighbor queries via radix-sorted spatial hashing
 - **Flexible** — Custom particle fields, typed interactions, spatial fields, runtime uniforms
+- **Portable** — Runs everywhere WGPU does: desktop, Raspberry Pi, even browsers via WebGPU
 
 ## Installation
 
@@ -73,7 +74,7 @@ rdpe = { version = "0.1", features = ["egui"] }
 
 - Rust 1.70+
 - GPU with Vulkan, Metal, or DX12 support
-- Windows, macOS, or Linux
+- Windows, macOS, Linux (including Raspberry Pi and ARM devices)
 
 ## Quick Start
 
@@ -107,7 +108,6 @@ cargo run --package rdpe-editor
 - **100+ Rules** — All rules accessible through dropdown menus
 - **Visual Configuration** — Particle shapes, colors, blend modes, trails
 - **Custom WGSL** — Write custom shader code with live validation
-- **3D Fields** — Configure spatial fields with volume rendering
 - **Code Export** — Generate standalone Rust code from your configuration
 - **18 Presets** — Pre-built simulations to start from
 
@@ -121,23 +121,19 @@ cargo run --package rdpe-editor
 
 **Field Effects** — `Vortex`, `Turbulence`, `Orbit`, `Curl`, `Wind`, `Current`, `DensityBuoyancy`, `Diffuse`, `Gradient`
 
-**Wave/Noise** — `Oscillate`, `PositionNoise`, `Wander`, `Lerp`, `Noise`, `Remap`, `Smooth`, `Quantize`, `Modulo`
-
 **Flocking** — `Separate`, `Cohere`, `Align`, `Collide`, `Avoid`, `Flock`, `Sync`
 
 **Fluid** — `NBodyGravity`, `Viscosity`, `Pressure`, `SurfaceTension`, `Buoyancy`, `Friction`, `LennardJones`, `DLA`
 
 **Multi-Species** — `Typed`, `Chase`, `Evade`, `Convert`, `Magnetism`, `Absorb`, `Consume`, `Signal`
 
-**Lifecycle** — `Age`, `Lifetime`, `FadeOut`, `ShrinkOut`, `ColorOverLife`, `ColorBySpeed`, `ColorByAge`, `ScaleBySpeed`, `Die`, `Grow`, `Decay`, `Split`
+**Lifecycle** — `Age`, `Lifetime`, `FadeOut`, `ShrinkOut`, `ColorOverLife`, `ColorBySpeed`, `Die`, `Grow`, `Decay`, `Split`
 
-**Logic/Control** — `Custom`, `NeighborCustom`, `Maybe`, `Trigger`, `Periodic`, `State`, `Agent`, `Threshold`, `Gate`, `Select`, `Blend`, `And`, `Or`, `Not`, `Xor`, `Hysteresis`, `Latch`, `Tween`
+**Logic/Control** — `Custom`, `NeighborCustom`, `Maybe`, `Trigger`, `Periodic`, `State`, `Agent`, `Switch`, `Threshold`, `Gate`
 
-**Spring Systems** — `BondSprings`, `ChainSprings`, `RadialSprings`, `OnCollision`
+**Events** — `OnSpawn`, `OnDeath`, `OnCondition`, `OnInterval`, `OnCollision`
 
-**Events** — `OnSpawn`, `OnDeath`, `OnCondition`, `OnInterval`
-
-**Dynamic Rules** — `CustomDynamic`, `NeighborCustomDynamic`, `OnCollisionDynamic` (runtime-configurable)
+See the [full rule documentation](https://docs.rs/rdpe/latest/rdpe/rules/enum.Rule.html) for all 100+ rules.
 
 ### Custom Rules
 
@@ -145,7 +141,6 @@ Drop into WGSL when built-ins aren't enough:
 
 ```rust
 .with_rule(Rule::Custom(r#"
-    // Available: p (particle), uniforms.time, index
     p.velocity.y += sin(uniforms.time + p.position.x * 5.0) * 0.1;
     p.color = hsv_to_rgb(p.age * 0.1, 0.8, 1.0);
 "#.into()))
@@ -157,14 +152,8 @@ O(N) neighbor queries via Morton-encoded radix sort:
 
 ```rust
 .with_spatial_config(0.1, 32)  // cell_size, grid_resolution
-.with_max_neighbors(48)        // cap for performance in dense clusters
+.with_max_neighbors(48)        // cap for dense clusters
 ```
-
-**How it works:**
-1. Each particle's position is encoded into a 30-bit Morton code (10 bits per axis)
-2. GPU radix sort orders particles by Morton code — preserving spatial locality
-3. Cell lookup tables enable O(1) access to neighbors in 27 adjacent cells
-4. `max_neighbors` bounds the inner loop to prevent quadratic behavior in dense regions
 
 ### Typed Particles
 
@@ -179,12 +168,6 @@ enum Species { Fish, Shark }
     target_type: Species::Fish.into(),
     radius: 0.3,
     strength: 0.5,
-})
-.with_rule(Rule::Evade {
-    self_type: Species::Fish.into(),
-    threat_type: Species::Shark.into(),
-    radius: 0.2,
-    strength: 2.0,
 })
 ```
 
@@ -203,12 +186,6 @@ enum Species { Fish, Shark }
 "#.into()))
 ```
 
-**Field processing pipeline:**
-1. Particles atomically write to field (parallel-safe via i32 atomics)
-2. Merge pass converts atomic counts to floats
-3. Blur pass diffuses values (configurable iterations)
-4. Decay pass fades values toward zero
-
 ### Sub-Emitters
 
 Particles that spawn particles:
@@ -220,37 +197,18 @@ Particles that spawn particles:
     .with_inherit_velocity(0.3))
 ```
 
-### Particle Messaging
-
-Direct particle-to-particle communication:
-
-```rust
-.with_inbox()
-.with_rule(Rule::NeighborCustom(r#"
-    inbox_send(other_idx, 0u, p.energy * 0.1);  // send to neighbor
-"#.into()))
-.with_rule(Rule::Custom(r#"
-    let received = inbox_receive_at(index, 0u);  // receive accumulated
-    p.energy += received;
-"#.into()))
-```
-
 ### Visual Effects
 
 - **Post-processing** — Bloom, chromatic aberration, CRT, custom shaders
-- **Velocity stretch** — Elongate particles in motion direction
 - **Trails** — Motion blur / light trails
 - **Connections** — Lines between nearby particles
 - **Wireframe meshes** — Render particles as 3D wireframe shapes
 - **Volume rendering** — 3D field visualization with raymarching
-- **Palettes** — 12 built-in color schemes (Viridis, Plasma, Fire, Neon, etc.)
-- **Blend modes** — Alpha, Additive, Multiply
-- **Shapes** — Circle, Square, Triangle
+- **Palettes** — 12 built-in color schemes
 
 ### Runtime Controls
 
 ```rust
-// egui integration (--features egui)
 .with_uniform("strength", 1.0)
 .with_ui(|ctx| {
     egui::Window::new("Controls").show(ctx, |ui| {
@@ -259,10 +217,7 @@ Direct particle-to-particle communication:
 })
 .with_update(|ctx| {
     ctx.set("strength", new_value);
-
-    // Input handling
     if ctx.input.key_pressed(KeyCode::Space) { /* ... */ }
-    if ctx.input.mouse_held(MouseButton::Left) { /* ... */ }
 })
 ```
 
@@ -273,10 +228,10 @@ Direct particle-to-particle communication:
 | Category | Examples |
 |----------|----------|
 | **Core** | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
-| **Simulation** | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field`, `neural_network` |
+| **Simulation** | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field` |
 | **Forces** | `galaxy`, `gravity_visualizer`, `shockwave`, `glow` |
-| **Visual** | `custom_shader`, `custom_vertex`, `post_process`, `wireframe`, `volume_render`, `texture_example` |
-| **Advanced** | `multi_particle`, `multi_field`, `inbox`, `agent_demo`, `custom_dynamic` |
+| **Visual** | `custom_shader`, `post_process`, `wireframe`, `volume_render` |
+| **Advanced** | `multi_particle`, `multi_field`, `inbox`, `agent_demo` |
 | **Experimental** | 20+ creative examples in `examples/experimental/` |
 
 ```bash
@@ -285,11 +240,27 @@ cargo run --example slime_mold_field --features egui
 cargo run --example galaxy
 ```
 
+## Performance
+
+All simulation runs on GPU compute shaders with no CPU-GPU sync during updates.
+
+| Scenario | Particles | Notes |
+|----------|-----------|-------|
+| No neighbors | 500k+ | Compute-bound only |
+| Full boids | 50k+ | Neighbor-bound |
+| With spatial fields | 100k+ | Field resolution dependent |
+
+### Tuning Tips
+
+- **`cell_size`** — Should be >= your largest interaction radius
+- **`grid_resolution`** — Power-of-2 (16, 32, 64, 128); larger grids cost more
+- **`max_neighbors`** — Cap at 32-64 to prevent O(N²) in dense clusters
+- **Field resolution** — Scales as N³; use lower res with more blur for same effect
+- **Rule order** — Put cheap rules first; neighbor rules cost more
+
 ## Architecture
 
-RDPE is designed around a GPU-first philosophy: all simulation state lives on the GPU with no CPU-GPU sync during frame updates.
-
-### Core Components
+RDPE is GPU-first: all simulation state lives on the GPU with no CPU-GPU sync during frame updates. Rules compile into a single compute shader to minimize dispatch overhead.
 
 | Component | Purpose |
 |-----------|---------|
@@ -297,83 +268,9 @@ RDPE is designed around a GPU-first philosophy: all simulation state lives on th
 | **Rules** | 100+ composable behaviors compiled into compute shader |
 | **Spatial Hashing** | Radix sort + Morton codes for O(N) neighbor discovery |
 | **Fields** | 3D grids with atomic writes, blur, decay |
-| **Derive Macros** | Auto-generate GPU structs with proper WGSL alignment |
-| **Visual Editor** | GUI for designing simulations without code |
+| **Derive Macros** | Auto-generate GPU structs with proper alignment |
 
-### Memory Layout
-
-Particles use 16-byte aligned structs for optimal GPU access. The derive macro handles padding automatically:
-
-```rust
-#[derive(Particle)]  // Generates aligned GPU struct
-struct MyParticle {
-    position: Vec3,  // 12 bytes + 4 padding
-    velocity: Vec3,  // 12 bytes + 4 padding
-    // ...
-}
-```
-
-### Shader Generation
-
-Rules compile into a monolithic compute shader:
-1. Built-in utilities (noise, random, color, lifecycle)
-2. Particle and field struct definitions
-3. Uniforms and buffer bindings
-4. Rule logic in execution order
-5. Velocity integration
-
-This single-kernel approach minimizes synchronization overhead.
-
-## Performance
-
-All simulation runs on GPU compute shaders with no CPU-GPU synchronization during updates.
-
-| Scenario | Particles | Notes |
-|----------|-----------|-------|
-| No neighbors (gravity, drag, etc.) | 500k+ | Compute-bound only |
-| Full boids (separate, cohere, align) | 50k+ | Neighbor-bound |
-| With spatial fields | 100k+ | Field resolution dependent |
-
-### Tuning Guide
-
-**Spatial Hashing** (most important):
-- `cell_size` should be >= your largest interaction radius
-- Too small: excessive sorting overhead
-- Too large: too many neighbors per cell (quadratic behavior)
-- `grid_resolution` must be power-of-2 (16, 32, 64, 128, 256)
-
-**Neighbor Limits**:
-- `with_max_neighbors(N)` caps neighbor processing per particle
-- Critical for dense clusters — prevents worst-case O(N²) behavior
-- Typical values: 32-64 for flocking, 16-32 for collision-only
-
-**Fields**:
-- Resolution scales as N³ — 128³ costs 8x more than 64³
-- Use lower resolution with more blur iterations for equivalent visuals
-- `decay` near 1.0 (e.g., 0.98) for persistent fields; lower for quick fade
-
-**Rule Complexity**:
-- Rules execute in add order — put cheap rules first
-- Neighbor rules are more expensive than non-neighbor rules
-- Custom WGSL isn't optimized — keep it simple
-
-### Memory Usage
-
-```
-Particles:     count × stride (typically 64-128 bytes each)
-Spatial grid:  resolution³ × 8 bytes (cell start/end indices)
-Morton codes:  count × 16 bytes (two buffers for ping-pong sort)
-Fields:        resolution³ × 4 bytes per scalar field × 3 buffers
-```
-
-Example: 50k particles, 64³ grid, one 64³ field:
-- Particles: ~6 MB
-- Spatial: ~2 MB
-- Morton: ~1.5 MB
-- Field: ~3 MB
-- **Total: ~12.5 MB GPU VRAM**
-
-## API Reference
+## API
 
 ### Particle Definition
 
@@ -385,14 +282,9 @@ struct MyParticle {
     #[color]
     color: Vec3,        // Optional - particle tint
     particle_type: u32, // Optional - for typed interactions
-
-    // Custom fields accessible in WGSL
-    energy: f32,
-    phase: f32,
+    energy: f32,        // Custom fields accessible in WGSL
 }
 ```
-
-The derive macro auto-injects `age`, `alive`, and `scale` fields for lifecycle management.
 
 ### Simulation Builder
 
@@ -400,49 +292,18 @@ The derive macro auto-injects `age`, `alive`, and `scale` fields for lifecycle m
 Simulation::<P>::new()
     .with_particle_count(n)
     .with_bounds(size)
-    .with_particle_size(radius)
-    .with_spawner(|ctx| -> P { ... })  // ctx.index, ctx.count, ctx.bounds
+    .with_spawner(|ctx| -> P { ... })
     .with_spatial_config(cell_size, grid_resolution)
-    .with_max_neighbors(max)
     .with_field(name, config)
-    .with_emitter(emitter)
-    .with_sub_emitter(sub_emitter)
-    .with_inbox()
     .with_rule(rule)
     .with_uniform(name, value)
     .with_visuals(|v| { ... })
-    .with_ui(|ctx| { ... })          // requires egui feature
+    .with_ui(|ctx| { ... })      // requires egui feature
     .with_update(|ctx| { ... })
     .run();
 ```
 
-### Built-in WGSL Functions
-
-Available in custom rules:
-
-```wgsl
-// Random
-hash(u32) -> u32
-rand() -> f32                    // 0..1
-rand_range(min, max) -> f32
-rand_sphere() -> vec3<f32>       // uniform point in unit sphere
-
-// Noise
-noise2(vec2) -> f32              // simplex noise
-noise3(vec3) -> f32
-fbm2(vec2, octaves) -> f32       // fractal brownian motion
-fbm3(vec3, octaves) -> f32
-
-// Color
-hsv_to_rgb(h, s, v) -> vec3<f32>
-rgb_to_hsv(r, g, b) -> vec3<f32>
-
-// Lifecycle
-kill_particle()                   // mark dead
-respawn_at(position, velocity)    // resurrect
-is_alive() -> bool
-is_dead() -> bool
-```
+See the [API documentation](https://docs.rs/rdpe) for full details.
 
 ## License
 
