@@ -98,7 +98,8 @@ fn generate_compute_shader_simple(config: &SimConfig, rules: &[Rule], particle_s
 
 // Mouse interaction data
 struct Mouse {{
-    pos: vec4<f32>,                    // xyz = world position
+    ray_origin: vec4<f32>,             // xyz = camera/ray origin
+    ray_dir: vec4<f32>,                // xyz = normalized ray direction
     down_radius_strength: vec4<f32>,   // x = down (0/1), y = radius, z = strength
     color: vec4<f32>,                  // rgb = color for paint/spawn
 }}
@@ -136,11 +137,18 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
     let bounds = {bounds:.6};
 
     // Mouse interaction helpers (needed for early mouse powers)
-    let mouse_pos = uniforms.mouse.pos.xyz;
+    let mouse_ray_origin = uniforms.mouse.ray_origin.xyz;
+    let mouse_ray_dir = uniforms.mouse.ray_dir.xyz;
     let mouse_down = uniforms.mouse.down_radius_strength.x;
     let mouse_radius = uniforms.mouse.down_radius_strength.y;
     let mouse_strength = uniforms.mouse.down_radius_strength.z;
     let mouse_color = uniforms.mouse.color.xyz;
+
+    // Compute closest point on mouse ray to this particle
+    // t = dot(p.position - ray_origin, ray_dir)
+    // closest_point = ray_origin + ray_dir * t
+    let mouse_t = dot(p.position - mouse_ray_origin, mouse_ray_dir);
+    let mouse_pos = mouse_ray_origin + mouse_ray_dir * max(mouse_t, 0.0);
 
     // ============================================
     // Early mouse powers (run on dead particles too)
@@ -244,7 +252,8 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
 
 // Mouse interaction data
 struct Mouse {{
-    pos: vec4<f32>,                    // xyz = world position
+    ray_origin: vec4<f32>,             // xyz = camera/ray origin
+    ray_dir: vec4<f32>,                // xyz = normalized ray direction
     down_radius_strength: vec4<f32>,   // x = down (0/1), y = radius, z = strength
     color: vec4<f32>,                  // rgb = color for paint/spawn
 }}
@@ -306,11 +315,18 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
     let bounds = {bounds:.6};
 
     // Mouse interaction helpers (needed for early mouse powers)
-    let mouse_pos = uniforms.mouse.pos.xyz;
+    let mouse_ray_origin = uniforms.mouse.ray_origin.xyz;
+    let mouse_ray_dir = uniforms.mouse.ray_dir.xyz;
     let mouse_down = uniforms.mouse.down_radius_strength.x;
     let mouse_radius = uniforms.mouse.down_radius_strength.y;
     let mouse_strength = uniforms.mouse.down_radius_strength.z;
     let mouse_color = uniforms.mouse.color.xyz;
+
+    // Compute closest point on mouse ray to this particle
+    // t = dot(p.position - ray_origin, ray_dir)
+    // closest_point = ray_origin + ray_dir * t
+    let mouse_t = dot(p.position - mouse_ray_origin, mouse_ray_dir);
+    let mouse_pos = mouse_ray_origin + mouse_ray_dir * max(mouse_t, 0.0);
 
     // ============================================
     // Early mouse powers (run on dead particles too)

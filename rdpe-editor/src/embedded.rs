@@ -39,8 +39,10 @@ const BASE_UNIFORMS_SIZE: usize = std::mem::size_of::<BaseUniforms>();
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct MouseUniforms {
-    /// Mouse position in world space (xyz) + padding
-    pub pos: [f32; 4],
+    /// Ray origin (camera position) in world space (xyz) + padding
+    pub ray_origin: [f32; 4],
+    /// Ray direction (normalized) in world space (xyz) + padding
+    pub ray_dir: [f32; 4],
     /// Mouse button down (1.0) or up (0.0) + radius + strength + padding
     pub down_radius_strength_pad: [f32; 4],
     /// Mouse color (rgb) + padding
@@ -52,8 +54,10 @@ const MOUSE_UNIFORMS_SIZE: usize = std::mem::size_of::<MouseUniforms>();
 /// Current mouse state for the simulation.
 #[derive(Clone, Debug, Default)]
 pub struct MouseState {
-    /// Mouse position in world space
-    pub world_pos: Vec3,
+    /// Ray origin (camera position)
+    pub ray_origin: Vec3,
+    /// Ray direction (normalized)
+    pub ray_dir: Vec3,
     /// Whether the primary mouse button is held
     pub is_down: bool,
 }
@@ -508,7 +512,8 @@ fn build_uniform_data(
 
     // Write mouse uniforms
     let mouse = MouseUniforms {
-        pos: [mouse_state.world_pos.x, mouse_state.world_pos.y, mouse_state.world_pos.z, 0.0],
+        ray_origin: [mouse_state.ray_origin.x, mouse_state.ray_origin.y, mouse_state.ray_origin.z, 0.0],
+        ray_dir: [mouse_state.ray_dir.x, mouse_state.ray_dir.y, mouse_state.ray_dir.z, 0.0],
         down_radius_strength_pad: [
             if mouse_state.is_down { 1.0 } else { 0.0 },
             mouse_config.radius,
@@ -2671,9 +2676,10 @@ impl SimulationResources {
         }
     }
 
-    /// Update mouse state (position and button).
-    pub fn set_mouse_state(&mut self, world_pos: Vec3, is_down: bool) {
-        self.mouse_state.world_pos = world_pos;
+    /// Update mouse state (ray and button).
+    pub fn set_mouse_state(&mut self, ray_origin: Vec3, ray_dir: Vec3, is_down: bool) {
+        self.mouse_state.ray_origin = ray_origin;
+        self.mouse_state.ray_dir = ray_dir;
         self.mouse_state.is_down = is_down;
     }
 
@@ -3229,8 +3235,17 @@ impl EmbeddedSimulation {
                     let ndc_x = (pos.x - rect.left()) / rect.width() * 2.0 - 1.0;
                     let ndc_y = 1.0 - (pos.y - rect.top()) / rect.height() * 2.0;
 
-                    // Unproject near and far points for ray construction
-                    let inv_vp = sim.last_inv_view_proj;
+                    // Compute view-projection matrix fresh to match current viewport
+                    let aspect_ratio = rect.width() / rect.height().max(1.0);
+                    let eye = Vec3::new(
+                        sim.camera_distance * sim.camera_yaw.cos() * sim.camera_pitch.cos(),
+                        sim.camera_distance * sim.camera_pitch.sin(),
+                        sim.camera_distance * sim.camera_yaw.sin() * sim.camera_pitch.cos(),
+                    );
+                    let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
+                    let proj = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 0.1, 100.0);
+                    let view_proj = proj * view;
+                    let inv_vp = view_proj.inverse();
 
                     let near_clip = glam::Vec4::new(ndc_x, ndc_y, -1.0, 1.0);
                     let near_world = inv_vp * near_clip;
@@ -3249,18 +3264,12 @@ impl EmbeddedSimulation {
                     );
 
                     let ray_dir = (far_point - near_point).normalize();
-                    let camera_pos = sim.last_camera_pos;
 
-                    // Find the closest point on the ray to the origin
-                    // For ray P = camera_pos + t * ray_dir, closest point to origin is at:
-                    // t = dot(origin - camera_pos, ray_dir) = -dot(camera_pos, ray_dir)
-                    let t = -camera_pos.dot(ray_dir);
-                    let world_pos = camera_pos + ray_dir * t.max(0.1);
-
-                    sim.set_mouse_state(world_pos, power_active);
+                    // Pass the ray to the shader - it will check distance from each particle to the ray
+                    sim.set_mouse_state(eye, ray_dir, power_active);
                 } else {
                     // Mouse not over viewport
-                    sim.set_mouse_state(Vec3::ZERO, false);
+                    sim.set_mouse_state(Vec3::ZERO, Vec3::Z, false);
                 }
 
                 // Run picking pass to update selection
