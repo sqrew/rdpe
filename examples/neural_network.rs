@@ -171,7 +171,7 @@ fn main() {
         .with_particle_count(num_neurons)
         .with_particle_size(0.004)
         .with_bounds(1.0)
-        .with_spawner(|ctx| particles[ctx.index as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         .with_spatial_config(0.1, 64)
         // Neural activity field (for local signal propagation)
         // Excitation decays quickly and spreads moderately

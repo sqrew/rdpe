@@ -51,7 +51,7 @@ path = "bench/bench_neighbors.rs"
 
 [[example]]
 name = "particle_life_interactive"
-path = "examples/particle_life_interactive.rs"
+path = "examples/experimental/particle_life_interactive.rs"
 required-features = ["egui"]
 
 # Experimental/creative examples in experimental/ subdirectory

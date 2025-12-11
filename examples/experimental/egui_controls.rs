@@ -84,8 +84,8 @@ fn main() {
     Simulation::<Ball>::new()
         .with_particle_count(5_000)
         .with_bounds(1.0)
-        .with_spawner(|ctx| {
-            let (pos, vel, color) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (pos, vel, color) = particles[ctx.index as usize];
             Ball {
                 position: pos,
                 velocity: vel,

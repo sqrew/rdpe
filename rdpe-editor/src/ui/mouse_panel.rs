@@ -35,6 +35,13 @@ pub fn render_mouse_panel(ui: &mut egui::Ui, mouse: &mut MouseConfig) -> bool {
         MousePower::Kill => "Shift+Click to destroy particles in radius",
         MousePower::Spawn => "Shift+Click to spawn particles at cursor",
         MousePower::BlackHole => "Shift+Click to suck in and destroy particles",
+        MousePower::Orbit => "Shift+Click to make particles orbit cursor",
+        MousePower::Scatter => "Shift+Click to scatter particles randomly",
+        MousePower::Wind => "Shift+Click to blow particles outward horizontally",
+        MousePower::Pulse => "Shift+Click to emit rhythmic expanding waves",
+        MousePower::Repulsor => "Shift+Click to push particles in a ring shape",
+        MousePower::SpiralIn => "Shift+Click to spiral particles inward like a drain",
+        MousePower::RandomVelocity => "Shift+Click to randomize particle velocities",
     };
     ui.label(egui::RichText::new(description).small().weak());
 

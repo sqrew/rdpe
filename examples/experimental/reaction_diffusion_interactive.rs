@@ -132,8 +132,8 @@ fn main() {
     Simulation::<Chemical>::new()
         .with_particle_count(PARTICLE_COUNT)
         .with_bounds(2.0)
-        .with_spawner(|ctx| {
-            let (x, y, z, ptype) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (x, y, z, ptype) = particles[ctx.index as usize];
 
             let color = if ptype == 0 {
                 Vec3::new(0.3, 0.7, 1.0)  // Cyan for U

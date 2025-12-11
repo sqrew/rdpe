@@ -2834,6 +2834,8 @@ impl SimulationResources {
 pub struct SimulationCallback {
     pub delta_time: f32,
     pub clear_color: [f32; 3],
+    pub viewport_width: f32,
+    pub viewport_height: f32,
 }
 
 impl egui_wgpu::CallbackTrait for SimulationCallback {
@@ -2841,12 +2843,12 @@ impl egui_wgpu::CallbackTrait for SimulationCallback {
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        screen_descriptor: &egui_wgpu::ScreenDescriptor,
+        _screen_descriptor: &egui_wgpu::ScreenDescriptor,
         _egui_encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        let aspect = screen_descriptor.size_in_pixels[0] as f32
-            / screen_descriptor.size_in_pixels[1] as f32;
+        // Use viewport dimensions for aspect ratio, not screen size
+        let aspect = self.viewport_width / self.viewport_height.max(1.0);
 
         if let Some(sim) = resources.get_mut::<SimulationResources>() {
             sim.prepare(device, queue, self.delta_time, aspect)
@@ -3227,29 +3229,33 @@ impl EmbeddedSimulation {
                     let ndc_x = (pos.x - rect.left()) / rect.width() * 2.0 - 1.0;
                     let ndc_y = 1.0 - (pos.y - rect.top()) / rect.height() * 2.0;
 
-                    // Cast ray from camera through NDC point
+                    // Unproject near and far points for ray construction
                     let inv_vp = sim.last_inv_view_proj;
-                    let near_point = inv_vp.transform_point3(Vec3::new(ndc_x, ndc_y, 0.0));
-                    let far_point = inv_vp.transform_point3(Vec3::new(ndc_x, ndc_y, 1.0));
+
+                    let near_clip = glam::Vec4::new(ndc_x, ndc_y, -1.0, 1.0);
+                    let near_world = inv_vp * near_clip;
+                    let near_point = Vec3::new(
+                        near_world.x / near_world.w,
+                        near_world.y / near_world.w,
+                        near_world.z / near_world.w,
+                    );
+
+                    let far_clip = glam::Vec4::new(ndc_x, ndc_y, 1.0, 1.0);
+                    let far_world = inv_vp * far_clip;
+                    let far_point = Vec3::new(
+                        far_world.x / far_world.w,
+                        far_world.y / far_world.w,
+                        far_world.z / far_world.w,
+                    );
+
                     let ray_dir = (far_point - near_point).normalize();
-
-                    // Intersect ray with a plane at the origin, facing the camera
-                    // Plane normal points from origin toward camera
                     let camera_pos = sim.last_camera_pos;
-                    let plane_normal = camera_pos.normalize();
 
-                    // Ray-plane intersection: t = -(ray_origin . normal) / (ray_dir . normal)
-                    let denom = ray_dir.dot(plane_normal);
-                    let world_pos = if denom.abs() > 0.0001 {
-                        let t = -near_point.dot(plane_normal) / denom;
-                        if t > 0.0 {
-                            near_point + ray_dir * t
-                        } else {
-                            Vec3::ZERO
-                        }
-                    } else {
-                        Vec3::ZERO
-                    };
+                    // Find the closest point on the ray to the origin
+                    // For ray P = camera_pos + t * ray_dir, closest point to origin is at:
+                    // t = dot(origin - camera_pos, ray_dir) = -dot(camera_pos, ray_dir)
+                    let t = -camera_pos.dot(ray_dir);
+                    let world_pos = camera_pos + ray_dir * t.max(0.1);
 
                     sim.set_mouse_state(world_pos, power_active);
                 } else {
@@ -3282,6 +3288,8 @@ impl EmbeddedSimulation {
         let callback = SimulationCallback {
             delta_time: self.delta_time,
             clear_color,
+            viewport_width: rect.width(),
+            viewport_height: rect.height(),
         };
 
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(

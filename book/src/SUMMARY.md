@@ -36,6 +36,10 @@
 - [Egui Integration](./advanced/egui-integration.md)
 - [Performance Tips](./advanced/performance.md)
 
+# Tools
+
+- [RDPE Editor](./editor.md)
+
 # Examples
 
 - [Running Examples](./examples.md)

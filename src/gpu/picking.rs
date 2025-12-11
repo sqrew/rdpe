@@ -2,6 +2,7 @@
 //!
 //! Renders particle indices to an offscreen texture and reads back
 //! the pixel under the cursor to determine which particle was clicked.
+#![allow(dead_code)]
 
 /// Picking state for GPU-based particle selection.
 pub struct PickingState {
@@ -60,7 +61,7 @@ impl PickingState {
 
         // Staging buffer for reading back selected particle's data
         // Round up to 256 bytes for alignment
-        let particle_buffer_size = ((particle_stride + 255) / 256) * 256;
+        let particle_buffer_size = particle_stride.div_ceil(256) * 256;
         let particle_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Particle Data Staging Buffer"),
             size: particle_buffer_size as u64,
@@ -340,15 +341,15 @@ impl PickingState {
     pub fn copy_pixel(&mut self, encoder: &mut wgpu::CommandEncoder) {
         if let Some((x, y)) = self.pending_pick {
             encoder.copy_texture_to_buffer(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &self.texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d { x, y, z: 0 },
                     aspect: wgpu::TextureAspect::All,
                 },
-                wgpu::ImageCopyBuffer {
+                wgpu::TexelCopyBufferInfo {
                     buffer: &self.staging_buffer,
-                    layout: wgpu::ImageDataLayout {
+                    layout: wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         // Must be aligned to COPY_BYTES_PER_ROW_ALIGNMENT (256)
                         bytes_per_row: Some(256),

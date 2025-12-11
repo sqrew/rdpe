@@ -1,3 +1,6 @@
+// Allow dead_code for public API methods that may not be used internally
+#![allow(dead_code)]
+
 mod camera;
 mod connections;
 mod field_gpu;
@@ -180,6 +183,7 @@ impl GpuState {
         particle_size: f32,
         connections_enabled: bool,
         connections_radius: f32,
+        connections_color: Vec3,
         inbox_enabled: bool,
         background_color: Vec3,
         post_process_shader: Option<&str>,
@@ -775,6 +779,7 @@ impl GpuState {
                 spatial_ref,
                 num_particles,
                 connections_radius,
+                connections_color,
                 particle_stride,
                 blend_mode,
                 config.format,
@@ -910,25 +915,21 @@ impl GpuState {
         ));
 
         // Wireframe mesh rendering (if configured)
-        let wireframe_state = if let Some(mesh) = wireframe_mesh {
-            Some(WireframeState::new(
-                &device,
-                &particle_buffer,
-                &uniform_buffer,
-                mesh,
-                wireframe_thickness,
-                particle_size,
-                num_particles,
-                particle_stride,
-                color_offset,
-                alive_offset,
-                scale_offset,
-                blend_mode,
-                surface_format,
-            ))
-        } else {
-            None
-        };
+        let wireframe_state = wireframe_mesh.map(|mesh| WireframeState::new(
+            &device,
+            &particle_buffer,
+            &uniform_buffer,
+            mesh,
+            wireframe_thickness,
+            particle_size,
+            num_particles,
+            particle_stride,
+            color_offset,
+            alive_offset,
+            scale_offset,
+            blend_mode,
+            surface_format,
+        ));
 
         // GPU picking for particle selection
         let picking = PickingState::new(

@@ -102,8 +102,8 @@ fn main() {
     Simulation::<SlimeAgent>::new()
         .with_particle_count(30_000)
         .with_bounds(1.2)
-        .with_spawner(|ctx| {
-            let (pos, heading) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (pos, heading) = particles[ctx.index as usize];
             SlimeAgent {
                 position: pos,
                 velocity: Vec3::ZERO,

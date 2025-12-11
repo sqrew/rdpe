@@ -1,4 +1,5 @@
 //! Simulation builder and runner.
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
 //!
 //! This module provides the [`Simulation`] builder, which is the main entry point
 //! for creating and running particle simulations.
@@ -2237,6 +2238,7 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 self.config.particle_size,
                 self.config.visual_config.connections_enabled,
                 self.config.visual_config.connections_radius,
+                self.config.visual_config.connections_color,
                 self.config.inbox_enabled,
                 self.config.visual_config.background_color,
                 self.config.visual_config.post_process_shader.as_deref(),

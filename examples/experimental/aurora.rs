@@ -72,8 +72,8 @@ fn main() {
     Simulation::<ChargedParticle>::new()
         .with_particle_count(PARTICLE_COUNT)
         .with_bounds(2.0)
-        .with_spawner(|ctx| {
-            let (x, y, z, vx, vy, vz, charge) = particles[i as usize];
+        .with_spawner(move |ctx| {
+            let (x, y, z, vx, vy, vz, charge) = particles[ctx.index as usize];
 
             ChargedParticle {
                 position: Vec3::new(x, y, z),

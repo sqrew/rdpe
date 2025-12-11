@@ -1,4 +1,5 @@
 //! Derive macros for the RDPE particle simulation engine.
+#![allow(clippy::type_complexity)]
 //!
 //! This crate provides three derive macros:
 //!
@@ -1076,6 +1077,7 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
                 quote! { #name_ident: 1.0 }
             } else {
                 // User field - check if it needs to_array
+                #[allow(clippy::cmp_owned)]
                 let field_info = fields.iter().find(|(n, _, _)| n.to_string() == *name);
                 if let Some((_, type_str, _)) = field_info {
                     if type_str == "Vec3" || type_str == "Vec2" || type_str == "Vec4" ||
@@ -1273,6 +1275,7 @@ pub fn derive_multi_particle(input: TokenStream) -> TokenStream {
                 let field_ident = Ident::new(fname, Span::call_site());
 
                 // Check if this variant has this field
+                #[allow(clippy::cmp_owned)]
                 let has_field = variant_fields.iter().any(|(vf, _, _)| vf.to_string() == *fname);
 
                 if has_field {

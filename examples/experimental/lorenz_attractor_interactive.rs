@@ -60,7 +60,9 @@ fn main() {
         .with_particle_count(20_000)
         .with_bounds(3.0)
         // Spawn particles in a small cloud near one of the attractor's lobes
-        .with_spawner(move |i, count| {
+        .with_spawner(move |ctx| {
+            let i = ctx.index;
+            let count = ctx.count;
             let t = i as f32 / count as f32;
             let angle = t * std::f32::consts::TAU * 100.0;
             let r = 0.5 + (i % 100) as f32 * 0.01;

@@ -106,9 +106,9 @@ fn main() {
         .with_particle_count(200) // Room for spawning more
         .with_particle_size(0.02)
         .with_bounds(1.0)
-        .with_spawner(|ctx| {
-            if (i as usize) < particles.len() {
-                particles[i as usize].clone()
+        .with_spawner(move |ctx| {
+            if (ctx.index as usize) < particles.len() {
+                particles[ctx.index as usize].clone()
             } else {
                 // Extra particles start dead
                 WaveSource {

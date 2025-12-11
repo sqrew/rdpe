@@ -6927,7 +6927,7 @@ impl Rule {
             Rule::CustomDynamic { params, .. } |
             Rule::NeighborCustomDynamic { params, .. } => {
                 params.iter().map(|(name, value)| {
-                    (format!("{}_{}", prefix, name), value.clone())
+                    (format!("{}_{}", prefix, name), *value)
                 }).collect()
             },
             Rule::OnCollisionDynamic { radius, params, .. } => {
@@ -6935,7 +6935,7 @@ impl Rule {
                     (format!("{}_radius", prefix), UniformValue::F32(*radius)),
                 ];
                 result.extend(params.iter().map(|(name, value)| {
-                    (format!("{}_{}", prefix, name), value.clone())
+                    (format!("{}_{}", prefix, name), *value)
                 }));
                 result
             },

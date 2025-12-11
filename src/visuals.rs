@@ -379,6 +379,8 @@ pub struct VisualConfig {
     pub connections_enabled: bool,
     /// Radius for particle connections.
     pub connections_radius: f32,
+    /// Color for particle connections (RGB, 0.0-1.0).
+    pub connections_color: Vec3,
     /// Whether to stretch particles in velocity direction.
     pub velocity_stretch: bool,
     /// Maximum stretch factor for velocity stretching.
@@ -407,6 +409,7 @@ impl Default for VisualConfig {
             trail_length: 0,
             connections_enabled: false,
             connections_radius: 0.1,
+            connections_color: Vec3::new(0.5, 0.7, 1.0),
             velocity_stretch: false,
             velocity_stretch_factor: 2.0,
             palette: Palette::None,
@@ -493,6 +496,25 @@ impl VisualConfig {
     pub fn connections(&mut self, radius: f32) -> &mut Self {
         self.connections_enabled = true;
         self.connections_radius = radius;
+        self
+    }
+
+    /// Set the color for particle connections.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - RGB color (0.0-1.0)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_visuals(|v| {
+    ///     v.connections(0.15)
+    ///      .connections_color(Vec3::new(1.0, 0.5, 0.0)); // Orange connections
+    /// })
+    /// ```
+    pub fn connections_color(&mut self, color: Vec3) -> &mut Self {
+        self.connections_color = color;
         self
     }
 

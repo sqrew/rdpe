@@ -160,7 +160,7 @@ fn main() {
         .with_particle_count(total as u32)
         .with_particle_size(0.01)
         .with_bounds(1.3)
-        .with_spawner(|ctx| particles[ctx.index as usize].clone())
+        .with_spawner(move |ctx| particles[ctx.index as usize].clone())
         .with_spatial_config(0.12, 32)
         .with_inbox()
         // Register all uniforms with defaults

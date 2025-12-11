@@ -1,4 +1,5 @@
 //! Custom uniforms for passing runtime data to shaders.
+#![allow(clippy::too_many_arguments)]
 //!
 //! Custom uniforms let you pass dynamic values to your particle rules,
 //! enabling interactive and reactive simulations.

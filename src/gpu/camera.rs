@@ -1,4 +1,5 @@
 //! Camera for 3D orbit view with smooth controls.
+#![allow(dead_code)]
 
 use glam::{Mat4, Vec3};
 

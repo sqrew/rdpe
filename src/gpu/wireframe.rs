@@ -2,6 +2,7 @@
 //!
 //! Renders particles as 3D wireframe meshes instead of flat billboards.
 //! Each particle's mesh is scaled by its scale field and colored by its color.
+#![allow(dead_code, clippy::too_many_arguments)]
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;

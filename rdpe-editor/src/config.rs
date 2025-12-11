@@ -827,6 +827,20 @@ pub enum MousePower {
     Spawn,
     /// Suck particles in and destroy at center
     BlackHole,
+    /// Make particles orbit around cursor
+    Orbit,
+    /// Random velocity impulse
+    Scatter,
+    /// Directional push force
+    Wind,
+    /// Rhythmic expanding wave
+    Pulse,
+    /// Ring-shaped outward push
+    Repulsor,
+    /// Spiral inward like a drain
+    SpiralIn,
+    /// Randomize particle velocities
+    RandomVelocity,
 }
 
 impl MousePower {
@@ -834,6 +848,7 @@ impl MousePower {
         &[
             "None", "Attract", "Repel", "Vortex", "Explode", "GravityWell",
             "Paint", "Turbulence", "Freeze", "Kill", "Spawn", "BlackHole",
+            "Orbit", "Scatter", "Wind", "Pulse", "Repulsor", "SpiralIn", "RandomVelocity",
         ]
     }
 
@@ -851,6 +866,13 @@ impl MousePower {
             9 => MousePower::Kill,
             10 => MousePower::Spawn,
             11 => MousePower::BlackHole,
+            12 => MousePower::Orbit,
+            13 => MousePower::Scatter,
+            14 => MousePower::Wind,
+            15 => MousePower::Pulse,
+            16 => MousePower::Repulsor,
+            17 => MousePower::SpiralIn,
+            18 => MousePower::RandomVelocity,
             _ => MousePower::None,
         }
     }
@@ -869,6 +891,13 @@ impl MousePower {
             MousePower::Kill => 9,
             MousePower::Spawn => 10,
             MousePower::BlackHole => 11,
+            MousePower::Orbit => 12,
+            MousePower::Scatter => 13,
+            MousePower::Wind => 14,
+            MousePower::Pulse => 15,
+            MousePower::Repulsor => 16,
+            MousePower::SpiralIn => 17,
+            MousePower::RandomVelocity => 18,
         }
     }
 
@@ -998,6 +1027,121 @@ impl MousePower {
             if (dist < mouse_radius * 0.1) {
                 p.alive = 0u;
             }
+        }
+    }
+"#.into(),
+            MousePower::Orbit => r#"
+    // Mouse Orbit - stable circular orbits around cursor
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.01 && dist < mouse_radius * 2.0) {
+            // Calculate orbital velocity (perpendicular to radius)
+            let tangent = normalize(vec3<f32>(-to_mouse.z, 0.0, to_mouse.x));
+            let orbital_speed = sqrt(mouse_strength / (dist + 0.1));
+            // Blend toward orbital velocity
+            let target_vel = tangent * orbital_speed;
+            p.velocity = mix(p.velocity, target_vel, delta_time * 3.0);
+            // Slight correction toward ideal orbit distance
+            let ideal_dist = mouse_radius;
+            let correction = (dist - ideal_dist) * 0.5;
+            p.velocity += normalize(to_mouse) * correction * delta_time;
+        }
+    }
+"#.into(),
+            MousePower::Scatter => r#"
+    // Mouse Scatter - random velocity impulse
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            // Random direction based on particle index and time
+            let hash1 = fract(sin(f32(index) * 12.9898 + time * 43.233) * 43758.5453);
+            let hash2 = fract(sin(f32(index) * 78.233 + time * 12.989) * 28462.6342);
+            let hash3 = fract(sin(f32(index) * 45.164 + time * 93.123) * 63829.2847);
+            let random_dir = normalize(vec3<f32>(hash1 - 0.5, hash2 - 0.5, hash3 - 0.5));
+            p.velocity += random_dir * mstrength * delta_time * 10.0;
+        }
+    }
+"#.into(),
+            MousePower::Wind => r#"
+    // Mouse Wind - directional push (blows toward +X direction, rotates with camera)
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            // Wind blows away from cursor center (outward but horizontal)
+            var wind_dir = normalize(vec3<f32>(to_mouse.x, 0.0, to_mouse.z));
+            if (length(vec3<f32>(to_mouse.x, 0.0, to_mouse.z)) < 0.01) {
+                wind_dir = vec3<f32>(1.0, 0.0, 0.0);
+            }
+            p.velocity += wind_dir * mstrength * delta_time * 5.0;
+        }
+    }
+"#.into(),
+            MousePower::Pulse => r#"
+    // Mouse Pulse - rhythmic expanding wave
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        // Create expanding rings
+        let wave_speed = 2.0;
+        let wave_width = mouse_radius * 0.3;
+        let wave_pos = fract(time * wave_speed) * mouse_radius * 2.0;
+        let wave_dist = abs(dist - wave_pos);
+        if (wave_dist < wave_width && dist < mouse_radius * 2.0) {
+            let wave_strength = (1.0 - wave_dist / wave_width) * mouse_strength;
+            p.velocity += normalize(-to_mouse) * wave_strength * delta_time * 5.0;
+        }
+    }
+"#.into(),
+            MousePower::Repulsor => r#"
+    // Mouse Repulsor - ring-shaped outward push
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        // Only affect particles near the ring edge
+        let ring_inner = mouse_radius * 0.7;
+        let ring_outer = mouse_radius * 1.0;
+        if (dist > ring_inner && dist < ring_outer) {
+            let ring_strength = 1.0 - abs(dist - (ring_inner + ring_outer) * 0.5) / ((ring_outer - ring_inner) * 0.5);
+            let mstrength = mouse_strength * ring_strength;
+            p.velocity += normalize(-to_mouse) * mstrength * delta_time * 5.0;
+        }
+    }
+"#.into(),
+            MousePower::SpiralIn => r#"
+    // Mouse Spiral In - drain/vortex pulling inward
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.01 && dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            // Tangential component (spin)
+            let tangent = normalize(vec3<f32>(-to_mouse.z, 0.0, to_mouse.x));
+            p.velocity += tangent * mstrength * delta_time * 3.0;
+            // Inward component (pull) - stronger as you get closer
+            let inward = normalize(to_mouse) * mstrength * delta_time * 2.0;
+            p.velocity += inward;
+        }
+    }
+"#.into(),
+            MousePower::RandomVelocity => r#"
+    // Mouse Random Velocity - randomize velocities
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            // Generate random velocity
+            let hash1 = fract(sin(f32(index) * 12.9898 + time * 127.1) * 43758.5453) * 2.0 - 1.0;
+            let hash2 = fract(sin(f32(index) * 78.233 + time * 311.7) * 28462.6342) * 2.0 - 1.0;
+            let hash3 = fract(sin(f32(index) * 45.164 + time * 269.5) * 63829.2847) * 2.0 - 1.0;
+            let random_vel = vec3<f32>(hash1, hash2, hash3) * mstrength;
+            // Blend toward random velocity
+            p.velocity = mix(p.velocity, random_vel, delta_time * 5.0);
         }
     }
 "#.into(),

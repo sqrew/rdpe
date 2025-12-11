@@ -4,12 +4,13 @@
 //! using spatial hashing for efficient neighbor queries.
 
 use bytemuck::{Pod, Zeroable};
+use glam::Vec3;
 use wgpu::util::DeviceExt;
 
 use super::{blend_mode_to_state, SpatialGpu, DEPTH_FORMAT};
 use crate::visuals::BlendMode;
 
-/// Parameters for connection rendering.
+/// Parameters for connection rendering (compute shader).
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 struct ConnectionParams {
@@ -17,6 +18,14 @@ struct ConnectionParams {
     max_connections: u32,
     num_particles: u32,
     _pad: u32,
+}
+
+/// Parameters for connection rendering (render shader).
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+struct RenderParams {
+    color: [f32; 3],
+    _pad: f32,
 }
 
 /// GPU resources for connection rendering.
@@ -40,6 +49,8 @@ pub struct ConnectionState {
     pub radius: f32,
     /// Params buffer (kept alive for bind group).
     params_buffer: wgpu::Buffer,
+    /// Render params buffer (kept alive for bind group).
+    render_params_buffer: wgpu::Buffer,
 }
 
 impl ConnectionState {
@@ -52,6 +63,7 @@ impl ConnectionState {
         spatial: &SpatialGpu,
         num_particles: u32,
         radius: f32,
+        color: Vec3,
         particle_stride: usize,
         blend_mode: BlendMode,
         surface_format: wgpu::TextureFormat,
@@ -74,7 +86,7 @@ impl ConnectionState {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Connection params
+        // Connection params (compute shader)
         let conn_params = ConnectionParams {
             radius,
             max_connections,
@@ -84,6 +96,17 @@ impl ConnectionState {
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Connection Params Buffer"),
             contents: bytemuck::bytes_of(&conn_params),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
+        // Render params (render shader)
+        let render_params = RenderParams {
+            color: color.to_array(),
+            _pad: 0.0,
+        };
+        let render_params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Connection Render Params Buffer"),
+            contents: bytemuck::bytes_of(&render_params),
             usage: wgpu::BufferUsages::UNIFORM,
         });
 
@@ -103,6 +126,7 @@ impl ConnectionState {
             device,
             uniform_buffer,
             &buffer,
+            &render_params_buffer,
             blend_mode,
             surface_format,
         );
@@ -117,6 +141,7 @@ impl ConnectionState {
             max_connections,
             radius,
             params_buffer,
+            render_params_buffer,
         }
     }
 }
@@ -291,6 +316,7 @@ fn create_render_pipeline(
     device: &wgpu::Device,
     uniform_buffer: &wgpu::Buffer,
     connection_buffer: &wgpu::Buffer,
+    render_params_buffer: &wgpu::Buffer,
     blend_mode: BlendMode,
     surface_format: wgpu::TextureFormat,
 ) -> (wgpu::RenderPipeline, wgpu::BindGroup) {
@@ -322,6 +348,16 @@ fn create_render_pipeline(
                 },
                 count: None,
             },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
         ],
     });
 
@@ -336,6 +372,10 @@ fn create_render_pipeline(
             wgpu::BindGroupEntry {
                 binding: 1,
                 resource: connection_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: render_params_buffer.as_entire_binding(),
             },
         ],
     });
@@ -514,8 +554,13 @@ struct Uniforms {
     delta_time: f32,
 };
 
+struct RenderParams {
+    color: vec3<f32>,
+};
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> connections: array<vec4<f32>>;
+@group(0) @binding(2) var<uniform> render_params: RenderParams;
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -568,6 +613,6 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(0.5, 0.7, 1.0, in.alpha);
+    return vec4<f32>(render_params.color, in.alpha);
 }
 "#;

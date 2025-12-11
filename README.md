@@ -21,7 +21,7 @@ fn main() {
         .with_bounds(1.0)
         .with_spatial_config(0.1, 32)
         .with_max_neighbors(48)
-        .with_spawner(|_, _| Boid {
+        .with_spawner(|ctx| Boid {
             position: random_in_sphere(0.8),
             velocity: random_direction() * 0.3,
             color: Vec3::new(0.2, 0.8, 1.0),
@@ -55,29 +55,49 @@ cargo run --example slime_mold --features egui
 cargo run --example neon_assault
 ```
 
+## Visual Editor
+
+RDPE includes a visual editor for designing simulations without writing code:
+
+```bash
+cargo run --package rdpe-editor
+```
+
+- **Live Preview** — Real-time GPU-accelerated viewport
+- **100+ Rules** — All rules accessible through dropdown menus
+- **Visual Configuration** — Particle shapes, colors, blend modes, trails
+- **Custom WGSL** — Write custom shader code with live validation
+- **3D Fields** — Configure spatial fields with volume rendering
+- **Code Export** — Generate standalone Rust code from your configuration
+- **18 Presets** — Pre-built simulations to start from
+
 ## Features
 
-### 50+ Built-in Rules
+### 100+ Built-in Rules
 
-**Physics** — `Gravity`, `Drag`, `Acceleration`, `BounceWalls`, `WrapWalls`, `SpeedLimit`
+**Physics** — `Gravity`, `Drag`, `Acceleration`, `BounceWalls`, `WrapWalls`, `SpeedLimit`, `Mass`
 
-**Point Forces** — `AttractTo`, `RepelFrom`, `PointGravity`, `Spring`, `Radial`, `Shockwave`, `Pulse`
+**Point Forces** — `AttractTo`, `RepelFrom`, `PointGravity`, `Spring`, `Radial`, `Shockwave`, `Pulse`, `Arrive`, `Seek`, `Flee`
 
-**Field Effects** — `Vortex`, `Turbulence`, `Orbit`, `Curl`, `Wind`, `Current`, `DensityBuoyancy`, `Diffuse`
+**Field Effects** — `Vortex`, `Turbulence`, `Orbit`, `Curl`, `Wind`, `Current`, `DensityBuoyancy`, `Diffuse`, `Gradient`
 
-**Wave/Noise** — `Oscillate`, `PositionNoise`, `Wander`, `Gradient`, `Lerp`, `Noise`, `Remap`
+**Wave/Noise** — `Oscillate`, `PositionNoise`, `Wander`, `Lerp`, `Noise`, `Remap`, `Smooth`, `Quantize`, `Modulo`
 
-**Flocking** — `Separate`, `Cohere`, `Align`, `Collide`, `Avoid`, `Flock`
+**Flocking** — `Separate`, `Cohere`, `Align`, `Collide`, `Avoid`, `Flock`, `Sync`
 
-**Fluid** — `NBodyGravity`, `Viscosity`, `Pressure`, `SurfaceTension`, `Buoyancy`, `Friction`
+**Fluid** — `NBodyGravity`, `Viscosity`, `Pressure`, `SurfaceTension`, `Buoyancy`, `Friction`, `LennardJones`, `DLA`
 
-**Multi-Species** — `Typed`, `Chase`, `Evade`, `Convert`, `Magnetism`
+**Multi-Species** — `Typed`, `Chase`, `Evade`, `Convert`, `Magnetism`, `Absorb`, `Consume`, `Signal`
 
-**Lifecycle** — `Age`, `Lifetime`, `FadeOut`, `ShrinkOut`, `ColorOverLife`, `ColorBySpeed`, `ColorByAge`, `ScaleBySpeed`
+**Lifecycle** — `Age`, `Lifetime`, `FadeOut`, `ShrinkOut`, `ColorOverLife`, `ColorBySpeed`, `ColorByAge`, `ScaleBySpeed`, `Die`, `Grow`, `Decay`, `Split`
 
-**Logic/Control** — `Custom`, `NeighborCustom`, `Maybe`, `Trigger`, `Periodic`, `State`, `Agent`, `Threshold`, `Gate`, `Select`, `Blend`
+**Logic/Control** — `Custom`, `NeighborCustom`, `Maybe`, `Trigger`, `Periodic`, `State`, `Agent`, `Threshold`, `Gate`, `Select`, `Blend`, `And`, `Or`, `Not`, `Xor`, `Hysteresis`, `Latch`, `Tween`
 
 **Spring Systems** — `BondSprings`, `ChainSprings`, `RadialSprings`, `OnCollision`
+
+**Events** — `OnSpawn`, `OnDeath`, `OnCondition`, `OnInterval`
+
+**Dynamic Rules** — `CustomDynamic`, `NeighborCustomDynamic`, `OnCollisionDynamic` (runtime-configurable)
 
 ### Custom Rules
 
@@ -180,7 +200,9 @@ Direct particle-to-particle communication:
 - **Post-processing** — Bloom, chromatic aberration, CRT, custom shaders
 - **Velocity stretch** — Elongate particles in motion direction
 - **Trails** — Motion blur / light trails
-- **Connections** — Lines between nearby particles
+- **Connections** — Lines between nearby particles (customizable color)
+- **Wireframe meshes** — Render particles as 3D wireframe shapes (cube, sphere, pyramid, etc.)
+- **Volume rendering** — 3D field visualization with raymarching
 - **Palettes** — 12 built-in color schemes (Viridis, Plasma, Fire, Neon, etc.)
 - **Blend modes** — Alpha, Additive, Multiply
 - **Shapes** — Circle, Square, Triangle
@@ -213,10 +235,11 @@ RDPE is designed around a GPU-first philosophy: all simulation state lives on th
 | Component | Purpose |
 |-----------|---------|
 | **Simulation** | Builder pattern orchestrator; generates WGSL from rules |
-| **Rules** | 50+ composable behaviors compiled into compute shader |
+| **Rules** | 100+ composable behaviors compiled into compute shader |
 | **Spatial Hashing** | Radix sort + Morton codes for O(N) neighbor discovery |
 | **Fields** | 3D grids with atomic writes, blur, decay |
 | **Derive Macros** | Auto-generate GPU structs with proper WGSL alignment |
+| **Visual Editor** | GUI for designing simulations without code |
 
 ### Memory Layout
 
@@ -244,16 +267,21 @@ This single-kernel approach minimizes synchronization overhead.
 
 ## Examples
 
+45+ examples included:
+
 | Category | Examples |
 |----------|----------|
-| **Core** | `boids`, `aquarium`, `predator_prey`, `infection`, `slime_mold` |
-| **Forces** | `vortex`, `curl`, `nbody`, `fluid`, `magnetism` |
-| **Visual** | `custom_shader`, `post_process`, `trails`, `connections` |
-| **Showcase** | `neon_assault`, `cosmic_jellyfish`, `ethereal_web`, `murmuration` |
+| **Core** | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
+| **Simulation** | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field`, `neural_network` |
+| **Forces** | `galaxy`, `gravity_visualizer`, `shockwave`, `glow` |
+| **Visual** | `custom_shader`, `custom_vertex`, `post_process`, `wireframe`, `volume_render`, `texture_example` |
+| **Advanced** | `multi_particle`, `multi_field`, `inbox`, `agent_demo`, `custom_dynamic` |
+| **Experimental** | 20+ creative examples in `examples/experimental/` |
 
 ```bash
-cargo run --example <name>
-cargo run --example <name> --features egui  # for UI controls
+cargo run --example boids
+cargo run --example slime_mold_field --features egui
+cargo run --example galaxy
 ```
 
 ## Performance
@@ -333,7 +361,7 @@ Simulation::<P>::new()
     .with_particle_count(n)
     .with_bounds(size)
     .with_particle_size(radius)
-    .with_spawner(|index, total| -> P { ... })
+    .with_spawner(|ctx| -> P { ... })  // ctx.index, ctx.count, ctx.bounds
     .with_spatial_config(cell_size, grid_resolution)
     .with_max_neighbors(max)
     .with_field(name, config)
