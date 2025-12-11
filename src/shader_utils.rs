@@ -2,7 +2,7 @@
 //!
 //! These functions are automatically available in all compute shaders.
 //! You can call them from `Rule::Custom` or custom functions added via
-//! [`Simulation::with_function`].
+//! [`crate::Simulation::with_function`].
 //!
 //! # Available Functions
 //!

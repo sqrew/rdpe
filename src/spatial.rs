@@ -25,6 +25,10 @@ impl Default for SpatialConfig {
 }
 
 impl SpatialConfig {
+    /// Create a new spatial configuration with the given cell size and grid resolution.
+    ///
+    /// # Panics
+    /// Panics if `grid_resolution` is not a power of 2 or exceeds 1024.
     pub fn new(cell_size: f32, grid_resolution: u32) -> Self {
         assert!(grid_resolution.is_power_of_two(), "Grid resolution must be power of 2");
         assert!(grid_resolution <= 1024, "Grid resolution must be <= 1024 for 30-bit Morton codes");

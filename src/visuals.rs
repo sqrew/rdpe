@@ -366,7 +366,7 @@ impl ParticleShape {
 
 /// Configuration for particle visuals.
 ///
-/// Built using the closure passed to [`Simulation::with_visuals`].
+/// Built using the closure passed to [`crate::Simulation::with_visuals`].
 #[derive(Debug, Clone)]
 pub struct VisualConfig {
     /// Blend mode for particle rendering.
@@ -1018,7 +1018,7 @@ impl WireframeMesh {
 ///
 /// Pre-built, composable effects that modify particle vertex transformations.
 /// Effects stack together and generate optimized WGSL code. Use these instead
-/// of raw [`Simulation::with_vertex_shader`] for common effects.
+/// of raw [`crate::Simulation::with_vertex_shader`] for common effects.
 ///
 /// # Example
 ///

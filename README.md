@@ -1,8 +1,15 @@
 # RDPE
 
-**R**ealtime **D**ata **P**resentation **E**ngine — GPU-accelerated particle simulations with a declarative API.
+[![Crates.io](https://img.shields.io/crates/v/rdpe.svg)](https://crates.io/crates/rdpe)
+[![Documentation](https://docs.rs/rdpe/badge.svg)](https://docs.rs/rdpe)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Describe behaviors with composable rules. RDPE generates the compute shaders.
+**GPU-accelerated particle simulations with a declarative API.**
+
+Describe behaviors with composable rules. RDPE generates optimized compute shaders.
+
+<!-- TODO: Replace with actual gif -->
+<!-- ![RDPE Demo](assets/demo.gif) -->
 
 ```rust
 use rdpe::prelude::*;
@@ -35,6 +42,8 @@ fn main() {
 }
 ```
 
+Good for creative coding, generative art, simulations, visualizations, and experimentation.
+
 ## Why RDPE?
 
 Most particle systems are either too low-level (raw compute shaders) or too rigid (fixed behaviors). RDPE sits in between:
@@ -44,7 +53,27 @@ Most particle systems are either too low-level (raw compute shaders) or too rigi
 - **Fast** — GPU-resident simulation with O(N) neighbor queries via radix-sorted spatial hashing
 - **Flexible** — Custom particle fields, typed interactions, spatial fields, runtime uniforms
 
-Good for creative coding, generative art, simulations, data visualization, and experimentation.
+## Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+rdpe = "0.1"
+```
+
+With GUI support:
+
+```toml
+[dependencies]
+rdpe = { version = "0.1", features = ["egui"] }
+```
+
+### Requirements
+
+- Rust 1.70+
+- GPU with Vulkan, Metal, or DX12 support
+- Windows, macOS, or Linux
 
 ## Quick Start
 
@@ -55,6 +84,14 @@ cargo run --example slime_mold --features egui
 cargo run --example neon_assault
 ```
 
+### Controls
+
+| Input | Action |
+|-------|--------|
+| Left-drag | Orbit camera |
+| Right-drag | Pan camera |
+| Scroll | Zoom |
+
 ## Visual Editor
 
 RDPE includes a visual editor for designing simulations without writing code:
@@ -62,6 +99,9 @@ RDPE includes a visual editor for designing simulations without writing code:
 ```bash
 cargo run --package rdpe-editor
 ```
+
+<!-- TODO: Replace with editor screenshot -->
+<!-- ![RDPE Editor](assets/editor.png) -->
 
 - **Live Preview** — Real-time GPU-accelerated viewport
 - **100+ Rules** — All rules accessible through dropdown menus
@@ -200,8 +240,8 @@ Direct particle-to-particle communication:
 - **Post-processing** — Bloom, chromatic aberration, CRT, custom shaders
 - **Velocity stretch** — Elongate particles in motion direction
 - **Trails** — Motion blur / light trails
-- **Connections** — Lines between nearby particles (customizable color)
-- **Wireframe meshes** — Render particles as 3D wireframe shapes (cube, sphere, pyramid, etc.)
+- **Connections** — Lines between nearby particles
+- **Wireframe meshes** — Render particles as 3D wireframe shapes
 - **Volume rendering** — 3D field visualization with raymarching
 - **Palettes** — 12 built-in color schemes (Viridis, Plasma, Fire, Neon, etc.)
 - **Blend modes** — Alpha, Additive, Multiply
@@ -224,6 +264,25 @@ Direct particle-to-particle communication:
     if ctx.input.key_pressed(KeyCode::Space) { /* ... */ }
     if ctx.input.mouse_held(MouseButton::Left) { /* ... */ }
 })
+```
+
+## Examples
+
+45+ examples included:
+
+| Category | Examples |
+|----------|----------|
+| **Core** | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
+| **Simulation** | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field`, `neural_network` |
+| **Forces** | `galaxy`, `gravity_visualizer`, `shockwave`, `glow` |
+| **Visual** | `custom_shader`, `custom_vertex`, `post_process`, `wireframe`, `volume_render`, `texture_example` |
+| **Advanced** | `multi_particle`, `multi_field`, `inbox`, `agent_demo`, `custom_dynamic` |
+| **Experimental** | 20+ creative examples in `examples/experimental/` |
+
+```bash
+cargo run --example boids
+cargo run --example slime_mold_field --features egui
+cargo run --example galaxy
 ```
 
 ## Architecture
@@ -265,25 +324,6 @@ Rules compile into a monolithic compute shader:
 
 This single-kernel approach minimizes synchronization overhead.
 
-## Examples
-
-45+ examples included:
-
-| Category | Examples |
-|----------|----------|
-| **Core** | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
-| **Simulation** | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field`, `neural_network` |
-| **Forces** | `galaxy`, `gravity_visualizer`, `shockwave`, `glow` |
-| **Visual** | `custom_shader`, `custom_vertex`, `post_process`, `wireframe`, `volume_render`, `texture_example` |
-| **Advanced** | `multi_particle`, `multi_field`, `inbox`, `agent_demo`, `custom_dynamic` |
-| **Experimental** | 20+ creative examples in `examples/experimental/` |
-
-```bash
-cargo run --example boids
-cargo run --example slime_mold_field --features egui
-cargo run --example galaxy
-```
-
 ## Performance
 
 All simulation runs on GPU compute shaders with no CPU-GPU synchronization during updates.
@@ -298,8 +338,8 @@ All simulation runs on GPU compute shaders with no CPU-GPU synchronization durin
 
 **Spatial Hashing** (most important):
 - `cell_size` should be >= your largest interaction radius
-- Too small → excessive sorting overhead
-- Too large → too many neighbors per cell (quadratic behavior)
+- Too small: excessive sorting overhead
+- Too large: too many neighbors per cell (quadratic behavior)
 - `grid_resolution` must be power-of-2 (16, 32, 64, 128, 256)
 
 **Neighbor Limits**:
@@ -326,14 +366,14 @@ Morton codes:  count × 16 bytes (two buffers for ping-pong sort)
 Fields:        resolution³ × 4 bytes per scalar field × 3 buffers
 ```
 
-Example (50k particles, 64³ grid, one 64³ field):
+Example: 50k particles, 64³ grid, one 64³ field:
 - Particles: ~6 MB
 - Spatial: ~2 MB
 - Morton: ~1.5 MB
 - Field: ~3 MB
 - **Total: ~12.5 MB GPU VRAM**
 
-## API
+## API Reference
 
 ### Particle Definition
 
@@ -406,4 +446,4 @@ is_dead() -> bool
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -22,6 +22,7 @@ fn calculate_sort_passes(grid_resolution: u32) -> u32 {
     if passes % 2 == 1 { passes + 1 } else { passes }
 }
 
+/// GPU-side parameters for spatial hashing, uploaded to shaders.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct SpatialParams {
@@ -80,6 +81,7 @@ pub struct SpatialGpu {
 }
 
 impl SpatialGpu {
+    /// Create a new spatial hashing system for the given particle buffer and configuration.
     pub fn new(
         device: &wgpu::Device,
         particle_buffer: &wgpu::Buffer,

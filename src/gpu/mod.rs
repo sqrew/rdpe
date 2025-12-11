@@ -1,3 +1,12 @@
+//! GPU state management and rendering for particle simulations.
+//!
+//! This module contains all WebGPU-related code including:
+//! - Compute pipelines for particle physics simulation
+//! - Render pipelines for particle visualization
+//! - Spatial hashing for neighbor queries
+//! - Field systems for continuous scalar/vector fields
+//! - Visual effects (trails, connections, post-processing, volume rendering)
+
 // Allow dead_code for public API methods that may not be used internally
 #![allow(dead_code)]
 
