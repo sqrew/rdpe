@@ -198,6 +198,10 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
     ui.checkbox(&mut visuals.connections_enabled, "Connections");
     if visuals.connections_enabled {
         ui.add(egui::Slider::new(&mut visuals.connections_radius, 0.01..=0.5).text("Connection Radius"));
+        ui.horizontal(|ui| {
+            ui.label("Connection Color:");
+            ui.color_edit_button_rgb(&mut visuals.connections_color);
+        });
     }
 
     // Velocity Stretch

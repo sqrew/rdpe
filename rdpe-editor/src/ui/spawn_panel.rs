@@ -28,6 +28,9 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
         )
         .changed();
 
+    // Speed slider - doesn't trigger rebuild, just changes simulation rate
+    ui.add(egui::Slider::new(&mut config.speed, 0.01..=100.0).text("Speed"));
+
     ui.separator();
     ui.heading("Spawn Shape");
 
@@ -42,23 +45,34 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
         SpawnShape::Plane { .. } => 6,
     };
 
-    let shape_changed = ui.horizontal(|ui| {
-        ui.label("Shape:");
-        egui::ComboBox::from_id_salt("spawn_shape")
-            .selected_text(shapes[shape_idx])
-            .show_index(ui, &mut shape_idx, shapes.len(), |i| shapes[i])
-            .changed()
-    }).inner;
+    let shape_changed = ui
+        .horizontal(|ui| {
+            ui.label("Shape:");
+            egui::ComboBox::from_id_salt("spawn_shape")
+                .selected_text(shapes[shape_idx])
+                .show_index(ui, &mut shape_idx, shapes.len(), |i| shapes[i])
+                .changed()
+        })
+        .inner;
 
     if shape_changed {
         config.spawn.shape = match shape_idx {
             0 => SpawnShape::Cube { size: 0.5 },
             1 => SpawnShape::Sphere { radius: 0.5 },
-            2 => SpawnShape::Shell { inner: 0.3, outer: 0.5 },
-            3 => SpawnShape::Ring { radius: 0.5, thickness: 0.1 },
+            2 => SpawnShape::Shell {
+                inner: 0.3,
+                outer: 0.5,
+            },
+            3 => SpawnShape::Ring {
+                radius: 0.5,
+                thickness: 0.1,
+            },
             4 => SpawnShape::Point,
             5 => SpawnShape::Line { length: 1.0 },
-            6 => SpawnShape::Plane { width: 1.0, depth: 1.0 },
+            6 => SpawnShape::Plane {
+                width: 1.0,
+                depth: 1.0,
+            },
             _ => SpawnShape::Sphere { radius: 0.5 },
         };
         changed = true;
@@ -66,26 +80,44 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
 
     match &mut config.spawn.shape {
         SpawnShape::Cube { size } => {
-            changed |= ui.add(egui::Slider::new(size, 0.1..=2.0).text("Size")).changed();
+            changed |= ui
+                .add(egui::Slider::new(size, 0.1..=2.0).text("Size"))
+                .changed();
         }
         SpawnShape::Sphere { radius } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=2.0).text("Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=2.0).text("Radius"))
+                .changed();
         }
         SpawnShape::Shell { inner, outer } => {
-            changed |= ui.add(egui::Slider::new(inner, 0.0..=1.9).text("Inner")).changed();
-            changed |= ui.add(egui::Slider::new(outer, 0.1..=2.0).text("Outer")).changed();
+            changed |= ui
+                .add(egui::Slider::new(inner, 0.0..=1.9).text("Inner"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(outer, 0.1..=2.0).text("Outer"))
+                .changed();
         }
         SpawnShape::Ring { radius, thickness } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=2.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(thickness, 0.01..=0.5).text("Thickness")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=2.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(thickness, 0.01..=0.5).text("Thickness"))
+                .changed();
         }
         SpawnShape::Point => {}
         SpawnShape::Line { length } => {
-            changed |= ui.add(egui::Slider::new(length, 0.1..=3.0).text("Length")).changed();
+            changed |= ui
+                .add(egui::Slider::new(length, 0.1..=3.0).text("Length"))
+                .changed();
         }
         SpawnShape::Plane { width, depth } => {
-            changed |= ui.add(egui::Slider::new(width, 0.1..=3.0).text("Width")).changed();
-            changed |= ui.add(egui::Slider::new(depth, 0.1..=3.0).text("Depth")).changed();
+            changed |= ui
+                .add(egui::Slider::new(width, 0.1..=3.0).text("Width"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(depth, 0.1..=3.0).text("Depth"))
+                .changed();
         }
     }
 
@@ -112,7 +144,10 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
             2 => InitialVelocity::Outward { speed: 0.1 },
             3 => InitialVelocity::Inward { speed: 0.1 },
             4 => InitialVelocity::Swirl { speed: 0.1 },
-            5 => InitialVelocity::Directional { direction: [1.0, 0.0, 0.0], speed: 0.1 },
+            5 => InitialVelocity::Directional {
+                direction: [1.0, 0.0, 0.0],
+                speed: 0.1,
+            },
             _ => InitialVelocity::Zero,
         };
         changed = true;
@@ -124,15 +159,37 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
         | InitialVelocity::Outward { speed }
         | InitialVelocity::Inward { speed }
         | InitialVelocity::Swirl { speed } => {
-            changed |= ui.add(egui::Slider::new(speed, 0.0..=2.0).text("Speed")).changed();
+            changed |= ui
+                .add(egui::Slider::new(speed, 0.0..=2.0).text("Speed"))
+                .changed();
         }
         InitialVelocity::Directional { direction, speed } => {
-            changed |= ui.add(egui::Slider::new(speed, 0.0..=2.0).text("Speed")).changed();
+            changed |= ui
+                .add(egui::Slider::new(speed, 0.0..=2.0).text("Speed"))
+                .changed();
             ui.horizontal(|ui| {
                 ui.label("Dir:");
-                changed |= ui.add(egui::DragValue::new(&mut direction[0]).speed(0.01).prefix("x:")).changed();
-                changed |= ui.add(egui::DragValue::new(&mut direction[1]).speed(0.01).prefix("y:")).changed();
-                changed |= ui.add(egui::DragValue::new(&mut direction[2]).speed(0.01).prefix("z:")).changed();
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut direction[0])
+                            .speed(0.01)
+                            .prefix("x:"),
+                    )
+                    .changed();
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut direction[1])
+                            .speed(0.01)
+                            .prefix("y:"),
+                    )
+                    .changed();
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut direction[2])
+                            .speed(0.01)
+                            .prefix("z:"),
+                    )
+                    .changed();
             });
         }
     }
@@ -153,10 +210,17 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
     for (i, weight) in config.spawn.type_weights.iter_mut().enumerate() {
         ui.horizontal(|ui| {
             // Calculate percentage
-            let pct = if total_weight > 0.0 { *weight / total_weight * 100.0 } else { 0.0 };
+            let pct = if total_weight > 0.0 {
+                *weight / total_weight * 100.0
+            } else {
+                0.0
+            };
 
             ui.label(format!("Type {}:", i));
-            if ui.add(egui::DragValue::new(weight).speed(0.1).range(0.0..=100.0)).changed() {
+            if ui
+                .add(egui::DragValue::new(weight).speed(0.1).range(0.0..=100.0))
+                .changed()
+            {
                 changed = true;
             }
             ui.label(format!("({:.0}%)", pct));

@@ -218,6 +218,7 @@ fn main() {
         // Apply connections
         if visuals.connections_enabled {
             v.connections(visuals.connections_radius);
+            v.connections_color(glam::Vec3::from_array(visuals.connections_color));
         }
 
         // Apply velocity stretch

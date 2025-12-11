@@ -160,6 +160,11 @@ fn visuals_closure_code(visuals: &VisualsConfig) -> String {
     }
     if visuals.connections_enabled {
         settings.push(format!("v.connections({:.2});", visuals.connections_radius));
+        let default_color = [0.5, 0.7, 1.0];
+        if visuals.connections_color != default_color {
+            settings.push(format!("v.connections_color(Vec3::new({:.2}, {:.2}, {:.2}));",
+                visuals.connections_color[0], visuals.connections_color[1], visuals.connections_color[2]));
+        }
     }
     if visuals.velocity_stretch {
         settings.push(format!("v.velocity_stretch({:.2});", visuals.velocity_stretch_factor));
@@ -466,6 +471,75 @@ fn rule_code(rule: &RuleConfig) -> String {
             format!("Rule::RadialSprings {{ hub_stiffness: {:.2}, ring_stiffness: {:.2}, damping: {:.3}, hub_length: {:.4}, ring_length: {:.4} }}",
                 hub_stiffness, ring_stiffness, damping, hub_length, ring_length)
         }
+        RuleConfig::BondSprings { bonds, stiffness, damping, rest_length, max_stretch } => {
+            let bonds_str: Vec<String> = bonds.iter().map(|b| format!("{:?}", b)).collect();
+            if let Some(ms) = max_stretch {
+                format!("Rule::BondSprings {{ bonds: vec![{}], stiffness: {:.2}, damping: {:.3}, rest_length: {:.4}, max_stretch: Some({:.2}) }}",
+                    bonds_str.join(", "), stiffness, damping, rest_length, ms)
+            } else {
+                format!("Rule::BondSprings {{ bonds: vec![{}], stiffness: {:.2}, damping: {:.3}, rest_length: {:.4}, max_stretch: None }}",
+                    bonds_str.join(", "), stiffness, damping, rest_length)
+            }
+        }
+
+        // State Machine
+        RuleConfig::State { field, transitions } => {
+            let trans_str: Vec<String> = transitions.iter()
+                .map(|(from, to, cond)| format!("({}, {}, r#\"{}\"#.into())", from, to, cond))
+                .collect();
+            format!("Rule::State {{ field: {:?}.into(), transitions: vec![{}] }}", field, trans_str.join(", "))
+        }
+        RuleConfig::Agent { state_field, prev_state_field, state_timer_field, states } => {
+            let states_str: Vec<String> = states.iter().map(|s| {
+                let mut parts = vec![format!("AgentState::new({})", s.id)];
+                if let Some(name) = &s.name {
+                    parts.push(format!(".named({:?})", name));
+                }
+                if let Some(code) = &s.on_enter {
+                    parts.push(format!(".on_enter(r#\"{}\"#)", code));
+                }
+                if let Some(code) = &s.on_update {
+                    parts.push(format!(".on_update(r#\"{}\"#)", code));
+                }
+                if let Some(code) = &s.on_exit {
+                    parts.push(format!(".on_exit(r#\"{}\"#)", code));
+                }
+                for t in &s.transitions {
+                    if t.priority != 0 {
+                        parts.push(format!(".transition_priority({}, r#\"{}\"#, {})", t.to, t.condition, t.priority));
+                    } else {
+                        parts.push(format!(".transition({}, r#\"{}\"#)", t.to, t.condition));
+                    }
+                }
+                parts.join("")
+            }).collect();
+            let timer_str = match state_timer_field {
+                Some(f) => format!("Some({:?}.into())", f),
+                None => "None".into(),
+            };
+            format!("Rule::Agent {{ state_field: {:?}.into(), prev_state_field: {:?}.into(), state_timer_field: {}, states: vec![{}] }}",
+                state_field, prev_state_field, timer_str, states_str.join(", "))
+        }
+
+        // Conditional (simplified)
+        RuleConfig::Switch { condition, then_code, else_code } => {
+            if let Some(else_c) = else_code {
+                format!("Rule::Custom(r#\"if ({}) {{\n    {}\n}} else {{\n    {}\n}}\"#.into())",
+                    condition, then_code, else_c)
+            } else {
+                format!("Rule::Custom(r#\"if ({}) {{\n    {}\n}}\"#.into())", condition, then_code)
+            }
+        }
+        RuleConfig::TypedNeighbor { self_type, other_type, radius, code } => {
+            let type_check = match (self_type, other_type) {
+                (Some(st), Some(ot)) => format!("if p.particle_type != {}u || other.particle_type != {}u {{ continue; }}\\n", st, ot),
+                (Some(st), None) => format!("if p.particle_type != {}u {{ continue; }}\\n", st),
+                (None, Some(ot)) => format!("if other.particle_type != {}u {{ continue; }}\\n", ot),
+                (None, None) => String::new(),
+            };
+            format!("Rule::NeighborCustom(r#\"{}if neighbor_dist < {} && neighbor_dist > 0.001 {{\n    {}\n}}\"#.into())",
+                type_check, radius, code)
+        }
 
         // Advanced Physics
         RuleConfig::DensityBuoyancy { density_field, medium_density, strength } => {
@@ -481,6 +555,140 @@ fn rule_code(rule: &RuleConfig) -> String {
         RuleConfig::Refractory { trigger, charge, active_threshold, depletion_rate, regen_rate } => {
             format!("Rule::Refractory {{ trigger: {:?}.into(), charge: {:?}.into(), active_threshold: {:.3}, depletion_rate: {:.3}, regen_rate: {:.3} }}",
                 trigger, charge, active_threshold, depletion_rate, regen_rate)
+        }
+
+        // Math / Signal
+        RuleConfig::Smooth { field, target, rate } => {
+            format!("Rule::Smooth {{ field: {:?}.into(), target: {:.3}, rate: {:.3} }}", field, target, rate)
+        }
+        RuleConfig::Modulo { field, min, max } => {
+            format!("Rule::Modulo {{ field: {:?}.into(), min: {:.3}, max: {:.3} }}", field, min, max)
+        }
+        RuleConfig::Copy { from, to, scale, offset } => {
+            format!("Rule::Copy {{ from: {:?}.into(), to: {:?}.into(), scale: {:.3}, offset: {:.3} }}", from, to, scale, offset)
+        }
+        RuleConfig::Threshold { input_field, output_field, threshold, above, below } => {
+            format!("Rule::Threshold {{ input_field: {:?}.into(), output_field: {:?}.into(), threshold: {:.3}, above: {:.3}, below: {:.3} }}",
+                input_field, output_field, threshold, above, below)
+        }
+        RuleConfig::Gate { condition, action } => {
+            format!("Rule::Gate {{ condition: r#\"{}\"#.into(), action: r#\"{}\"#.into() }}", condition, action)
+        }
+        RuleConfig::Tween { field, from, to, duration, timer_field } => {
+            format!("Rule::Tween {{ field: {:?}.into(), from: {:.3}, to: {:.3}, duration: {:.3}, timer_field: {:?}.into() }}",
+                field, from, to, duration, timer_field)
+        }
+        RuleConfig::Periodic { interval, phase_field, action } => {
+            let phase = match phase_field {
+                Some(f) => format!("Some({:?}.into())", f),
+                None => "None".to_string(),
+            };
+            format!("Rule::Periodic {{ interval: {:.3}, phase_field: {}, action: r#\"{}\"#.into() }}", interval, phase, action)
+        }
+
+        // Field Interactions
+        RuleConfig::Deposit { field_index, source, amount } => {
+            format!("Rule::Deposit {{ field_index: {}, source: {:?}.into(), amount: {:.3} }}", field_index, source, amount)
+        }
+        RuleConfig::Sense { field_index, target } => {
+            format!("Rule::Sense {{ field_index: {}, target: {:?}.into() }}", field_index, target)
+        }
+        RuleConfig::Consume { field_index, target, rate } => {
+            format!("Rule::Consume {{ field_index: {}, target: {:?}.into(), rate: {:.3} }}", field_index, target, rate)
+        }
+        RuleConfig::Gradient { field, strength, ascending } => {
+            format!("Rule::Gradient {{ field: {}, strength: {:.3}, ascending: {} }}", field, strength, ascending)
+        }
+
+        // Neighbor Field Operations
+        RuleConfig::Accumulate { source, target, radius, operation, falloff } => {
+            let falloff_str = match falloff {
+                Some(f) => format!("Some({})", falloff_code(f)),
+                None => "None".to_string(),
+            };
+            format!("Rule::Accumulate {{ source: {:?}.into(), target: {:?}.into(), radius: {:.3}, operation: {:?}.into(), falloff: {} }}",
+                source, target, radius, operation, falloff_str)
+        }
+        RuleConfig::Signal { source, target, radius, strength, falloff } => {
+            let falloff_str = match falloff {
+                Some(f) => format!("Some({})", falloff_code(f)),
+                None => "None".to_string(),
+            };
+            format!("Rule::Signal {{ source: {:?}.into(), target: {:?}.into(), radius: {:.3}, strength: {:.3}, falloff: {} }}",
+                source, target, radius, strength, falloff_str)
+        }
+        RuleConfig::Absorb { target_type, radius, source_field, target_field } => {
+            let type_str = match target_type {
+                Some(t) => format!("Some({})", t),
+                None => "None".to_string(),
+            };
+            format!("Rule::Absorb {{ target_type: {}, radius: {:.3}, source_field: {:?}.into(), target_field: {:?}.into() }}",
+                type_str, radius, source_field, target_field)
+        }
+
+        // Logic Gates
+        RuleConfig::And { a, b, output } => {
+            format!("Rule::And {{ a: {:?}.into(), b: {:?}.into(), output: {:?}.into() }}", a, b, output)
+        }
+        RuleConfig::Or { a, b, output } => {
+            format!("Rule::Or {{ a: {:?}.into(), b: {:?}.into(), output: {:?}.into() }}", a, b, output)
+        }
+        RuleConfig::Not { input, output, max } => {
+            format!("Rule::Not {{ input: {:?}.into(), output: {:?}.into(), max: {:.3} }}", input, output, max)
+        }
+        RuleConfig::Xor { a, b, output } => {
+            format!("Rule::Xor {{ a: {:?}.into(), b: {:?}.into(), output: {:?}.into() }}", a, b, output)
+        }
+        RuleConfig::Hysteresis { input, output, low_threshold, high_threshold, on_value, off_value } => {
+            format!("Rule::Hysteresis {{ input: {:?}.into(), output: {:?}.into(), low_threshold: {:.3}, high_threshold: {:.3}, on_value: {:.3}, off_value: {:.3} }}",
+                input, output, low_threshold, high_threshold, on_value, off_value)
+        }
+        RuleConfig::Latch { output, set_condition, reset_condition, set_value, reset_value } => {
+            format!("Rule::Latch {{ output: {:?}.into(), set_condition: r#\"{}\"#.into(), reset_condition: r#\"{}\"#.into(), set_value: {:.3}, reset_value: {:.3} }}",
+                output, set_condition, reset_condition, set_value, reset_value)
+        }
+        RuleConfig::Edge { input, prev_field, output, threshold, rising, falling } => {
+            format!("Rule::Edge {{ input: {:?}.into(), prev_field: {:?}.into(), output: {:?}.into(), threshold: {:.3}, rising: {}, falling: {} }}",
+                input, prev_field, output, threshold, rising, falling)
+        }
+        RuleConfig::Select { condition, then_field, else_field, output } => {
+            format!("Rule::Select {{ condition: r#\"{}\"#.into(), then_field: {:?}.into(), else_field: {:?}.into(), output: {:?}.into() }}",
+                condition, then_field, else_field, output)
+        }
+        RuleConfig::Blend { a, b, weight, output } => {
+            format!("Rule::Blend {{ a: {:?}.into(), b: {:?}.into(), weight: {:?}.into(), output: {:?}.into() }}", a, b, weight, output)
+        }
+        RuleConfig::Sync { phase_field, frequency, field, emit_amount, coupling, detection_threshold, on_fire } => {
+            let on_fire_str = match on_fire {
+                Some(code) => format!("Some(r#\"{}\"#.into())", code),
+                None => "None".into(),
+            };
+            format!("Rule::Sync {{ phase_field: {:?}.into(), frequency: {:.4}, field: {}, emit_amount: {:.4}, coupling: {:.4}, detection_threshold: {:.4}, on_fire: {} }}",
+                phase_field, frequency, field, emit_amount, coupling, detection_threshold, on_fire_str)
+        }
+        RuleConfig::Split { condition, offspring_count, offspring_type, resource_field, resource_cost, spread, speed_min, speed_max } => {
+            let offspring_type_str = match offspring_type {
+                Some(t) => format!("Some({})", t),
+                None => "None".into(),
+            };
+            let resource_field_str = match resource_field {
+                Some(f) => format!("Some({:?}.into())", f),
+                None => "None".into(),
+            };
+            format!("Rule::Split {{ condition: r#\"{}\"#.into(), offspring_count: {}, offspring_type: {}, resource_field: {}, resource_cost: {:.4}, spread: {:.4}, speed_min: {:.4}, speed_max: {:.4} }}",
+                condition, offspring_count, offspring_type_str, resource_field_str, resource_cost, spread, speed_min, speed_max)
+        }
+        RuleConfig::OnCollisionDynamic { radius, response, params } => {
+            let params_code: Vec<String> = params.iter().map(|(k, v)| {
+                format!("({:?}.into(), UniformValue::{})", k, match v {
+                    UniformValueConfig::F32(f) => format!("F32({:.4})", f),
+                    UniformValueConfig::Vec2(arr) => format!("Vec2(Vec2::new({:.4}, {:.4}))", arr[0], arr[1]),
+                    UniformValueConfig::Vec3(arr) => format!("Vec3(Vec3::new({:.4}, {:.4}, {:.4}))", arr[0], arr[1], arr[2]),
+                    UniformValueConfig::Vec4(arr) => format!("Vec4(Vec4::new({:.4}, {:.4}, {:.4}, {:.4}))", arr[0], arr[1], arr[2], arr[3]),
+                })
+            }).collect();
+            format!("Rule::OnCollisionDynamic {{ radius: {:.4}, response: r#\"{}\"#.into(), params: vec![{}] }}",
+                radius, response, params_code.join(", "))
         }
     }
 }

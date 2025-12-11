@@ -73,9 +73,10 @@ impl UniformValueConfig {
 /// Field types for custom particle fields.
 ///
 /// These represent the WGSL types available for particle state.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ParticleFieldType {
     /// Single 32-bit float
+    #[default]
     F32,
     /// Two-component float vector
     Vec2,
@@ -159,12 +160,6 @@ impl ParticleFieldType {
             ParticleFieldType::U32 => "u32",
             ParticleFieldType::I32 => "i32",
         }
-    }
-}
-
-impl Default for ParticleFieldType {
-    fn default() -> Self {
-        ParticleFieldType::F32
     }
 }
 
@@ -457,24 +452,70 @@ impl Default for SpawnConfig {
 }
 
 /// Falloff function for distance-based effects
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub enum Falloff {
     Constant,
     Linear,
     Inverse,
+    #[default]
     InverseSquare,
     Smooth,
-}
-
-impl Default for Falloff {
-    fn default() -> Self {
-        Falloff::InverseSquare
-    }
 }
 
 impl Falloff {
     pub fn variants() -> &'static [&'static str] {
         &["Constant", "Linear", "Inverse", "InverseSquare", "Smooth"]
+    }
+}
+
+/// A transition in an agent state machine.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct TransitionConfig {
+    /// Target state ID.
+    pub to: u32,
+    /// WGSL condition that triggers this transition.
+    pub condition: String,
+    /// Priority (higher = checked first).
+    pub priority: i32,
+}
+
+impl Default for TransitionConfig {
+    fn default() -> Self {
+        Self {
+            to: 0,
+            condition: "false".into(),
+            priority: 0,
+        }
+    }
+}
+
+/// A state in an agent state machine.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AgentStateConfig {
+    /// Unique state identifier.
+    pub id: u32,
+    /// Optional name for documentation.
+    pub name: Option<String>,
+    /// WGSL code to run when entering this state.
+    pub on_enter: Option<String>,
+    /// WGSL code to run every frame in this state.
+    pub on_update: Option<String>,
+    /// WGSL code to run when exiting this state.
+    pub on_exit: Option<String>,
+    /// Transitions to other states.
+    pub transitions: Vec<TransitionConfig>,
+}
+
+impl AgentStateConfig {
+    pub fn new(id: u32) -> Self {
+        Self {
+            id,
+            name: None,
+            on_enter: None,
+            on_update: None,
+            on_exit: None,
+            transitions: Vec::new(),
+        }
     }
 }
 
@@ -735,6 +776,8 @@ pub struct VisualsConfig {
     pub trail_length: u32,
     pub connections_enabled: bool,
     pub connections_radius: f32,
+    #[serde(default = "default_connections_color")]
+    pub connections_color: [f32; 3],
     pub velocity_stretch: bool,
     pub velocity_stretch_factor: f32,
     pub spatial_grid_opacity: f32,
@@ -748,6 +791,273 @@ fn default_wireframe_thickness() -> f32 {
     0.003
 }
 
+fn default_connections_color() -> [f32; 3] {
+    [0.5, 0.7, 1.0]  // Light blue (matches original hardcoded value)
+}
+
+fn default_speed() -> f32 {
+    1.0
+}
+
+/// Mouse interaction power types
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MousePower {
+    /// No mouse interaction
+    #[default]
+    None,
+    /// Pull particles toward cursor
+    Attract,
+    /// Push particles away from cursor
+    Repel,
+    /// Swirl particles around cursor
+    Vortex,
+    /// Burst particles outward on click
+    Explode,
+    /// Strong point gravity at cursor
+    GravityWell,
+    /// Color particles near cursor
+    Paint,
+    /// Add chaos/noise near cursor
+    Turbulence,
+    /// Slow particles in radius
+    Freeze,
+    /// Destroy particles on click
+    Kill,
+    /// Spawn particles at cursor
+    Spawn,
+    /// Suck particles in and destroy at center
+    BlackHole,
+}
+
+impl MousePower {
+    pub fn variants() -> &'static [&'static str] {
+        &[
+            "None", "Attract", "Repel", "Vortex", "Explode", "GravityWell",
+            "Paint", "Turbulence", "Freeze", "Kill", "Spawn", "BlackHole",
+        ]
+    }
+
+    pub fn from_index(idx: usize) -> Self {
+        match idx {
+            0 => MousePower::None,
+            1 => MousePower::Attract,
+            2 => MousePower::Repel,
+            3 => MousePower::Vortex,
+            4 => MousePower::Explode,
+            5 => MousePower::GravityWell,
+            6 => MousePower::Paint,
+            7 => MousePower::Turbulence,
+            8 => MousePower::Freeze,
+            9 => MousePower::Kill,
+            10 => MousePower::Spawn,
+            11 => MousePower::BlackHole,
+            _ => MousePower::None,
+        }
+    }
+
+    pub fn to_index(&self) -> usize {
+        match self {
+            MousePower::None => 0,
+            MousePower::Attract => 1,
+            MousePower::Repel => 2,
+            MousePower::Vortex => 3,
+            MousePower::Explode => 4,
+            MousePower::GravityWell => 5,
+            MousePower::Paint => 6,
+            MousePower::Turbulence => 7,
+            MousePower::Freeze => 8,
+            MousePower::Kill => 9,
+            MousePower::Spawn => 10,
+            MousePower::BlackHole => 11,
+        }
+    }
+
+    /// Generate WGSL code for this mouse power
+    pub fn to_wgsl(&self) -> String {
+        match self {
+            MousePower::None => String::new(),
+            MousePower::Attract => r#"
+    // Mouse Attract
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.001 && dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            p.velocity += normalize(to_mouse) * mstrength * delta_time;
+        }
+    }
+"#.into(),
+            MousePower::Repel => r#"
+    // Mouse Repel
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.001 && dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            p.velocity -= normalize(to_mouse) * mstrength * delta_time;
+        }
+    }
+"#.into(),
+            MousePower::Vortex => r#"
+    // Mouse Vortex
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.001 && dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            // Perpendicular force for swirl (in XZ plane)
+            let tangent = vec3<f32>(-to_mouse.z, 0.0, to_mouse.x);
+            p.velocity += normalize(tangent) * mstrength * delta_time;
+            // Slight inward pull
+            p.velocity += normalize(to_mouse) * mstrength * 0.3 * delta_time;
+        }
+    }
+"#.into(),
+            MousePower::Explode => r#"
+    // Mouse Explode (impulse while held)
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.001 && dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            p.velocity -= normalize(to_mouse) * mstrength * delta_time * 10.0;
+        }
+    }
+"#.into(),
+            MousePower::GravityWell => r#"
+    // Mouse Gravity Well
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.01) {
+            let mstrength = mouse_strength / (dist * dist + 0.01);
+            p.velocity += normalize(to_mouse) * mstrength * delta_time;
+        }
+    }
+"#.into(),
+            MousePower::Paint => r#"
+    // Mouse Paint
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist < mouse_radius) {
+            let t = 1.0 - dist / mouse_radius;
+            p.color = mix(p.color, mouse_color, t * mouse_strength * delta_time);
+        }
+    }
+"#.into(),
+            MousePower::Turbulence => r#"
+    // Mouse Turbulence
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist < mouse_radius) {
+            let mstrength = mouse_strength * (1.0 - dist / mouse_radius);
+            let noise_input = p.position * 10.0 + vec3<f32>(time * 3.0);
+            let noise_val = vec3<f32>(
+                fract(sin(dot(noise_input, vec3<f32>(12.9898, 78.233, 45.164))) * 43758.5453) - 0.5,
+                fract(sin(dot(noise_input, vec3<f32>(93.989, 67.345, 12.456))) * 28462.6342) - 0.5,
+                fract(sin(dot(noise_input, vec3<f32>(45.164, 12.987, 93.123))) * 63829.2847) - 0.5
+            );
+            p.velocity += noise_val * mstrength * delta_time * 5.0;
+        }
+    }
+"#.into(),
+            MousePower::Freeze => r#"
+    // Mouse Freeze
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist < mouse_radius) {
+            let freeze_amount = mouse_strength * (1.0 - dist / mouse_radius) * delta_time * 5.0;
+            p.velocity *= max(0.0, 1.0 - freeze_amount);
+        }
+    }
+"#.into(),
+            MousePower::Kill => r#"
+    // Mouse Kill
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist < mouse_radius) {
+            p.alive = 0u;
+        }
+    }
+"#.into(),
+            MousePower::Spawn => String::new(),  // Spawn is handled in to_early_wgsl()
+            MousePower::BlackHole => r#"
+    // Mouse Black Hole
+    if (mouse_down > 0.5) {
+        let to_mouse = mouse_pos - p.position;
+        let dist = length(to_mouse);
+        if (dist > 0.01) {
+            // Strong gravity pull
+            let mstrength = mouse_strength * 3.0 / (dist * dist + 0.01);
+            p.velocity += normalize(to_mouse) * mstrength * delta_time;
+            // Kill if too close
+            if (dist < mouse_radius * 0.1) {
+                p.alive = 0u;
+            }
+        }
+    }
+"#.into(),
+        }
+    }
+
+    /// Generate WGSL code that runs BEFORE the dead particle skip.
+    /// This is needed for powers like Spawn that operate on dead particles.
+    pub fn to_early_wgsl(&self) -> String {
+        match self {
+            MousePower::Spawn => r#"
+    // Mouse Spawn (respawn dead particles at mouse) - runs before alive check
+    if (mouse_down > 0.5 && p.alive == 0u) {
+        // Random offset within radius
+        let hash_val = fract(sin(f32(index) * 12.9898 + time * 100.0) * 43758.5453);
+        if (hash_val < mouse_strength * delta_time * 10.0) {
+            let angle1 = hash_val * 6.28318;
+            let angle2 = fract(hash_val * 7.461) * 3.14159;
+            let r = fract(hash_val * 3.752) * mouse_radius * 0.5;
+            p.position = mouse_pos + vec3<f32>(
+                sin(angle2) * cos(angle1) * r,
+                cos(angle2) * r,
+                sin(angle2) * sin(angle1) * r
+            );
+            p.velocity = vec3<f32>(0.0);
+            p.alive = 1u;
+            p.age = 0.0;
+            p.color = mouse_color;
+        }
+    }
+"#.into(),
+            _ => String::new(),
+        }
+    }
+}
+
+/// Mouse interaction configuration
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MouseConfig {
+    /// The active mouse power
+    pub power: MousePower,
+    /// Effect radius
+    pub radius: f32,
+    /// Effect strength
+    pub strength: f32,
+    /// Color for paint/spawn effects
+    pub color: [f32; 3],
+}
+
+impl Default for MouseConfig {
+    fn default() -> Self {
+        Self {
+            power: MousePower::None,
+            radius: 0.5,  // World space units
+            strength: 5.0,
+            color: [1.0, 0.5, 0.2], // Orange
+        }
+    }
+}
+
 impl Default for VisualsConfig {
     fn default() -> Self {
         Self {
@@ -759,6 +1069,7 @@ impl Default for VisualsConfig {
             trail_length: 0,
             connections_enabled: false,
             connections_radius: 0.1,
+            connections_color: [0.5, 0.7, 1.0],
             velocity_stretch: false,
             velocity_stretch_factor: 2.0,
             spatial_grid_opacity: 0.0,
@@ -951,6 +1262,20 @@ pub enum RuleConfig {
     // === Springs ===
     ChainSprings { stiffness: f32, damping: f32, rest_length: f32, max_stretch: Option<f32> },
     RadialSprings { hub_stiffness: f32, ring_stiffness: f32, damping: f32, hub_length: f32, ring_length: f32 },
+    BondSprings { bonds: Vec<String>, stiffness: f32, damping: f32, rest_length: f32, max_stretch: Option<f32> },
+
+    // === State Machine ===
+    State { field: String, transitions: Vec<(u32, u32, String)> },
+    Agent {
+        state_field: String,
+        prev_state_field: String,
+        state_timer_field: Option<String>,
+        states: Vec<AgentStateConfig>,
+    },
+
+    // === Conditional ===
+    Switch { condition: String, then_code: String, else_code: Option<String> },
+    TypedNeighbor { self_type: Option<u32>, other_type: Option<u32>, radius: f32, code: String },
 
     // === Advanced Physics ===
     DensityBuoyancy { density_field: String, medium_density: f32, strength: f32 },
@@ -967,6 +1292,63 @@ pub enum RuleConfig {
     Remap { field: String, in_min: f32, in_max: f32, out_min: f32, out_max: f32 },
     Quantize { field: String, step: f32 },
     Noise { field: String, amplitude: f32, frequency: f32 },
+    Smooth { field: String, target: f32, rate: f32 },
+    Modulo { field: String, min: f32, max: f32 },
+    Copy { from: String, to: String, scale: f32, offset: f32 },
+    Threshold { input_field: String, output_field: String, threshold: f32, above: f32, below: f32 },
+    Gate { condition: String, action: String },
+    Tween { field: String, from: f32, to: f32, duration: f32, timer_field: String },
+    Periodic { interval: f32, phase_field: Option<String>, action: String },
+
+    // === Field Interactions ===
+    Deposit { field_index: u32, source: String, amount: f32 },
+    Sense { field_index: u32, target: String },
+    Consume { field_index: u32, target: String, rate: f32 },
+    Gradient { field: u32, strength: f32, ascending: bool },
+
+    // === Neighbor Field Operations ===
+    Accumulate { source: String, target: String, radius: f32, operation: String, falloff: Option<Falloff> },
+    Signal { source: String, target: String, radius: f32, strength: f32, falloff: Option<Falloff> },
+    Absorb { target_type: Option<u32>, radius: f32, source_field: String, target_field: String },
+
+    // === Logic Gates ===
+    And { a: String, b: String, output: String },
+    Or { a: String, b: String, output: String },
+    Not { input: String, output: String, max: f32 },
+    Xor { a: String, b: String, output: String },
+    Hysteresis { input: String, output: String, low_threshold: f32, high_threshold: f32, on_value: f32, off_value: f32 },
+    Latch { output: String, set_condition: String, reset_condition: String, set_value: f32, reset_value: f32 },
+    Edge { input: String, prev_field: String, output: String, threshold: f32, rising: bool, falling: bool },
+    Select { condition: String, then_field: String, else_field: String, output: String },
+    Blend { a: String, b: String, weight: String, output: String },
+
+    // === Synchronization & Reproduction ===
+    Sync {
+        phase_field: String,
+        frequency: f32,
+        field: u32,
+        emit_amount: f32,
+        coupling: f32,
+        detection_threshold: f32,
+        on_fire: Option<String>,
+    },
+    Split {
+        condition: String,
+        offspring_count: u32,
+        offspring_type: Option<u32>,
+        resource_field: Option<String>,
+        resource_cost: f32,
+        spread: f32,
+        speed_min: f32,
+        speed_max: f32,
+    },
+
+    // === Dynamic Collision ===
+    OnCollisionDynamic {
+        radius: f32,
+        response: String,
+        params: Vec<(String, UniformValueConfig)>,
+    },
 }
 
 impl RuleConfig {
@@ -1056,6 +1438,13 @@ impl RuleConfig {
             // Springs
             RuleConfig::ChainSprings { .. } => "Chain Springs",
             RuleConfig::RadialSprings { .. } => "Radial Springs",
+            RuleConfig::BondSprings { .. } => "Bond Springs",
+            // State Machine
+            RuleConfig::State { .. } => "State",
+            RuleConfig::Agent { .. } => "Agent",
+            // Conditional
+            RuleConfig::Switch { .. } => "Switch",
+            RuleConfig::TypedNeighbor { .. } => "Typed Neighbor",
             // Advanced Physics
             RuleConfig::DensityBuoyancy { .. } => "Density Buoyancy",
             RuleConfig::Diffuse { .. } => "Diffuse",
@@ -1069,6 +1458,37 @@ impl RuleConfig {
             RuleConfig::Remap { .. } => "Remap",
             RuleConfig::Quantize { .. } => "Quantize",
             RuleConfig::Noise { .. } => "Noise",
+            RuleConfig::Smooth { .. } => "Smooth",
+            RuleConfig::Modulo { .. } => "Modulo",
+            RuleConfig::Copy { .. } => "Copy",
+            RuleConfig::Threshold { .. } => "Threshold",
+            RuleConfig::Gate { .. } => "Gate",
+            RuleConfig::Tween { .. } => "Tween",
+            RuleConfig::Periodic { .. } => "Periodic",
+            // Field Interactions
+            RuleConfig::Deposit { .. } => "Deposit",
+            RuleConfig::Sense { .. } => "Sense",
+            RuleConfig::Consume { .. } => "Consume",
+            RuleConfig::Gradient { .. } => "Gradient",
+            // Neighbor Field Operations
+            RuleConfig::Accumulate { .. } => "Accumulate",
+            RuleConfig::Signal { .. } => "Signal",
+            RuleConfig::Absorb { .. } => "Absorb",
+            // Logic Gates
+            RuleConfig::And { .. } => "And",
+            RuleConfig::Or { .. } => "Or",
+            RuleConfig::Not { .. } => "Not",
+            RuleConfig::Xor { .. } => "Xor",
+            RuleConfig::Hysteresis { .. } => "Hysteresis",
+            RuleConfig::Latch { .. } => "Latch",
+            RuleConfig::Edge { .. } => "Edge",
+            RuleConfig::Select { .. } => "Select",
+            RuleConfig::Blend { .. } => "Blend",
+            // Synchronization & Reproduction
+            RuleConfig::Sync { .. } => "Sync",
+            RuleConfig::Split { .. } => "Split",
+            // Dynamic Collision
+            RuleConfig::OnCollisionDynamic { .. } => "On Collision Dynamic",
         }
     }
 
@@ -1103,11 +1523,24 @@ impl RuleConfig {
             RuleConfig::OnSpawn { .. } => "Event Hooks",
             RuleConfig::Grow { .. } | RuleConfig::Decay { .. } | RuleConfig::Die { .. } |
             RuleConfig::DLA { .. } | RuleConfig::Refractory { .. } => "Growth & Decay",
-            RuleConfig::ChainSprings { .. } | RuleConfig::RadialSprings { .. } => "Springs",
+            RuleConfig::ChainSprings { .. } | RuleConfig::RadialSprings { .. } | RuleConfig::BondSprings { .. } => "Springs",
+            RuleConfig::State { .. } | RuleConfig::Agent { .. } => "State Machine",
+            RuleConfig::Switch { .. } => "Conditional",
+            RuleConfig::TypedNeighbor { .. } => "Typed",
             RuleConfig::DensityBuoyancy { .. } | RuleConfig::Diffuse { .. } | RuleConfig::Mass { .. } => "Physics",
-            RuleConfig::CopyField { .. } | RuleConfig::Current { .. } => "Fields",
+            RuleConfig::CopyField { .. } | RuleConfig::Current { .. } |
+            RuleConfig::Deposit { .. } | RuleConfig::Sense { .. } | RuleConfig::Consume { .. } |
+            RuleConfig::Gradient { .. } => "Fields",
             RuleConfig::Lerp { .. } | RuleConfig::Clamp { .. } | RuleConfig::Remap { .. } |
-            RuleConfig::Quantize { .. } | RuleConfig::Noise { .. } => "Math",
+            RuleConfig::Quantize { .. } | RuleConfig::Noise { .. } | RuleConfig::Smooth { .. } |
+            RuleConfig::Modulo { .. } | RuleConfig::Copy { .. } | RuleConfig::Threshold { .. } |
+            RuleConfig::Gate { .. } | RuleConfig::Tween { .. } | RuleConfig::Periodic { .. } => "Math",
+            RuleConfig::Accumulate { .. } | RuleConfig::Signal { .. } | RuleConfig::Absorb { .. } => "Neighbor Fields",
+            RuleConfig::And { .. } | RuleConfig::Or { .. } | RuleConfig::Not { .. } |
+            RuleConfig::Xor { .. } | RuleConfig::Hysteresis { .. } | RuleConfig::Latch { .. } |
+            RuleConfig::Edge { .. } | RuleConfig::Select { .. } | RuleConfig::Blend { .. } => "Logic",
+            RuleConfig::Sync { .. } | RuleConfig::Split { .. } => "Lifecycle",
+            RuleConfig::OnCollisionDynamic { .. } => "Custom",
         }
     }
 
@@ -1448,6 +1881,64 @@ impl RuleConfig {
                 hub_length: *hub_length,
                 ring_length: *ring_length,
             },
+            RuleConfig::BondSprings { bonds, stiffness, damping, rest_length, max_stretch } => Rule::BondSprings {
+                bonds: bonds.iter().map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str).collect(),
+                stiffness: *stiffness,
+                damping: *damping,
+                rest_length: *rest_length,
+                max_stretch: *max_stretch,
+            },
+            // State Machine
+            RuleConfig::State { field, transitions } => Rule::State {
+                field: field.clone(),
+                transitions: transitions.clone(),
+            },
+            RuleConfig::Agent { state_field, prev_state_field, state_timer_field, states } => Rule::Agent {
+                state_field: state_field.clone(),
+                prev_state_field: prev_state_field.clone(),
+                state_timer_field: state_timer_field.clone(),
+                states: states.iter().map(|s| {
+                    let mut agent_state = rdpe::AgentState::new(s.id);
+                    if let Some(name) = &s.name {
+                        agent_state = agent_state.named(name.clone());
+                    }
+                    if let Some(code) = &s.on_enter {
+                        agent_state = agent_state.on_enter(code.clone());
+                    }
+                    if let Some(code) = &s.on_update {
+                        agent_state = agent_state.on_update(code.clone());
+                    }
+                    if let Some(code) = &s.on_exit {
+                        agent_state = agent_state.on_exit(code.clone());
+                    }
+                    for t in &s.transitions {
+                        agent_state = agent_state.transition_priority(t.to, t.condition.clone(), t.priority);
+                    }
+                    agent_state
+                }).collect(),
+            },
+            // Conditional (simplified)
+            RuleConfig::Switch { condition, then_code, else_code } => {
+                let code = if let Some(else_c) = else_code {
+                    format!("if ({}) {{\n    {}\n}} else {{\n    {}\n}}", condition, then_code, else_c)
+                } else {
+                    format!("if ({}) {{\n    {}\n}}", condition, then_code)
+                };
+                Rule::Custom(code)
+            },
+            RuleConfig::TypedNeighbor { self_type, other_type, radius, code } => {
+                let type_check = match (self_type, other_type) {
+                    (Some(st), Some(ot)) => format!("if p.particle_type != {}u || other.particle_type != {}u {{ continue; }}\n", st, ot),
+                    (Some(st), None) => format!("if p.particle_type != {}u {{ continue; }}\n", st),
+                    (None, Some(ot)) => format!("if other.particle_type != {}u {{ continue; }}\n", ot),
+                    (None, None) => String::new(),
+                };
+                let full_code = format!(
+                    "{}if neighbor_dist < {} && neighbor_dist > 0.001 {{\n    {}\n}}",
+                    type_check, radius, code
+                );
+                Rule::NeighborCustom(full_code)
+            },
             // Advanced Physics
             RuleConfig::DensityBuoyancy { density_field, medium_density, strength } => Rule::DensityBuoyancy {
                 density_field: density_field.clone(),
@@ -1469,6 +1960,187 @@ impl RuleConfig {
                 depletion_rate: *depletion_rate,
                 regen_rate: *regen_rate,
             },
+            // Math / Signal
+            RuleConfig::Smooth { field, target, rate } => Rule::Smooth {
+                field: field.clone(),
+                target: *target,
+                rate: *rate,
+            },
+            RuleConfig::Modulo { field, min, max } => Rule::Modulo {
+                field: field.clone(),
+                min: *min,
+                max: *max,
+            },
+            RuleConfig::Copy { from, to, scale, offset } => Rule::Copy {
+                from: from.clone(),
+                to: to.clone(),
+                scale: *scale,
+                offset: *offset,
+            },
+            RuleConfig::Threshold { input_field, output_field, threshold, above, below } => Rule::Threshold {
+                input_field: input_field.clone(),
+                output_field: output_field.clone(),
+                threshold: *threshold,
+                above: *above,
+                below: *below,
+            },
+            RuleConfig::Gate { condition, action } => Rule::Gate {
+                condition: condition.clone(),
+                action: action.clone(),
+            },
+            RuleConfig::Tween { field, from, to, duration, timer_field } => Rule::Tween {
+                field: field.clone(),
+                from: *from,
+                to: *to,
+                duration: *duration,
+                timer_field: timer_field.clone(),
+            },
+            RuleConfig::Periodic { interval, phase_field, action } => Rule::Periodic {
+                interval: *interval,
+                phase_field: phase_field.clone(),
+                action: action.clone(),
+            },
+            // Field Interactions
+            RuleConfig::Deposit { field_index, source, amount } => Rule::Deposit {
+                field_index: *field_index,
+                source: source.clone(),
+                amount: *amount,
+            },
+            RuleConfig::Sense { field_index, target } => Rule::Sense {
+                field_index: *field_index,
+                target: target.clone(),
+            },
+            RuleConfig::Consume { field_index, target, rate } => Rule::Consume {
+                field_index: *field_index,
+                target: target.clone(),
+                rate: *rate,
+            },
+            RuleConfig::Gradient { field, strength, ascending } => Rule::Gradient {
+                field: *field,
+                strength: *strength,
+                ascending: *ascending,
+            },
+            // Neighbor Field Operations
+            RuleConfig::Accumulate { source, target, radius, operation, falloff } => Rule::Accumulate {
+                source: source.clone(),
+                target: target.clone(),
+                radius: *radius,
+                operation: operation.clone(),
+                falloff: falloff.map(|f| match f {
+                    Falloff::Constant => rdpe::Falloff::Constant,
+                    Falloff::Linear => rdpe::Falloff::Linear,
+                    Falloff::Inverse => rdpe::Falloff::Inverse,
+                    Falloff::InverseSquare => rdpe::Falloff::InverseSquare,
+                    Falloff::Smooth => rdpe::Falloff::Smooth,
+                }),
+            },
+            RuleConfig::Signal { source, target, radius, strength, falloff } => Rule::Signal {
+                source: source.clone(),
+                target: target.clone(),
+                radius: *radius,
+                strength: *strength,
+                falloff: falloff.map(|f| match f {
+                    Falloff::Constant => rdpe::Falloff::Constant,
+                    Falloff::Linear => rdpe::Falloff::Linear,
+                    Falloff::Inverse => rdpe::Falloff::Inverse,
+                    Falloff::InverseSquare => rdpe::Falloff::InverseSquare,
+                    Falloff::Smooth => rdpe::Falloff::Smooth,
+                }),
+            },
+            RuleConfig::Absorb { target_type, radius, source_field, target_field } => Rule::Absorb {
+                target_type: *target_type,
+                radius: *radius,
+                source_field: source_field.clone(),
+                target_field: target_field.clone(),
+            },
+            // Logic Gates
+            RuleConfig::And { a, b, output } => Rule::And {
+                a: a.clone(),
+                b: b.clone(),
+                output: output.clone(),
+            },
+            RuleConfig::Or { a, b, output } => Rule::Or {
+                a: a.clone(),
+                b: b.clone(),
+                output: output.clone(),
+            },
+            RuleConfig::Not { input, output, max } => Rule::Not {
+                input: input.clone(),
+                output: output.clone(),
+                max: *max,
+            },
+            RuleConfig::Xor { a, b, output } => Rule::Xor {
+                a: a.clone(),
+                b: b.clone(),
+                output: output.clone(),
+            },
+            RuleConfig::Hysteresis { input, output, low_threshold, high_threshold, on_value, off_value } => Rule::Hysteresis {
+                input: input.clone(),
+                output: output.clone(),
+                low_threshold: *low_threshold,
+                high_threshold: *high_threshold,
+                on_value: *on_value,
+                off_value: *off_value,
+            },
+            RuleConfig::Latch { output, set_condition, reset_condition, set_value, reset_value } => Rule::Latch {
+                output: output.clone(),
+                set_condition: set_condition.clone(),
+                reset_condition: reset_condition.clone(),
+                set_value: *set_value,
+                reset_value: *reset_value,
+            },
+            RuleConfig::Edge { input, prev_field, output, threshold, rising, falling } => Rule::Edge {
+                input: input.clone(),
+                prev_field: prev_field.clone(),
+                output: output.clone(),
+                threshold: *threshold,
+                rising: *rising,
+                falling: *falling,
+            },
+            RuleConfig::Select { condition, then_field, else_field, output } => Rule::Select {
+                condition: condition.clone(),
+                then_field: then_field.clone(),
+                else_field: else_field.clone(),
+                output: output.clone(),
+            },
+            RuleConfig::Blend { a, b, weight, output } => Rule::Blend {
+                a: a.clone(),
+                b: b.clone(),
+                weight: weight.clone(),
+                output: output.clone(),
+            },
+            RuleConfig::Sync { phase_field, frequency, field, emit_amount, coupling, detection_threshold, on_fire } => Rule::Sync {
+                phase_field: phase_field.clone(),
+                frequency: *frequency,
+                field: *field,
+                emit_amount: *emit_amount,
+                coupling: *coupling,
+                detection_threshold: *detection_threshold,
+                on_fire: on_fire.clone(),
+            },
+            RuleConfig::Split { condition, offspring_count, offspring_type, resource_field, resource_cost, spread, speed_min, speed_max } => Rule::Split {
+                condition: condition.clone(),
+                offspring_count: *offspring_count,
+                offspring_type: *offspring_type,
+                resource_field: resource_field.clone(),
+                resource_cost: *resource_cost,
+                spread: *spread,
+                speed_min: *speed_min,
+                speed_max: *speed_max,
+            },
+            RuleConfig::OnCollisionDynamic { radius, response, params } => Rule::OnCollisionDynamic {
+                radius: *radius,
+                response: response.clone(),
+                params: params.iter().map(|(k, v)| {
+                    let uv = match v {
+                        UniformValueConfig::F32(f) => rdpe::UniformValue::F32(*f),
+                        UniformValueConfig::Vec2(arr) => rdpe::UniformValue::Vec2(glam::Vec2::from_array(*arr)),
+                        UniformValueConfig::Vec3(arr) => rdpe::UniformValue::Vec3(glam::Vec3::from_array(*arr)),
+                        UniformValueConfig::Vec4(arr) => rdpe::UniformValue::Vec4(glam::Vec4::from_array(*arr)),
+                    };
+                    (k.clone(), uv)
+                }).collect(),
+            },
         }
     }
 
@@ -1483,7 +2155,9 @@ impl RuleConfig {
             RuleConfig::Chase { .. } | RuleConfig::Evade { .. } | RuleConfig::Convert { .. } |
             RuleConfig::NeighborCustom { .. } | RuleConfig::OnCollision { .. } |
             RuleConfig::DLA { .. } | RuleConfig::Diffuse { .. } |
-            RuleConfig::NeighborCustomDynamic { .. }
+            RuleConfig::NeighborCustomDynamic { .. } |
+            RuleConfig::Accumulate { .. } | RuleConfig::Signal { .. } | RuleConfig::Absorb { .. } |
+            RuleConfig::OnCollisionDynamic { .. } | RuleConfig::TypedNeighbor { .. }
         )
     }
 
@@ -1618,6 +2292,9 @@ pub struct SimConfig {
     pub particle_count: u32,
     pub bounds: f32,
     pub particle_size: f32,
+    /// Simulation speed multiplier (1.0 = normal, 0.5 = half speed, 2.0 = double speed)
+    #[serde(default = "default_speed")]
+    pub speed: f32,
     pub spatial_cell_size: f32,
     pub spatial_resolution: u32,
     pub spawn: SpawnConfig,
@@ -1651,6 +2328,9 @@ pub struct SimConfig {
     /// Custom fields are appended after the base fields.
     #[serde(default)]
     pub particle_fields: Vec<ParticleFieldDef>,
+    /// Mouse interaction configuration.
+    #[serde(default)]
+    pub mouse: MouseConfig,
 }
 
 impl Default for SimConfig {
@@ -1660,6 +2340,7 @@ impl Default for SimConfig {
             particle_count: 5000,
             bounds: 1.0,
             particle_size: 0.015,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig::default(),
@@ -1675,6 +2356,7 @@ impl Default for SimConfig {
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         }
     }
 }
@@ -1732,7 +2414,7 @@ impl ParticleLayout {
     ) -> usize {
         let alignment = field_type.alignment();
         // Align offset
-        *offset = (*offset + alignment - 1) / alignment * alignment;
+        *offset = (*offset).div_ceil(alignment) * alignment;
 
         let field_offset = *offset;
 
@@ -1786,7 +2468,7 @@ impl ParticleLayout {
         // Compute final stride (must be multiple of largest alignment in struct)
         // For structs with vec3, this is 16 bytes
         let max_alignment = 16; // vec3 requires 16-byte struct alignment
-        let stride = (offset + max_alignment - 1) / max_alignment * max_alignment;
+        let stride = offset.div_ceil(max_alignment) * max_alignment;
 
         Self {
             fields,

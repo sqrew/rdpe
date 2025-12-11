@@ -1,0 +1,86 @@
+{
+  "name": "Untitled",
+  "particle_count": 1000,
+  "bounds": 1.5,
+  "particle_size": 0.01,
+  "spatial_cell_size": 0.1,
+  "spatial_resolution": 64,
+  "spawn": {
+    "shape": {
+      "Sphere": {
+        "radius": 0.5
+      }
+    },
+    "velocity": {
+      "RandomDirection": {
+        "speed": 0.1
+      }
+    },
+    "mass_range": [
+      1.0,
+      1.0
+    ],
+    "energy_range": [
+      1.0,
+      1.0
+    ],
+    "color_mode": {
+      "RandomHue": {
+        "saturation": 0.8,
+        "value": 0.9
+      }
+    },
+    "type_weights": [
+      1.0
+    ]
+  },
+  "rules": [
+    {
+      "Drag": 2.0
+    },
+    "BounceWalls",
+    {
+      "NBodyGravity": {
+        "strength": 0.1,
+        "softening": 0.5,
+        "radius": 0.5
+      }
+    }
+  ],
+  "vertex_effects": [],
+  "visuals": {
+    "blend_mode": "Alpha",
+    "shape": "Circle",
+    "palette": "Neon",
+    "color_mapping": "None",
+    "background_color": [
+      0.02,
+      0.02,
+      0.05
+    ],
+    "trail_length": 0,
+    "connections_enabled": false,
+    "connections_radius": 0.15,
+    "velocity_stretch": false,
+    "velocity_stretch_factor": 2.0,
+    "spatial_grid_opacity": 0.0,
+    "wireframe": "None",
+    "wireframe_thickness": 0.001
+  },
+  "custom_uniforms": {},
+  "custom_shaders": {
+    "vertex_code": "",
+    "fragment_code": ""
+  },
+  "fields": [],
+  "volume_render": {
+    "enabled": false,
+    "field_index": 0,
+    "steps": 64,
+    "density_scale": 5.0,
+    "palette": "Inferno",
+    "threshold": 0.01,
+    "additive": true
+  },
+  "particle_fields": []
+}

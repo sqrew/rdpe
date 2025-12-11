@@ -1,4 +1,5 @@
 //! Embedded simulation for the rdpe editor.
+#![allow(dead_code)]
 //!
 //! This module provides a way to run the particle simulation directly inside
 //! the eframe window using egui_wgpu's custom painting system.
@@ -13,7 +14,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use std::collections::HashMap;
 use wgpu::util::DeviceExt;
-use crate::config::{BlendModeConfig, SimConfig, UniformValueConfig, ParticleLayout};
+use crate::config::{BlendModeConfig, SimConfig, UniformValueConfig, ParticleLayout, MouseConfig};
 use crate::shader_gen;
 use crate::shader_validate;
 use crate::spawn;
@@ -33,6 +34,29 @@ struct BaseUniforms {
 }
 
 const BASE_UNIFORMS_SIZE: usize = std::mem::size_of::<BaseUniforms>();
+
+/// Mouse uniforms passed to shaders for mouse interaction.
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct MouseUniforms {
+    /// Mouse position in world space (xyz) + padding
+    pub pos: [f32; 4],
+    /// Mouse button down (1.0) or up (0.0) + radius + strength + padding
+    pub down_radius_strength_pad: [f32; 4],
+    /// Mouse color (rgb) + padding
+    pub color: [f32; 4],
+}
+
+const MOUSE_UNIFORMS_SIZE: usize = std::mem::size_of::<MouseUniforms>();
+
+/// Current mouse state for the simulation.
+#[derive(Clone, Debug, Default)]
+pub struct MouseState {
+    /// Mouse position in world space
+    pub world_pos: Vec3,
+    /// Whether the primary mouse button is held
+    pub is_down: bool,
+}
 
 /// Picking shader - outputs particle index + 1 (0 = no particle).
 const PICKING_SHADER: &str = r#"
@@ -171,7 +195,7 @@ impl PickingState {
             mapped_at_creation: false,
         });
 
-        let particle_buffer_size = ((particle_stride + 255) / 256) * 256;
+        let particle_buffer_size = particle_stride.div_ceil(256) * 256;
         let particle_staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Particle Data Staging Buffer"),
             size: particle_buffer_size as u64,
@@ -379,15 +403,15 @@ impl PickingState {
 
         // Copy picked pixel to staging buffer
         encoder.copy_texture_to_buffer(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &self.texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d { x: pick_x, y: pick_y, z: 0 },
                 aspect: wgpu::TextureAspect::All,
             },
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &self.staging_buffer,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(256),
                     rows_per_image: Some(1),
@@ -462,14 +486,16 @@ impl PickingState {
     }
 }
 
-/// Build uniform buffer data with base uniforms and custom values.
+/// Build uniform buffer data with base uniforms, mouse uniforms, and custom values.
 fn build_uniform_data(
     view_proj: Mat4,
     time: f32,
     delta_time: f32,
+    mouse_state: &MouseState,
+    mouse_config: &MouseConfig,
     custom_uniforms: &[(String, UniformValueConfig)],
 ) -> Vec<u8> {
-    let mut data = Vec::with_capacity(BASE_UNIFORMS_SIZE + 256); // Reserve extra for custom
+    let mut data = Vec::with_capacity(BASE_UNIFORMS_SIZE + MOUSE_UNIFORMS_SIZE + 256); // Reserve extra for custom
 
     // Write base uniforms
     let base = BaseUniforms {
@@ -480,12 +506,25 @@ fn build_uniform_data(
     };
     data.extend_from_slice(bytemuck::bytes_of(&base));
 
+    // Write mouse uniforms
+    let mouse = MouseUniforms {
+        pos: [mouse_state.world_pos.x, mouse_state.world_pos.y, mouse_state.world_pos.z, 0.0],
+        down_radius_strength_pad: [
+            if mouse_state.is_down { 1.0 } else { 0.0 },
+            mouse_config.radius,
+            mouse_config.strength,
+            0.0,
+        ],
+        color: [mouse_config.color[0], mouse_config.color[1], mouse_config.color[2], 0.0],
+    };
+    data.extend_from_slice(bytemuck::bytes_of(&mouse));
+
     // Write custom uniforms with proper std140 alignment
     for (_name, value) in custom_uniforms {
         // Align to value's alignment requirement
         let alignment = value.alignment();
         let current_offset = data.len();
-        let aligned_offset = (current_offset + alignment - 1) / alignment * alignment;
+        let aligned_offset = current_offset.div_ceil(alignment) * alignment;
         data.resize(aligned_offset, 0u8); // Pad to alignment
 
         // Write value bytes
@@ -493,7 +532,7 @@ fn build_uniform_data(
     }
 
     // Ensure minimum buffer size and 16-byte alignment for the total buffer
-    let final_size = ((data.len() + 15) / 16) * 16;
+    let final_size = data.len().div_ceil(16) * 16;
     data.resize(final_size, 0u8);
 
     data
@@ -787,6 +826,7 @@ impl ConnectionVisualization {
         spatial: &SpatialGpu,
         num_particles: u32,
         radius: f32,
+        color: [f32; 3],
         particle_stride: usize,
         target_format: wgpu::TextureFormat,
     ) -> Self {
@@ -869,10 +909,11 @@ impl ConnectionVisualization {
             cache: None,
         });
 
-        // Create render shader
+        // Create render shader with color
+        let render_shader_src = generate_connection_render_shader(color);
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Connection Render Shader"),
-            source: wgpu::ShaderSource::Wgsl(CONNECTION_RENDER_SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
         });
 
         let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1054,7 +1095,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
         });
         compute_pass.set_pipeline(&self.compute_pipeline);
         compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.num_particles + 255) / 256, 1, 1);
+        compute_pass.dispatch_workgroups(self.num_particles.div_ceil(256), 1, 1);
     }
 
     fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
@@ -1065,26 +1106,27 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     }
 }
 
-const CONNECTION_RENDER_SHADER: &str = r#"
-struct Uniforms {
+fn generate_connection_render_shader(color: [f32; 3]) -> String {
+    format!(r#"
+struct Uniforms {{
     view_proj: mat4x4<f32>,
     time: f32,
     delta_time: f32,
-};
+}};
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> connections: array<vec4<f32>>;
 
-struct VertexOutput {
+struct VertexOutput {{
     @builtin(position) clip_position: vec4<f32>,
     @location(0) alpha: f32,
-};
+}};
 
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
-) -> VertexOutput {
+) -> VertexOutput {{
     var out: VertexOutput;
 
     let conn_data_a = connections[instance_index * 2u];
@@ -1094,41 +1136,42 @@ fn vs_main(
     let pos_b = conn_data_b.xyz;
     let alpha = conn_data_a.w;
 
-    if alpha < 0.001 {
+    if alpha < 0.001 {{
         out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
         out.alpha = 0.0;
         return out;
-    }
+    }}
 
     let line_dir = normalize(pos_b - pos_a);
 
     var perp = cross(line_dir, vec3<f32>(0.0, 1.0, 0.0));
-    if length(perp) < 0.001 {
+    if length(perp) < 0.001 {{
         perp = cross(line_dir, vec3<f32>(1.0, 0.0, 0.0));
-    }
+    }}
     perp = normalize(perp) * 0.003;
 
     var pos: vec3<f32>;
-    switch vertex_index {
-        case 0u: { pos = pos_a - perp; }
-        case 1u: { pos = pos_a + perp; }
-        case 2u: { pos = pos_b - perp; }
-        case 3u: { pos = pos_a + perp; }
-        case 4u: { pos = pos_b - perp; }
-        default: { pos = pos_b + perp; }
-    }
+    switch vertex_index {{
+        case 0u: {{ pos = pos_a - perp; }}
+        case 1u: {{ pos = pos_a + perp; }}
+        case 2u: {{ pos = pos_b - perp; }}
+        case 3u: {{ pos = pos_a + perp; }}
+        case 4u: {{ pos = pos_b - perp; }}
+        default: {{ pos = pos_b + perp; }}
+    }}
 
     out.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
     out.alpha = alpha * 0.6;
 
     return out;
-}
+}}
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(0.5, 0.7, 1.0, in.alpha);
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
+    return vec4<f32>({}, {}, {}, in.alpha);
+}}
+"#, color[0], color[1], color[2])
 }
-"#;
 
 /// Wireframe mesh visualization for particles.
 struct WireframeVisualization {
@@ -1727,7 +1770,7 @@ impl TrailVisualization {
         });
         compute_pass.set_pipeline(&self.compute_pipeline);
         compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.num_particles + 255) / 256, 1, 1);
+        compute_pass.dispatch_workgroups(self.num_particles.div_ceil(256), 1, 1);
     }
 
     fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
@@ -1945,6 +1988,10 @@ pub struct SimulationResources {
 
     // Trail visualization
     trails: Option<TrailVisualization>,
+
+    // Mouse interaction
+    mouse_state: MouseState,
+    mouse_config: MouseConfig,
 }
 
 impl SimulationResources {
@@ -1971,10 +2018,12 @@ impl SimulationResources {
         spatial_grid_opacity: f32,
         connections_enabled: bool,
         connections_radius: f32,
+        connections_color: [f32; 3],
         wireframe_mesh: Option<&rdpe::WireframeMesh>,
         wireframe_thickness: f32,
         particle_size: f32,
         trail_length: u32,
+        mouse_config: MouseConfig,
     ) -> Self {
         let particle_stride = layout.stride;
         // Create particle buffer
@@ -2016,6 +2065,8 @@ impl SimulationResources {
             Mat4::IDENTITY,
             0.0,
             0.016,
+            &MouseState::default(),
+            &mouse_config,
             &custom_uniforms,
         );
         let uniform_buffer_size = uniform_data.len();
@@ -2040,14 +2091,15 @@ impl SimulationResources {
         };
 
         // Create connection visualization if enabled (requires spatial)
-        let connections = if connections_enabled && spatial.is_some() {
-            Some(ConnectionVisualization::new(
+        let connections = if connections_enabled {
+            spatial.as_ref().map(|s| ConnectionVisualization::new(
                 device,
                 &particle_buffer,
                 &uniform_buffer,
-                spatial.as_ref().unwrap(),
+                s,
                 num_particles,
                 connections_radius,
+                connections_color,
                 particle_stride,
                 target_format,
             ))
@@ -2056,25 +2108,21 @@ impl SimulationResources {
         };
 
         // Create wireframe visualization if mesh is provided
-        let wireframe = if let Some(mesh) = wireframe_mesh {
-            Some(WireframeVisualization::new(
-                device,
-                &particle_buffer,
-                &uniform_buffer,
-                mesh,
-                wireframe_thickness,
-                particle_size,
-                num_particles,
-                particle_stride,
-                Some(layout.color_offset as u32),
-                layout.alive_offset as u32,
-                layout.scale_offset as u32,
-                target_format,
-                blend_mode,
-            ))
-        } else {
-            None
-        };
+        let wireframe = wireframe_mesh.map(|mesh| WireframeVisualization::new(
+            device,
+            &particle_buffer,
+            &uniform_buffer,
+            mesh,
+            wireframe_thickness,
+            particle_size,
+            num_particles,
+            particle_stride,
+            Some(layout.color_offset as u32),
+            layout.alive_offset as u32,
+            layout.scale_offset as u32,
+            target_format,
+            blend_mode,
+        ));
 
         // Create trail visualization if trail_length > 0
         let trails = if trail_length > 1 {
@@ -2440,6 +2488,8 @@ impl SimulationResources {
             connections,
             wireframe,
             trails,
+            mouse_state: MouseState::default(),
+            mouse_config,
         }
     }
 
@@ -2470,11 +2520,13 @@ impl SimulationResources {
         self.last_inv_view_proj = view_proj.inverse();
         self.last_camera_pos = eye;
 
-        // Build uniform data including custom uniforms
+        // Build uniform data including custom uniforms and mouse
         let uniform_data = build_uniform_data(
             view_proj,
             self.time,
             delta_time,
+            &self.mouse_state,
+            &self.mouse_config,
             &self.custom_uniforms,
         );
         queue.write_buffer(&self.uniform_buffer, 0, &uniform_data);
@@ -2617,6 +2669,22 @@ impl SimulationResources {
         if let Some(ref mut grid) = self.grid_viz {
             grid.set_opacity(queue, opacity);
         }
+    }
+
+    /// Update mouse state (position and button).
+    pub fn set_mouse_state(&mut self, world_pos: Vec3, is_down: bool) {
+        self.mouse_state.world_pos = world_pos;
+        self.mouse_state.is_down = is_down;
+    }
+
+    /// Update mouse configuration.
+    pub fn set_mouse_config(&mut self, config: MouseConfig) {
+        self.mouse_config = config;
+    }
+
+    /// Get current mouse config.
+    pub fn mouse_config(&self) -> &MouseConfig {
+        &self.mouse_config
     }
 
     /// Rotate camera.
@@ -2891,10 +2959,12 @@ impl EmbeddedSimulation {
             config.visuals.spatial_grid_opacity,
             config.visuals.connections_enabled,
             config.visuals.connections_radius,
+            config.visuals.connections_color,
             wireframe_mesh.as_ref(),
             config.visuals.wireframe_thickness,
             config.particle_size,
             config.visuals.trail_length,
+            config.mouse.clone(),
         );
 
         wgpu_render_state
@@ -2991,10 +3061,12 @@ impl EmbeddedSimulation {
             config.visuals.spatial_grid_opacity,
             config.visuals.connections_enabled,
             config.visuals.connections_radius,
+            config.visuals.connections_color,
             wireframe_mesh.as_ref(),
             config.visuals.wireframe_thickness,
             config.particle_size,
             config.visuals.trail_length,
+            config.mouse.clone(),
         );
 
         // Replace resources
@@ -3079,10 +3151,12 @@ impl EmbeddedSimulation {
             config.visuals.spatial_grid_opacity,
             config.visuals.connections_enabled,
             config.visuals.connections_radius,
+            config.visuals.connections_color,
             wireframe_mesh.as_ref(),
             config.visuals.wireframe_thickness,
             config.particle_size,
             config.visuals.trail_length,
+            config.mouse.clone(),
         );
 
         // Replace resources
@@ -3107,10 +3181,11 @@ impl EmbeddedSimulation {
     /// Render the simulation viewport in egui.
     ///
     /// Call this in your UI code where you want the viewport to appear.
-    pub fn show(&mut self, ui: &mut egui::Ui, wgpu_render_state: &egui_wgpu::RenderState) {
-        // Calculate delta time
+    /// The `speed` parameter controls simulation speed (1.0 = normal, 0.5 = half, 2.0 = double).
+    pub fn show(&mut self, ui: &mut egui::Ui, wgpu_render_state: &egui_wgpu::RenderState, speed: f32) {
+        // Calculate delta time with speed multiplier
         let now = std::time::Instant::now();
-        self.delta_time = now.duration_since(self.last_frame).as_secs_f32();
+        self.delta_time = now.duration_since(self.last_frame).as_secs_f32() * speed;
         self.last_frame = now;
 
         // Get available rect
@@ -3137,10 +3212,49 @@ impl EmbeddedSimulation {
                     }
                 }
 
-                // Camera rotation via drag
-                if response.dragged() {
+                // Camera rotation via secondary (right) mouse button drag
+                if response.dragged_by(egui::PointerButton::Secondary) {
                     let delta = response.drag_delta();
                     sim.rotate_camera(-delta.x * 0.01, -delta.y * 0.01);
+                }
+
+                // Track mouse state for mouse powers (Shift + primary button)
+                let shift_held = ui.input(|i| i.modifiers.shift);
+                let primary_down = ui.input(|i| i.pointer.primary_down());
+                let power_active = shift_held && primary_down;
+                if let Some(pos) = response.hover_pos().or(response.interact_pointer_pos()) {
+                    // Convert screen position to normalized device coords (-1 to 1)
+                    let ndc_x = (pos.x - rect.left()) / rect.width() * 2.0 - 1.0;
+                    let ndc_y = 1.0 - (pos.y - rect.top()) / rect.height() * 2.0;
+
+                    // Cast ray from camera through NDC point
+                    let inv_vp = sim.last_inv_view_proj;
+                    let near_point = inv_vp.transform_point3(Vec3::new(ndc_x, ndc_y, 0.0));
+                    let far_point = inv_vp.transform_point3(Vec3::new(ndc_x, ndc_y, 1.0));
+                    let ray_dir = (far_point - near_point).normalize();
+
+                    // Intersect ray with a plane at the origin, facing the camera
+                    // Plane normal points from origin toward camera
+                    let camera_pos = sim.last_camera_pos;
+                    let plane_normal = camera_pos.normalize();
+
+                    // Ray-plane intersection: t = -(ray_origin . normal) / (ray_dir . normal)
+                    let denom = ray_dir.dot(plane_normal);
+                    let world_pos = if denom.abs() > 0.0001 {
+                        let t = -near_point.dot(plane_normal) / denom;
+                        if t > 0.0 {
+                            near_point + ray_dir * t
+                        } else {
+                            Vec3::ZERO
+                        }
+                    } else {
+                        Vec3::ZERO
+                    };
+
+                    sim.set_mouse_state(world_pos, power_active);
+                } else {
+                    // Mouse not over viewport
+                    sim.set_mouse_state(Vec3::ZERO, false);
                 }
 
                 // Run picking pass to update selection

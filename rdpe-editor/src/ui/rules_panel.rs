@@ -1,122 +1,677 @@
 //! Rules editing panel
+#![allow(clippy::type_complexity)]
 
 use crate::config::*;
 use egui::Ui;
 
 /// All available rule templates grouped by category
 pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
-    ("Forces", &[
-        ("Gravity", || RuleConfig::Gravity(2.0)),
-        ("Drag", || RuleConfig::Drag(0.5)),
-        ("Acceleration", || RuleConfig::Acceleration { direction: [0.0, -1.0, 0.0] }),
-    ]),
-    ("Boundaries", &[
-        ("Bounce Walls", || RuleConfig::BounceWalls),
-        ("Wrap Walls", || RuleConfig::WrapWalls),
-    ]),
-    ("Point Forces", &[
-        ("Attract To", || RuleConfig::AttractTo { point: [0.0, 0.0, 0.0], strength: 1.0 }),
-        ("Repel From", || RuleConfig::RepelFrom { point: [0.0, 0.0, 0.0], strength: 1.0, radius: 0.5 }),
-        ("Point Gravity", || RuleConfig::PointGravity { point: [0.0, 0.0, 0.0], strength: 2.0, softening: 0.05 }),
-        ("Orbit", || RuleConfig::Orbit { center: [0.0, 0.0, 0.0], strength: 1.0 }),
-        ("Spring", || RuleConfig::Spring { anchor: [0.0, 0.0, 0.0], stiffness: 1.0, damping: 0.1 }),
-        ("Radial", || RuleConfig::Radial { point: [0.0, 0.0, 0.0], strength: 1.0, radius: 1.0, falloff: Falloff::InverseSquare }),
-        ("Vortex", || RuleConfig::Vortex { center: [0.0, 0.0, 0.0], axis: [0.0, 1.0, 0.0], strength: 2.0 }),
-        ("Pulse", || RuleConfig::Pulse { point: [0.0, 0.0, 0.0], strength: 1.0, frequency: 1.0, radius: 1.0 }),
-    ]),
-    ("Noise & Flow", &[
-        ("Turbulence", || RuleConfig::Turbulence { scale: 1.0, strength: 0.5 }),
-        ("Curl", || RuleConfig::Curl { scale: 2.0, strength: 1.0 }),
-        ("Wind", || RuleConfig::Wind { direction: [1.0, 0.0, 0.0], strength: 1.0, turbulence: 0.2 }),
-        ("Position Noise", || RuleConfig::PositionNoise { scale: 1.0, strength: 0.1, speed: 1.0 }),
-    ]),
-    ("Steering", &[
-        ("Seek", || RuleConfig::Seek { target: [0.0, 0.0, 0.0], max_speed: 1.0, max_force: 0.5 }),
-        ("Flee", || RuleConfig::Flee { target: [0.0, 0.0, 0.0], max_speed: 1.0, max_force: 0.5, panic_radius: 1.0 }),
-        ("Arrive", || RuleConfig::Arrive { target: [0.0, 0.0, 0.0], max_speed: 1.0, max_force: 0.5, slowing_radius: 0.5 }),
-        ("Wander", || RuleConfig::Wander { strength: 0.5, frequency: 1.0 }),
-    ]),
-    ("Flocking", &[
-        ("Separate", || RuleConfig::Separate { radius: 0.1, strength: 2.0 }),
-        ("Cohere", || RuleConfig::Cohere { radius: 0.3, strength: 1.0 }),
-        ("Align", || RuleConfig::Align { radius: 0.2, strength: 1.5 }),
-        ("Flock", || RuleConfig::Flock { radius: 0.2, separation: 2.0, cohesion: 1.0, alignment: 1.5 }),
-        ("Avoid", || RuleConfig::Avoid { radius: 0.1, strength: 3.0 }),
-    ]),
-    ("Physics", &[
-        ("Collide", || RuleConfig::Collide { radius: 0.05, restitution: 0.8 }),
-        ("N-Body Gravity", || RuleConfig::NBodyGravity { strength: 0.5, softening: 0.05, radius: 1.0 }),
-        ("Lennard-Jones", || RuleConfig::LennardJones { epsilon: 0.5, sigma: 0.05, cutoff: 0.15 }),
-        ("Viscosity", || RuleConfig::Viscosity { radius: 0.1, strength: 0.5 }),
-        ("Pressure", || RuleConfig::Pressure { radius: 0.1, strength: 2.0, target_density: 10.0 }),
-        ("Surface Tension", || RuleConfig::SurfaceTension { radius: 0.1, strength: 1.0, threshold: 5.0 }),
-        ("Magnetism", || RuleConfig::Magnetism { radius: 0.2, strength: 1.0, same_repel: true }),
-    ]),
-    ("Constraints", &[
-        ("Speed Limit", || RuleConfig::SpeedLimit { min: 0.0, max: 2.0 }),
-        ("Buoyancy", || RuleConfig::Buoyancy { surface_y: 0.0, density: 0.5 }),
-        ("Friction", || RuleConfig::Friction { ground_y: -1.0, strength: 0.8, threshold: 0.05 }),
-    ]),
-    ("Lifecycle", &[
-        ("Age", || RuleConfig::Age),
-        ("Lifetime", || RuleConfig::Lifetime(5.0)),
-        ("Fade Out", || RuleConfig::FadeOut(3.0)),
-        ("Shrink Out", || RuleConfig::ShrinkOut(3.0)),
-        ("Color Over Life", || RuleConfig::ColorOverLife { start: [1.0, 1.0, 0.0], end: [1.0, 0.0, 0.0], duration: 3.0 }),
-        ("Color By Speed", || RuleConfig::ColorBySpeed { slow_color: [0.0, 0.0, 1.0], fast_color: [1.0, 0.0, 0.0], max_speed: 2.0 }),
-        ("Color By Age", || RuleConfig::ColorByAge { young_color: [1.0, 1.0, 1.0], old_color: [0.5, 0.5, 0.5], max_age: 5.0 }),
-        ("Scale By Speed", || RuleConfig::ScaleBySpeed { min_scale: 0.5, max_scale: 2.0, max_speed: 2.0 }),
-    ]),
-    ("Typed", &[
-        ("Chase", || RuleConfig::Chase { self_type: 1, target_type: 0, radius: 0.5, strength: 2.0 }),
-        ("Evade", || RuleConfig::Evade { self_type: 0, threat_type: 1, radius: 0.3, strength: 3.0 }),
-        ("Convert", || RuleConfig::Convert { from_type: 0, trigger_type: 1, to_type: 1, radius: 0.1, probability: 0.5 }),
-    ]),
-    ("Events", &[
-        ("Shockwave", || RuleConfig::Shockwave { origin: [0.0, 0.0, 0.0], speed: 2.0, width: 0.2, strength: 1.0, repeat: 3.0 }),
-        ("Oscillate", || RuleConfig::Oscillate { axis: [0.0, 1.0, 0.0], amplitude: 0.1, frequency: 2.0, spatial_scale: 1.0 }),
-        ("Respawn Below", || RuleConfig::RespawnBelow { threshold_y: -1.0, spawn_y: 1.0, reset_velocity: true }),
-    ]),
-    ("Conditional", &[
-        ("Maybe", || RuleConfig::Maybe { probability: 0.5, action: "p.velocity.y += 0.1;".into() }),
-        ("Trigger", || RuleConfig::Trigger { condition: "p.age > 1.0".into(), action: "p.color = vec3(1.0, 0.0, 0.0);".into() }),
-    ]),
-    ("Custom", &[
-        ("Custom WGSL", || RuleConfig::Custom { code: "// Your WGSL code here\np.velocity.y += 0.01;".into() }),
-        ("Custom Dynamic", || RuleConfig::CustomDynamic {
+    (
+        "Forces",
+        &[
+            ("Gravity", || RuleConfig::Gravity(2.0)),
+            ("Drag", || RuleConfig::Drag(0.5)),
+            ("Acceleration", || RuleConfig::Acceleration {
+                direction: [0.0, -1.0, 0.0],
+            }),
+        ],
+    ),
+    (
+        "Boundaries",
+        &[
+            ("Bounce Walls", || RuleConfig::BounceWalls),
+            ("Wrap Walls", || RuleConfig::WrapWalls),
+        ],
+    ),
+    (
+        "Point Forces",
+        &[
+            ("Attract To", || RuleConfig::AttractTo {
+                point: [0.0, 0.0, 0.0],
+                strength: 1.0,
+            }),
+            ("Repel From", || RuleConfig::RepelFrom {
+                point: [0.0, 0.0, 0.0],
+                strength: 1.0,
+                radius: 0.5,
+            }),
+            ("Point Gravity", || RuleConfig::PointGravity {
+                point: [0.0, 0.0, 0.0],
+                strength: 2.0,
+                softening: 0.05,
+            }),
+            ("Orbit", || RuleConfig::Orbit {
+                center: [0.0, 0.0, 0.0],
+                strength: 1.0,
+            }),
+            ("Spring", || RuleConfig::Spring {
+                anchor: [0.0, 0.0, 0.0],
+                stiffness: 1.0,
+                damping: 0.1,
+            }),
+            ("Radial", || RuleConfig::Radial {
+                point: [0.0, 0.0, 0.0],
+                strength: 1.0,
+                radius: 1.0,
+                falloff: Falloff::InverseSquare,
+            }),
+            ("Vortex", || RuleConfig::Vortex {
+                center: [0.0, 0.0, 0.0],
+                axis: [0.0, 1.0, 0.0],
+                strength: 2.0,
+            }),
+            ("Pulse", || RuleConfig::Pulse {
+                point: [0.0, 0.0, 0.0],
+                strength: 1.0,
+                frequency: 1.0,
+                radius: 1.0,
+            }),
+        ],
+    ),
+    (
+        "Noise & Flow",
+        &[
+            ("Turbulence", || RuleConfig::Turbulence {
+                scale: 1.0,
+                strength: 0.5,
+            }),
+            ("Curl", || RuleConfig::Curl {
+                scale: 2.0,
+                strength: 1.0,
+            }),
+            ("Wind", || RuleConfig::Wind {
+                direction: [1.0, 0.0, 0.0],
+                strength: 1.0,
+                turbulence: 0.2,
+            }),
+            ("Position Noise", || RuleConfig::PositionNoise {
+                scale: 1.0,
+                strength: 0.1,
+                speed: 1.0,
+            }),
+        ],
+    ),
+    (
+        "Steering",
+        &[
+            ("Seek", || RuleConfig::Seek {
+                target: [0.0, 0.0, 0.0],
+                max_speed: 1.0,
+                max_force: 0.5,
+            }),
+            ("Flee", || RuleConfig::Flee {
+                target: [0.0, 0.0, 0.0],
+                max_speed: 1.0,
+                max_force: 0.5,
+                panic_radius: 1.0,
+            }),
+            ("Arrive", || RuleConfig::Arrive {
+                target: [0.0, 0.0, 0.0],
+                max_speed: 1.0,
+                max_force: 0.5,
+                slowing_radius: 0.5,
+            }),
+            ("Wander", || RuleConfig::Wander {
+                strength: 0.5,
+                frequency: 1.0,
+            }),
+        ],
+    ),
+    (
+        "Flocking",
+        &[
+            ("Separate", || RuleConfig::Separate {
+                radius: 0.1,
+                strength: 2.0,
+            }),
+            ("Cohere", || RuleConfig::Cohere {
+                radius: 0.3,
+                strength: 1.0,
+            }),
+            ("Align", || RuleConfig::Align {
+                radius: 0.2,
+                strength: 1.5,
+            }),
+            ("Flock", || RuleConfig::Flock {
+                radius: 0.2,
+                separation: 2.0,
+                cohesion: 1.0,
+                alignment: 1.5,
+            }),
+            ("Avoid", || RuleConfig::Avoid {
+                radius: 0.1,
+                strength: 3.0,
+            }),
+        ],
+    ),
+    (
+        "Physics",
+        &[
+            ("Collide", || RuleConfig::Collide {
+                radius: 0.05,
+                restitution: 0.8,
+            }),
+            ("N-Body Gravity", || RuleConfig::NBodyGravity {
+                strength: 0.5,
+                softening: 0.05,
+                radius: 1.0,
+            }),
+            ("Lennard-Jones", || RuleConfig::LennardJones {
+                epsilon: 0.5,
+                sigma: 0.05,
+                cutoff: 0.15,
+            }),
+            ("Viscosity", || RuleConfig::Viscosity {
+                radius: 0.1,
+                strength: 0.5,
+            }),
+            ("Pressure", || RuleConfig::Pressure {
+                radius: 0.1,
+                strength: 2.0,
+                target_density: 10.0,
+            }),
+            ("Surface Tension", || RuleConfig::SurfaceTension {
+                radius: 0.1,
+                strength: 1.0,
+                threshold: 5.0,
+            }),
+            ("Magnetism", || RuleConfig::Magnetism {
+                radius: 0.2,
+                strength: 1.0,
+                same_repel: true,
+            }),
+        ],
+    ),
+    (
+        "Constraints",
+        &[
+            ("Speed Limit", || RuleConfig::SpeedLimit {
+                min: 0.0,
+                max: 2.0,
+            }),
+            ("Buoyancy", || RuleConfig::Buoyancy {
+                surface_y: 0.0,
+                density: 0.5,
+            }),
+            ("Friction", || RuleConfig::Friction {
+                ground_y: -1.0,
+                strength: 0.8,
+                threshold: 0.05,
+            }),
+        ],
+    ),
+    (
+        "Lifecycle",
+        &[
+            ("Age", || RuleConfig::Age),
+            ("Lifetime", || RuleConfig::Lifetime(5.0)),
+            ("Fade Out", || RuleConfig::FadeOut(3.0)),
+            ("Shrink Out", || RuleConfig::ShrinkOut(3.0)),
+            ("Color Over Life", || RuleConfig::ColorOverLife {
+                start: [1.0, 1.0, 0.0],
+                end: [1.0, 0.0, 0.0],
+                duration: 3.0,
+            }),
+            ("Color By Speed", || RuleConfig::ColorBySpeed {
+                slow_color: [0.0, 0.0, 1.0],
+                fast_color: [1.0, 0.0, 0.0],
+                max_speed: 2.0,
+            }),
+            ("Color By Age", || RuleConfig::ColorByAge {
+                young_color: [1.0, 1.0, 1.0],
+                old_color: [0.5, 0.5, 0.5],
+                max_age: 5.0,
+            }),
+            ("Scale By Speed", || RuleConfig::ScaleBySpeed {
+                min_scale: 0.5,
+                max_scale: 2.0,
+                max_speed: 2.0,
+            }),
+            ("Sync", || RuleConfig::Sync {
+                phase_field: "phase".into(),
+                frequency: 1.0,
+                field: 0,
+                emit_amount: 1.0,
+                coupling: 0.5,
+                detection_threshold: 0.5,
+                on_fire: None,
+            }),
+            ("Split", || RuleConfig::Split {
+                condition: "p.energy > 2.0".into(),
+                offspring_count: 2,
+                offspring_type: None,
+                resource_field: Some("energy".into()),
+                resource_cost: 1.0,
+                spread: 0.5,
+                speed_min: 0.1,
+                speed_max: 0.5,
+            }),
+        ],
+    ),
+    (
+        "Typed",
+        &[
+            ("Chase", || RuleConfig::Chase {
+                self_type: 1,
+                target_type: 0,
+                radius: 0.5,
+                strength: 2.0,
+            }),
+            ("Evade", || RuleConfig::Evade {
+                self_type: 0,
+                threat_type: 1,
+                radius: 0.3,
+                strength: 3.0,
+            }),
+            ("Convert", || RuleConfig::Convert {
+                from_type: 0,
+                trigger_type: 1,
+                to_type: 1,
+                radius: 0.1,
+                probability: 0.5,
+            }),
+        ],
+    ),
+    (
+        "Events",
+        &[
+            ("Shockwave", || RuleConfig::Shockwave {
+                origin: [0.0, 0.0, 0.0],
+                speed: 2.0,
+                width: 0.2,
+                strength: 1.0,
+                repeat: 3.0,
+            }),
+            ("Oscillate", || RuleConfig::Oscillate {
+                axis: [0.0, 1.0, 0.0],
+                amplitude: 0.1,
+                frequency: 2.0,
+                spatial_scale: 1.0,
+            }),
+            ("Respawn Below", || RuleConfig::RespawnBelow {
+                threshold_y: -1.0,
+                spawn_y: 1.0,
+                reset_velocity: true,
+            }),
+        ],
+    ),
+    (
+        "Conditional",
+        &[
+            ("Maybe", || RuleConfig::Maybe {
+                probability: 0.5,
+                action: "p.velocity.y += 0.1;".into(),
+            }),
+            ("Trigger", || RuleConfig::Trigger {
+                condition: "p.age > 1.0".into(),
+                action: "p.color = vec3(1.0, 0.0, 0.0);".into(),
+            }),
+        ],
+    ),
+    (
+        "Custom",
+        &[
+            ("Custom WGSL", || RuleConfig::Custom {
+                code: "// Your WGSL code here\np.velocity.y += 0.01;".into(),
+            }),
+            ("Custom Dynamic", || {
+                RuleConfig::CustomDynamic {
             code: "// Custom code with editable params\np.velocity.y += uniforms.rule_0_strength * sin(uniforms.time);".into(),
             params: vec![("strength".into(), 1.0)],
-        }),
-        ("Neighbor Custom", || RuleConfig::NeighborCustom { code: "// Applied for each neighbor\nlet diff = n.position - p.position;".into() }),
-        ("Neighbor Custom Dynamic", || RuleConfig::NeighborCustomDynamic {
+        }
+            }),
+            ("Neighbor Custom", || RuleConfig::NeighborCustom {
+                code: "// Applied for each neighbor\nlet diff = n.position - p.position;".into(),
+            }),
+            ("Neighbor Custom Dynamic", || {
+                RuleConfig::NeighborCustomDynamic {
             code: "// Neighbor code with editable params\nif neighbor_dist < uniforms.rule_0_radius {\n    p.velocity += neighbor_dir * uniforms.rule_0_force;\n}".into(),
             params: vec![("radius".into(), 0.2), ("force".into(), 0.5)],
-        }),
-        ("On Collision", || RuleConfig::OnCollision { radius: 0.1, response: "p.color = vec3(1.0, 0.0, 0.0);".into() }),
-    ]),
-    ("Event Hooks", &[
-        ("On Condition", || RuleConfig::OnCondition { condition: "p.age > 1.0".into(), action: "p.color = vec3(1.0, 0.0, 0.0);".into() }),
-        ("On Death", || RuleConfig::OnDeath { action: "// particle died".into() }),
-        ("On Interval", || RuleConfig::OnInterval { interval: 1.0, action: "p.color = vec3(1.0, 1.0, 0.0);".into() }),
-        ("On Spawn", || RuleConfig::OnSpawn { action: "// particle spawned".into() }),
-    ]),
-    ("Growth & Decay", &[
-        ("Grow", || RuleConfig::Grow { rate: 0.5, min: 0.1, max: 2.0 }),
-        ("Decay", || RuleConfig::Decay { field: "scale".into(), rate: 0.5 }),
-        ("Die", || RuleConfig::Die { condition: "p.age > 5.0".into() }),
-        ("DLA", || RuleConfig::DLA { seed_type: 0, mobile_type: 1, stick_radius: 0.1, diffusion_strength: 0.5 }),
-    ]),
-    ("Fields", &[
-        ("Copy Field", || RuleConfig::CopyField { from: "age".into(), to: "scale".into() }),
-        ("Current", || RuleConfig::Current { field: "flow".into(), strength: 1.0 }),
-    ]),
-    ("Math", &[
-        ("Lerp", || RuleConfig::Lerp { field: "scale".into(), target: 1.0, rate: 1.0 }),
-        ("Clamp", || RuleConfig::Clamp { field: "scale".into(), min: 0.1, max: 2.0 }),
-        ("Remap", || RuleConfig::Remap { field: "age".into(), in_min: 0.0, in_max: 5.0, out_min: 1.0, out_max: 0.0 }),
-        ("Quantize", || RuleConfig::Quantize { field: "scale".into(), step: 0.25 }),
-        ("Noise", || RuleConfig::Noise { field: "scale".into(), amplitude: 0.1, frequency: 2.0 }),
-    ]),
+        }
+            }),
+            ("On Collision", || RuleConfig::OnCollision {
+                radius: 0.1,
+                response: "p.color = vec3(1.0, 0.0, 0.0);".into(),
+            }),
+            ("On Collision Dynamic", || {
+                RuleConfig::OnCollisionDynamic {
+            radius: 0.1,
+            response: "// Collision response with editable params\np.velocity = -p.velocity * uniforms.rule_0_bounce;".into(),
+            params: vec![("bounce".into(), UniformValueConfig::F32(0.8))],
+        }
+            }),
+        ],
+    ),
+    (
+        "Event Hooks",
+        &[
+            ("On Condition", || RuleConfig::OnCondition {
+                condition: "p.age > 1.0".into(),
+                action: "p.color = vec3(1.0, 0.0, 0.0);".into(),
+            }),
+            ("On Death", || RuleConfig::OnDeath {
+                action: "// particle died".into(),
+            }),
+            ("On Interval", || RuleConfig::OnInterval {
+                interval: 1.0,
+                action: "p.color = vec3(1.0, 1.0, 0.0);".into(),
+            }),
+            ("On Spawn", || RuleConfig::OnSpawn {
+                action: "// particle spawned".into(),
+            }),
+        ],
+    ),
+    (
+        "Growth & Decay",
+        &[
+            ("Grow", || RuleConfig::Grow {
+                rate: 0.5,
+                min: 0.1,
+                max: 2.0,
+            }),
+            ("Decay", || RuleConfig::Decay {
+                field: "scale".into(),
+                rate: 0.5,
+            }),
+            ("Die", || RuleConfig::Die {
+                condition: "p.age > 5.0".into(),
+            }),
+            ("DLA", || RuleConfig::DLA {
+                seed_type: 0,
+                mobile_type: 1,
+                stick_radius: 0.1,
+                diffusion_strength: 0.5,
+            }),
+            ("Refractory", || RuleConfig::Refractory {
+                trigger: "signal".into(),
+                charge: "energy".into(),
+                active_threshold: 0.5,
+                depletion_rate: 2.0,
+                regen_rate: 0.5,
+            }),
+        ],
+    ),
+    (
+        "Springs",
+        &[
+            ("Chain Springs", || RuleConfig::ChainSprings {
+                stiffness: 500.0,
+                damping: 10.0,
+                rest_length: 0.02,
+                max_stretch: Some(1.5),
+            }),
+            ("Radial Springs", || RuleConfig::RadialSprings {
+                hub_stiffness: 200.0,
+                ring_stiffness: 100.0,
+                damping: 5.0,
+                hub_length: 0.3,
+                ring_length: 0.1,
+            }),
+            ("Bond Springs", || RuleConfig::BondSprings {
+                bonds: vec!["bond0".into()],
+                stiffness: 500.0,
+                damping: 10.0,
+                rest_length: 0.05,
+                max_stretch: Some(1.5),
+            }),
+        ],
+    ),
+    (
+        "State Machine",
+        &[
+            ("State", || RuleConfig::State {
+                field: "state".into(),
+                transitions: vec![(0, 1, "p.age > 1.0".into())],
+            }),
+            ("Agent", || RuleConfig::Agent {
+                state_field: "state".into(),
+                prev_state_field: "prev_state".into(),
+                state_timer_field: Some("state_timer".into()),
+                states: vec![
+                    AgentStateConfig {
+                        id: 0,
+                        name: Some("idle".into()),
+                        on_enter: None,
+                        on_update: None,
+                        on_exit: None,
+                        transitions: vec![TransitionConfig {
+                            to: 1,
+                            condition: "p.energy > 0.8".into(),
+                            priority: 0,
+                        }],
+                    },
+                    AgentStateConfig {
+                        id: 1,
+                        name: Some("active".into()),
+                        on_enter: None,
+                        on_update: None,
+                        on_exit: None,
+                        transitions: vec![TransitionConfig {
+                            to: 0,
+                            condition: "p.energy < 0.2".into(),
+                            priority: 0,
+                        }],
+                    },
+                ],
+            }),
+        ],
+    ),
+    (
+        "Conditional",
+        &[
+            ("Switch", || RuleConfig::Switch {
+                condition: "p.particle_type == 0u".into(),
+                then_code: "p.velocity.y += 0.1;".into(),
+                else_code: None,
+            }),
+            ("Typed Neighbor", || RuleConfig::TypedNeighbor {
+                self_type: Some(0),
+                other_type: Some(1),
+                radius: 0.2,
+                code: "p.velocity += neighbor_dir * 0.5;".into(),
+            }),
+        ],
+    ),
+    (
+        "Fields",
+        &[
+            ("Copy Field", || RuleConfig::CopyField {
+                from: "age".into(),
+                to: "scale".into(),
+            }),
+            ("Current", || RuleConfig::Current {
+                field: "flow".into(),
+                strength: 1.0,
+            }),
+            ("Deposit", || RuleConfig::Deposit {
+                field_index: 0,
+                source: "energy".into(),
+                amount: 1.0,
+            }),
+            ("Sense", || RuleConfig::Sense {
+                field_index: 0,
+                target: "sensed".into(),
+            }),
+            ("Consume", || RuleConfig::Consume {
+                field_index: 0,
+                target: "consumed".into(),
+                rate: 0.5,
+            }),
+            ("Gradient", || RuleConfig::Gradient {
+                field: 0,
+                strength: 1.0,
+                ascending: true,
+            }),
+        ],
+    ),
+    (
+        "Neighbor Fields",
+        &[
+            ("Accumulate", || RuleConfig::Accumulate {
+                source: "energy".into(),
+                target: "total".into(),
+                radius: 0.2,
+                operation: "sum".into(),
+                falloff: Some(Falloff::Linear),
+            }),
+            ("Signal", || RuleConfig::Signal {
+                source: "signal".into(),
+                target: "received".into(),
+                radius: 0.3,
+                strength: 1.0,
+                falloff: Some(Falloff::InverseSquare),
+            }),
+            ("Absorb", || RuleConfig::Absorb {
+                target_type: None,
+                radius: 0.1,
+                source_field: "energy".into(),
+                target_field: "absorbed".into(),
+            }),
+            ("Density Buoyancy", || RuleConfig::DensityBuoyancy {
+                density_field: "density".into(),
+                medium_density: 1.0,
+                strength: 5.0,
+            }),
+            ("Diffuse", || RuleConfig::Diffuse {
+                field: "heat".into(),
+                rate: 0.5,
+                radius: 0.1,
+            }),
+            ("Mass", || RuleConfig::Mass {
+                field: "mass".into(),
+            }),
+        ],
+    ),
+    (
+        "Math",
+        &[
+            ("Lerp", || RuleConfig::Lerp {
+                field: "scale".into(),
+                target: 1.0,
+                rate: 1.0,
+            }),
+            ("Clamp", || RuleConfig::Clamp {
+                field: "scale".into(),
+                min: 0.1,
+                max: 2.0,
+            }),
+            ("Remap", || RuleConfig::Remap {
+                field: "age".into(),
+                in_min: 0.0,
+                in_max: 5.0,
+                out_min: 1.0,
+                out_max: 0.0,
+            }),
+            ("Quantize", || RuleConfig::Quantize {
+                field: "scale".into(),
+                step: 0.25,
+            }),
+            ("Noise", || RuleConfig::Noise {
+                field: "scale".into(),
+                amplitude: 0.1,
+                frequency: 2.0,
+            }),
+            ("Smooth", || RuleConfig::Smooth {
+                field: "value".into(),
+                target: 1.0,
+                rate: 2.0,
+            }),
+            ("Modulo", || RuleConfig::Modulo {
+                field: "phase".into(),
+                min: 0.0,
+                max: std::f32::consts::TAU,
+            }),
+            ("Copy", || RuleConfig::Copy {
+                from: "source".into(),
+                to: "dest".into(),
+                scale: 1.0,
+                offset: 0.0,
+            }),
+            ("Threshold", || RuleConfig::Threshold {
+                input_field: "value".into(),
+                output_field: "binary".into(),
+                threshold: 0.5,
+                above: 1.0,
+                below: 0.0,
+            }),
+            ("Gate", || RuleConfig::Gate {
+                condition: "p.age > 1.0".into(),
+                action: "p.scale = 2.0;".into(),
+            }),
+            ("Tween", || RuleConfig::Tween {
+                field: "scale".into(),
+                from: 0.0,
+                to: 1.0,
+                duration: 2.0,
+                timer_field: "age".into(),
+            }),
+            ("Periodic", || RuleConfig::Periodic {
+                interval: 1.0,
+                phase_field: None,
+                action: "p.color = vec3(1.0, 0.0, 0.0);".into(),
+            }),
+        ],
+    ),
+    (
+        "Logic",
+        &[
+            ("And", || RuleConfig::And {
+                a: "input1".into(),
+                b: "input2".into(),
+                output: "result".into(),
+            }),
+            ("Or", || RuleConfig::Or {
+                a: "input1".into(),
+                b: "input2".into(),
+                output: "result".into(),
+            }),
+            ("Not", || RuleConfig::Not {
+                input: "value".into(),
+                output: "inverted".into(),
+                max: 1.0,
+            }),
+            ("Xor", || RuleConfig::Xor {
+                a: "input1".into(),
+                b: "input2".into(),
+                output: "result".into(),
+            }),
+            ("Hysteresis", || RuleConfig::Hysteresis {
+                input: "value".into(),
+                output: "state".into(),
+                low_threshold: 0.3,
+                high_threshold: 0.7,
+                on_value: 1.0,
+                off_value: 0.0,
+            }),
+            ("Latch", || RuleConfig::Latch {
+                output: "latched".into(),
+                set_condition: "p.trigger > 0.5".into(),
+                reset_condition: "p.reset > 0.5".into(),
+                set_value: 1.0,
+                reset_value: 0.0,
+            }),
+            ("Edge", || RuleConfig::Edge {
+                input: "signal".into(),
+                prev_field: "prev_signal".into(),
+                output: "pulse".into(),
+                threshold: 0.5,
+                rising: true,
+                falling: false,
+            }),
+            ("Select", || RuleConfig::Select {
+                condition: "p.flag > 0.5".into(),
+                then_field: "value_a".into(),
+                else_field: "value_b".into(),
+                output: "selected".into(),
+            }),
+            ("Blend", || RuleConfig::Blend {
+                a: "color1".into(),
+                b: "color2".into(),
+                weight: "mix".into(),
+                output: "blended".into(),
+            }),
+        ],
+    ),
 ];
 
 pub fn render_rules_panel(ui: &mut Ui, rules: &mut Vec<RuleConfig>) -> bool {
@@ -196,10 +751,14 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
     match rule {
         // === Basic Forces ===
         RuleConfig::Gravity(g) => {
-            changed |= ui.add(egui::Slider::new(g, -10.0..=10.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(g, -10.0..=10.0).text("Strength"))
+                .changed();
         }
         RuleConfig::Drag(d) => {
-            changed |= ui.add(egui::Slider::new(d, 0.0..=2.0).text("Drag")).changed();
+            changed |= ui
+                .add(egui::Slider::new(d, 0.0..=2.0).text("Drag"))
+                .changed();
         }
         RuleConfig::Acceleration { direction } => {
             changed |= render_vec3(ui, "Direction", direction);
@@ -213,160 +772,383 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
         // === Point Forces ===
         RuleConfig::AttractTo { point, strength } => {
             changed |= render_vec3(ui, "Point", point);
-            changed |= ui.add(egui::Slider::new(strength, -5.0..=5.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, -5.0..=5.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::RepelFrom { point, strength, radius } => {
+        RuleConfig::RepelFrom {
+            point,
+            strength,
+            radius,
+        } => {
             changed |= render_vec3(ui, "Point", point);
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=10.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=2.0).text("Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=2.0).text("Radius"))
+                .changed();
         }
-        RuleConfig::PointGravity { point, strength, softening } => {
+        RuleConfig::PointGravity {
+            point,
+            strength,
+            softening,
+        } => {
             changed |= render_vec3(ui, "Point", point);
-            changed |= ui.add(egui::Slider::new(strength, -10.0..=10.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(softening, 0.001..=0.5).text("Softening")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, -10.0..=10.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(softening, 0.001..=0.5).text("Softening"))
+                .changed();
         }
         RuleConfig::Orbit { center, strength } => {
             changed |= render_vec3(ui, "Center", center);
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Spring { anchor, stiffness, damping } => {
+        RuleConfig::Spring {
+            anchor,
+            stiffness,
+            damping,
+        } => {
             changed |= render_vec3(ui, "Anchor", anchor);
-            changed |= ui.add(egui::Slider::new(stiffness, 0.0..=10.0).text("Stiffness")).changed();
-            changed |= ui.add(egui::Slider::new(damping, 0.0..=2.0).text("Damping")).changed();
+            changed |= ui
+                .add(egui::Slider::new(stiffness, 0.0..=10.0).text("Stiffness"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(damping, 0.0..=2.0).text("Damping"))
+                .changed();
         }
-        RuleConfig::Radial { point, strength, radius, falloff } => {
+        RuleConfig::Radial {
+            point,
+            strength,
+            radius,
+            falloff,
+        } => {
             changed |= render_vec3(ui, "Point", point);
-            changed |= ui.add(egui::Slider::new(strength, -10.0..=10.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=5.0).text("Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, -10.0..=10.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=5.0).text("Radius"))
+                .changed();
             changed |= render_falloff(ui, falloff);
         }
-        RuleConfig::Vortex { center, axis, strength } => {
+        RuleConfig::Vortex {
+            center,
+            axis,
+            strength,
+        } => {
             changed |= render_vec3(ui, "Center", center);
             changed |= render_vec3(ui, "Axis", axis);
-            changed |= ui.add(egui::Slider::new(strength, -10.0..=10.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, -10.0..=10.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Pulse { point, strength, frequency, radius } => {
+        RuleConfig::Pulse {
+            point,
+            strength,
+            frequency,
+            radius,
+        } => {
             changed |= render_vec3(ui, "Point", point);
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=5.0).text("Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=5.0).text("Radius"))
+                .changed();
         }
 
         // === Noise & Flow ===
         RuleConfig::Turbulence { scale, strength } => {
-            changed |= ui.add(egui::Slider::new(scale, 0.1..=10.0).text("Scale")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(scale, 0.1..=10.0).text("Scale"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
         }
         RuleConfig::Curl { scale, strength } => {
-            changed |= ui.add(egui::Slider::new(scale, 0.1..=10.0).text("Scale")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(scale, 0.1..=10.0).text("Scale"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Wind { direction, strength, turbulence } => {
+        RuleConfig::Wind {
+            direction,
+            strength,
+            turbulence,
+        } => {
             changed |= render_vec3(ui, "Direction", direction);
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(turbulence, 0.0..=1.0).text("Turbulence")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(turbulence, 0.0..=1.0).text("Turbulence"))
+                .changed();
         }
-        RuleConfig::PositionNoise { scale, strength, speed } => {
-            changed |= ui.add(egui::Slider::new(scale, 0.1..=10.0).text("Scale")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=1.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(speed, 0.0..=5.0).text("Speed")).changed();
+        RuleConfig::PositionNoise {
+            scale,
+            strength,
+            speed,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(scale, 0.1..=10.0).text("Scale"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=1.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(speed, 0.0..=5.0).text("Speed"))
+                .changed();
         }
 
         // === Steering ===
-        RuleConfig::Seek { target, max_speed, max_force } => {
+        RuleConfig::Seek {
+            target,
+            max_speed,
+            max_force,
+        } => {
             changed |= render_vec3(ui, "Target", target);
-            changed |= ui.add(egui::Slider::new(max_speed, 0.1..=5.0).text("Max Speed")).changed();
-            changed |= ui.add(egui::Slider::new(max_force, 0.1..=5.0).text("Max Force")).changed();
+            changed |= ui
+                .add(egui::Slider::new(max_speed, 0.1..=5.0).text("Max Speed"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max_force, 0.1..=5.0).text("Max Force"))
+                .changed();
         }
-        RuleConfig::Flee { target, max_speed, max_force, panic_radius } => {
+        RuleConfig::Flee {
+            target,
+            max_speed,
+            max_force,
+            panic_radius,
+        } => {
             changed |= render_vec3(ui, "Target", target);
-            changed |= ui.add(egui::Slider::new(max_speed, 0.1..=5.0).text("Max Speed")).changed();
-            changed |= ui.add(egui::Slider::new(max_force, 0.1..=5.0).text("Max Force")).changed();
-            changed |= ui.add(egui::Slider::new(panic_radius, 0.1..=5.0).text("Panic Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(max_speed, 0.1..=5.0).text("Max Speed"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max_force, 0.1..=5.0).text("Max Force"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(panic_radius, 0.1..=5.0).text("Panic Radius"))
+                .changed();
         }
-        RuleConfig::Arrive { target, max_speed, max_force, slowing_radius } => {
+        RuleConfig::Arrive {
+            target,
+            max_speed,
+            max_force,
+            slowing_radius,
+        } => {
             changed |= render_vec3(ui, "Target", target);
-            changed |= ui.add(egui::Slider::new(max_speed, 0.1..=5.0).text("Max Speed")).changed();
-            changed |= ui.add(egui::Slider::new(max_force, 0.1..=5.0).text("Max Force")).changed();
-            changed |= ui.add(egui::Slider::new(slowing_radius, 0.1..=5.0).text("Slowing Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(max_speed, 0.1..=5.0).text("Max Speed"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max_force, 0.1..=5.0).text("Max Force"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(slowing_radius, 0.1..=5.0).text("Slowing Radius"))
+                .changed();
         }
-        RuleConfig::Wander { strength, frequency } => {
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency")).changed();
+        RuleConfig::Wander {
+            strength,
+            frequency,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency"))
+                .changed();
         }
 
         // === Flocking ===
         RuleConfig::Separate { radius, strength } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=1.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=10.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
         }
         RuleConfig::Cohere { radius, strength } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=1.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
         }
         RuleConfig::Align { radius, strength } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=1.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Flock { radius, separation, cohesion, alignment } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=1.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(separation, 0.0..=5.0).text("Separation")).changed();
-            changed |= ui.add(egui::Slider::new(cohesion, 0.0..=5.0).text("Cohesion")).changed();
-            changed |= ui.add(egui::Slider::new(alignment, 0.0..=5.0).text("Alignment")).changed();
+        RuleConfig::Flock {
+            radius,
+            separation,
+            cohesion,
+            alignment,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(separation, 0.0..=5.0).text("Separation"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(cohesion, 0.0..=5.0).text("Cohesion"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(alignment, 0.0..=5.0).text("Alignment"))
+                .changed();
         }
         RuleConfig::Avoid { radius, strength } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=1.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=10.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
         }
 
         // === Physics ===
-        RuleConfig::Collide { radius, restitution } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.001..=0.5).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(restitution, 0.0..=1.0).text("Restitution")).changed();
+        RuleConfig::Collide {
+            radius,
+            restitution,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.001..=0.5).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(restitution, 0.0..=1.0).text("Restitution"))
+                .changed();
         }
-        RuleConfig::NBodyGravity { strength, softening, radius } => {
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(softening, 0.001..=0.5).text("Softening")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=5.0).text("Radius")).changed();
+        RuleConfig::NBodyGravity {
+            strength,
+            softening,
+            radius,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(softening, 0.001..=0.5).text("Softening"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=5.0).text("Radius"))
+                .changed();
         }
-        RuleConfig::LennardJones { epsilon, sigma, cutoff } => {
-            changed |= ui.add(egui::Slider::new(epsilon, 0.0..=2.0).text("Epsilon")).changed();
-            changed |= ui.add(egui::Slider::new(sigma, 0.01..=0.5).text("Sigma")).changed();
-            changed |= ui.add(egui::Slider::new(cutoff, 0.01..=1.0).text("Cutoff")).changed();
+        RuleConfig::LennardJones {
+            epsilon,
+            sigma,
+            cutoff,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(epsilon, 0.0..=2.0).text("Epsilon"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(sigma, 0.01..=0.5).text("Sigma"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(cutoff, 0.01..=1.0).text("Cutoff"))
+                .changed();
         }
         RuleConfig::Viscosity { radius, strength } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=0.5).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=2.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=0.5).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=2.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Pressure { radius, strength, target_density } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=0.5).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=10.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(target_density, 1.0..=50.0).text("Target Density")).changed();
+        RuleConfig::Pressure {
+            radius,
+            strength,
+            target_density,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=0.5).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(target_density, 1.0..=50.0).text("Target Density"))
+                .changed();
         }
-        RuleConfig::SurfaceTension { radius, strength, threshold } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=0.5).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(threshold, 1.0..=20.0).text("Threshold")).changed();
+        RuleConfig::SurfaceTension {
+            radius,
+            strength,
+            threshold,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=0.5).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(threshold, 1.0..=20.0).text("Threshold"))
+                .changed();
         }
-        RuleConfig::Magnetism { radius, strength, same_repel } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=1.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+        RuleConfig::Magnetism {
+            radius,
+            strength,
+            same_repel,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
             changed |= ui.checkbox(same_repel, "Same Polarity Repels").changed();
         }
 
         // === Constraints ===
         RuleConfig::SpeedLimit { min, max } => {
-            changed |= ui.add(egui::Slider::new(min, 0.0..=5.0).text("Min")).changed();
-            changed |= ui.add(egui::Slider::new(max, 0.0..=10.0).text("Max")).changed();
+            changed |= ui
+                .add(egui::Slider::new(min, 0.0..=5.0).text("Min"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max, 0.0..=10.0).text("Max"))
+                .changed();
         }
         RuleConfig::Buoyancy { surface_y, density } => {
-            changed |= ui.add(egui::Slider::new(surface_y, -2.0..=2.0).text("Surface Y")).changed();
-            changed |= ui.add(egui::Slider::new(density, 0.0..=2.0).text("Density")).changed();
+            changed |= ui
+                .add(egui::Slider::new(surface_y, -2.0..=2.0).text("Surface Y"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(density, 0.0..=2.0).text("Density"))
+                .changed();
         }
-        RuleConfig::Friction { ground_y, strength, threshold } => {
-            changed |= ui.add(egui::Slider::new(ground_y, -2.0..=2.0).text("Ground Y")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=1.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(threshold, 0.0..=0.2).text("Threshold")).changed();
+        RuleConfig::Friction {
+            ground_y,
+            strength,
+            threshold,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(ground_y, -2.0..=2.0).text("Ground Y"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=1.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(threshold, 0.0..=0.2).text("Threshold"))
+                .changed();
         }
 
         // === Lifecycle ===
@@ -374,15 +1156,25 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
             ui.label("Increments particle age each frame");
         }
         RuleConfig::Lifetime(t) => {
-            changed |= ui.add(egui::Slider::new(t, 0.1..=30.0).text("Lifetime")).changed();
+            changed |= ui
+                .add(egui::Slider::new(t, 0.1..=30.0).text("Lifetime"))
+                .changed();
         }
         RuleConfig::FadeOut(t) => {
-            changed |= ui.add(egui::Slider::new(t, 0.1..=30.0).text("Duration")).changed();
+            changed |= ui
+                .add(egui::Slider::new(t, 0.1..=30.0).text("Duration"))
+                .changed();
         }
         RuleConfig::ShrinkOut(t) => {
-            changed |= ui.add(egui::Slider::new(t, 0.1..=30.0).text("Duration")).changed();
+            changed |= ui
+                .add(egui::Slider::new(t, 0.1..=30.0).text("Duration"))
+                .changed();
         }
-        RuleConfig::ColorOverLife { start, end, duration } => {
+        RuleConfig::ColorOverLife {
+            start,
+            end,
+            duration,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Start:");
                 if ui.color_edit_button_rgb(start).changed() {
@@ -395,9 +1187,15 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(duration, 0.1..=30.0).text("Duration")).changed();
+            changed |= ui
+                .add(egui::Slider::new(duration, 0.1..=30.0).text("Duration"))
+                .changed();
         }
-        RuleConfig::ColorBySpeed { slow_color, fast_color, max_speed } => {
+        RuleConfig::ColorBySpeed {
+            slow_color,
+            fast_color,
+            max_speed,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Slow:");
                 if ui.color_edit_button_rgb(slow_color).changed() {
@@ -410,9 +1208,15 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(max_speed, 0.1..=10.0).text("Max Speed")).changed();
+            changed |= ui
+                .add(egui::Slider::new(max_speed, 0.1..=10.0).text("Max Speed"))
+                .changed();
         }
-        RuleConfig::ColorByAge { young_color, old_color, max_age } => {
+        RuleConfig::ColorByAge {
+            young_color,
+            old_color,
+            max_age,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Young:");
                 if ui.color_edit_button_rgb(young_color).changed() {
@@ -425,58 +1229,150 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(max_age, 0.1..=30.0).text("Max Age")).changed();
+            changed |= ui
+                .add(egui::Slider::new(max_age, 0.1..=30.0).text("Max Age"))
+                .changed();
         }
-        RuleConfig::ScaleBySpeed { min_scale, max_scale, max_speed } => {
-            changed |= ui.add(egui::Slider::new(min_scale, 0.1..=2.0).text("Min Scale")).changed();
-            changed |= ui.add(egui::Slider::new(max_scale, 0.1..=5.0).text("Max Scale")).changed();
-            changed |= ui.add(egui::Slider::new(max_speed, 0.1..=10.0).text("Max Speed")).changed();
+        RuleConfig::ScaleBySpeed {
+            min_scale,
+            max_scale,
+            max_speed,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(min_scale, 0.1..=2.0).text("Min Scale"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max_scale, 0.1..=5.0).text("Max Scale"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max_speed, 0.1..=10.0).text("Max Speed"))
+                .changed();
         }
 
         // === Typed Interactions ===
-        RuleConfig::Chase { self_type, target_type, radius, strength } => {
-            changed |= ui.add(egui::Slider::new(self_type, 0..=7).text("Self Type")).changed();
-            changed |= ui.add(egui::Slider::new(target_type, 0..=7).text("Target Type")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=2.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=10.0).text("Strength")).changed();
+        RuleConfig::Chase {
+            self_type,
+            target_type,
+            radius,
+            strength,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(self_type, 0..=7).text("Self Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(target_type, 0..=7).text("Target Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=2.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Evade { self_type, threat_type, radius, strength } => {
-            changed |= ui.add(egui::Slider::new(self_type, 0..=7).text("Self Type")).changed();
-            changed |= ui.add(egui::Slider::new(threat_type, 0..=7).text("Threat Type")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=2.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=10.0).text("Strength")).changed();
+        RuleConfig::Evade {
+            self_type,
+            threat_type,
+            radius,
+            strength,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(self_type, 0..=7).text("Self Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(threat_type, 0..=7).text("Threat Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=2.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Convert { from_type, trigger_type, to_type, radius, probability } => {
-            changed |= ui.add(egui::Slider::new(from_type, 0..=7).text("From Type")).changed();
-            changed |= ui.add(egui::Slider::new(trigger_type, 0..=7).text("Trigger Type")).changed();
-            changed |= ui.add(egui::Slider::new(to_type, 0..=7).text("To Type")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.1..=2.0).text("Radius")).changed();
-            changed |= ui.add(egui::Slider::new(probability, 0.0..=1.0).text("Probability")).changed();
+        RuleConfig::Convert {
+            from_type,
+            trigger_type,
+            to_type,
+            radius,
+            probability,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(from_type, 0..=7).text("From Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(trigger_type, 0..=7).text("Trigger Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(to_type, 0..=7).text("To Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.1..=2.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(probability, 0.0..=1.0).text("Probability"))
+                .changed();
         }
 
         // === Events ===
-        RuleConfig::Shockwave { origin, speed, width, strength, repeat } => {
+        RuleConfig::Shockwave {
+            origin,
+            speed,
+            width,
+            strength,
+            repeat,
+        } => {
             changed |= render_vec3(ui, "Origin", origin);
-            changed |= ui.add(egui::Slider::new(speed, 0.1..=10.0).text("Speed")).changed();
-            changed |= ui.add(egui::Slider::new(width, 0.01..=1.0).text("Width")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
-            changed |= ui.add(egui::Slider::new(repeat, 0.1..=10.0).text("Repeat")).changed();
+            changed |= ui
+                .add(egui::Slider::new(speed, 0.1..=10.0).text("Speed"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(width, 0.01..=1.0).text("Width"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(repeat, 0.1..=10.0).text("Repeat"))
+                .changed();
         }
-        RuleConfig::Oscillate { axis, amplitude, frequency, spatial_scale } => {
+        RuleConfig::Oscillate {
+            axis,
+            amplitude,
+            frequency,
+            spatial_scale,
+        } => {
             changed |= render_vec3(ui, "Axis", axis);
-            changed |= ui.add(egui::Slider::new(amplitude, 0.0..=1.0).text("Amplitude")).changed();
-            changed |= ui.add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency")).changed();
-            changed |= ui.add(egui::Slider::new(spatial_scale, 0.1..=10.0).text("Spatial Scale")).changed();
+            changed |= ui
+                .add(egui::Slider::new(amplitude, 0.0..=1.0).text("Amplitude"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(spatial_scale, 0.1..=10.0).text("Spatial Scale"))
+                .changed();
         }
-        RuleConfig::RespawnBelow { threshold_y, spawn_y, reset_velocity } => {
-            changed |= ui.add(egui::Slider::new(threshold_y, -5.0..=0.0).text("Threshold Y")).changed();
-            changed |= ui.add(egui::Slider::new(spawn_y, 0.0..=5.0).text("Spawn Y")).changed();
+        RuleConfig::RespawnBelow {
+            threshold_y,
+            spawn_y,
+            reset_velocity,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(threshold_y, -5.0..=0.0).text("Threshold Y"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(spawn_y, 0.0..=5.0).text("Spawn Y"))
+                .changed();
             changed |= ui.checkbox(reset_velocity, "Reset Velocity").changed();
         }
 
         // === Conditional ===
-        RuleConfig::Maybe { probability, action } => {
-            changed |= ui.add(egui::Slider::new(probability, 0.0..=1.0).text("Probability")).changed();
+        RuleConfig::Maybe {
+            probability,
+            action,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(probability, 0.0..=1.0).text("Probability"))
+                .changed();
             ui.label("Action (WGSL):");
             if ui.text_edit_multiline(action).changed() {
                 changed = true;
@@ -507,7 +1403,9 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
             }
         }
         RuleConfig::OnCollision { radius, response } => {
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=0.5).text("Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=0.5).text("Radius"))
+                .changed();
             ui.label("Response (WGSL):");
             if ui.text_edit_multiline(response).changed() {
                 changed = true;
@@ -515,7 +1413,11 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
         }
         RuleConfig::CustomDynamic { code, params } => {
             ui.label("WGSL Code:");
-            ui.label(egui::RichText::new("Access params via uniforms.rule_N_paramname").small().weak());
+            ui.label(
+                egui::RichText::new("Access params via uniforms.rule_N_paramname")
+                    .small()
+                    .weak(),
+            );
             if ui.text_edit_multiline(code).changed() {
                 changed = true;
             }
@@ -524,7 +1426,11 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
             // Parameters with add/remove
             ui.horizontal(|ui| {
                 ui.label("Parameters:");
-                if ui.small_button("+").on_hover_text("Add parameter").clicked() {
+                if ui
+                    .small_button("+")
+                    .on_hover_text("Add parameter")
+                    .clicked()
+                {
                     let new_name = format!("param_{}", params.len());
                     params.push((new_name, 1.0));
                     changed = true;
@@ -536,7 +1442,10 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 ui.horizontal(|ui| {
                     // Editable name
                     let mut name_edit = name.clone();
-                    if ui.add(egui::TextEdit::singleline(&mut name_edit).desired_width(80.0)).changed() {
+                    if ui
+                        .add(egui::TextEdit::singleline(&mut name_edit).desired_width(80.0))
+                        .changed()
+                    {
                         *name = name_edit;
                         changed = true;
                     }
@@ -556,8 +1465,18 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
         }
         RuleConfig::NeighborCustomDynamic { code, params } => {
             ui.label("Neighbor WGSL Code:");
-            ui.label(egui::RichText::new("Available: neighbor_dist, neighbor_dir, neighbor_pos, neighbor_vel, other").small().weak());
-            ui.label(egui::RichText::new("Access params via uniforms.rule_N_paramname").small().weak());
+            ui.label(
+                egui::RichText::new(
+                    "Available: neighbor_dist, neighbor_dir, neighbor_pos, neighbor_vel, other",
+                )
+                .small()
+                .weak(),
+            );
+            ui.label(
+                egui::RichText::new("Access params via uniforms.rule_N_paramname")
+                    .small()
+                    .weak(),
+            );
             if ui.text_edit_multiline(code).changed() {
                 changed = true;
             }
@@ -566,7 +1485,11 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
             // Parameters with add/remove
             ui.horizontal(|ui| {
                 ui.label("Parameters:");
-                if ui.small_button("+").on_hover_text("Add parameter").clicked() {
+                if ui
+                    .small_button("+")
+                    .on_hover_text("Add parameter")
+                    .clicked()
+                {
                     let new_name = format!("param_{}", params.len());
                     params.push((new_name, 1.0));
                     changed = true;
@@ -578,7 +1501,10 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 ui.horizontal(|ui| {
                     // Editable name
                     let mut name_edit = name.clone();
-                    if ui.add(egui::TextEdit::singleline(&mut name_edit).desired_width(80.0)).changed() {
+                    if ui
+                        .add(egui::TextEdit::singleline(&mut name_edit).desired_width(80.0))
+                        .changed()
+                    {
                         *name = name_edit;
                         changed = true;
                     }
@@ -615,7 +1541,9 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
             }
         }
         RuleConfig::OnInterval { interval, action } => {
-            changed |= ui.add(egui::Slider::new(interval, 0.01..=10.0).text("Interval (s)")).changed();
+            changed |= ui
+                .add(egui::Slider::new(interval, 0.01..=10.0).text("Interval (s)"))
+                .changed();
             ui.label("Action (WGSL):");
             if ui.text_edit_multiline(action).changed() {
                 changed = true;
@@ -630,9 +1558,15 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
 
         // === Growth & Decay ===
         RuleConfig::Grow { rate, min, max } => {
-            changed |= ui.add(egui::Slider::new(rate, -2.0..=2.0).text("Rate")).changed();
-            changed |= ui.add(egui::Slider::new(min, 0.0..=1.0).text("Min Scale")).changed();
-            changed |= ui.add(egui::Slider::new(max, 0.1..=5.0).text("Max Scale")).changed();
+            changed |= ui
+                .add(egui::Slider::new(rate, -2.0..=2.0).text("Rate"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(min, 0.0..=1.0).text("Min Scale"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max, 0.1..=5.0).text("Max Scale"))
+                .changed();
         }
         RuleConfig::Decay { field, rate } => {
             ui.horizontal(|ui| {
@@ -641,7 +1575,9 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(rate, 0.0..=5.0).text("Rate")).changed();
+            changed |= ui
+                .add(egui::Slider::new(rate, 0.0..=5.0).text("Rate"))
+                .changed();
         }
         RuleConfig::Die { condition } => {
             ui.label("Death Condition (WGSL):");
@@ -649,11 +1585,24 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 changed = true;
             }
         }
-        RuleConfig::DLA { seed_type, mobile_type, stick_radius, diffusion_strength } => {
-            changed |= ui.add(egui::Slider::new(seed_type, 0..=7).text("Seed Type")).changed();
-            changed |= ui.add(egui::Slider::new(mobile_type, 0..=7).text("Mobile Type")).changed();
-            changed |= ui.add(egui::Slider::new(stick_radius, 0.01..=0.5).text("Stick Radius")).changed();
-            changed |= ui.add(egui::Slider::new(diffusion_strength, 0.0..=2.0).text("Diffusion")).changed();
+        RuleConfig::DLA {
+            seed_type,
+            mobile_type,
+            stick_radius,
+            diffusion_strength,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(seed_type, 0..=7).text("Seed Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(mobile_type, 0..=7).text("Mobile Type"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(stick_radius, 0.01..=0.5).text("Stick Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(diffusion_strength, 0.0..=2.0).text("Diffusion"))
+                .changed();
         }
 
         // === Field Operations ===
@@ -678,19 +1627,29 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(strength, 0.0..=5.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .changed();
         }
 
         // === Math / Signal ===
-        RuleConfig::Lerp { field, target, rate } => {
+        RuleConfig::Lerp {
+            field,
+            target,
+            rate,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Field:");
                 if ui.text_edit_singleline(field).changed() {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(target, -10.0..=10.0).text("Target")).changed();
-            changed |= ui.add(egui::Slider::new(rate, 0.0..=10.0).text("Rate")).changed();
+            changed |= ui
+                .add(egui::Slider::new(target, -10.0..=10.0).text("Target"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(rate, 0.0..=10.0).text("Rate"))
+                .changed();
         }
         RuleConfig::Clamp { field, min, max } => {
             ui.horizontal(|ui| {
@@ -699,20 +1658,38 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(min, -10.0..=10.0).text("Min")).changed();
-            changed |= ui.add(egui::Slider::new(max, -10.0..=10.0).text("Max")).changed();
+            changed |= ui
+                .add(egui::Slider::new(min, -10.0..=10.0).text("Min"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max, -10.0..=10.0).text("Max"))
+                .changed();
         }
-        RuleConfig::Remap { field, in_min, in_max, out_min, out_max } => {
+        RuleConfig::Remap {
+            field,
+            in_min,
+            in_max,
+            out_min,
+            out_max,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Field:");
                 if ui.text_edit_singleline(field).changed() {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(in_min, -10.0..=10.0).text("In Min")).changed();
-            changed |= ui.add(egui::Slider::new(in_max, -10.0..=10.0).text("In Max")).changed();
-            changed |= ui.add(egui::Slider::new(out_min, -10.0..=10.0).text("Out Min")).changed();
-            changed |= ui.add(egui::Slider::new(out_max, -10.0..=10.0).text("Out Max")).changed();
+            changed |= ui
+                .add(egui::Slider::new(in_min, -10.0..=10.0).text("In Min"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(in_max, -10.0..=10.0).text("In Max"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(out_min, -10.0..=10.0).text("Out Min"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(out_max, -10.0..=10.0).text("Out Max"))
+                .changed();
         }
         RuleConfig::Quantize { field, step } => {
             ui.horizontal(|ui| {
@@ -721,24 +1698,49 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(step, 0.01..=1.0).text("Step Size")).changed();
+            changed |= ui
+                .add(egui::Slider::new(step, 0.01..=1.0).text("Step Size"))
+                .changed();
         }
-        RuleConfig::Noise { field, amplitude, frequency } => {
+        RuleConfig::Noise {
+            field,
+            amplitude,
+            frequency,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Field:");
                 if ui.text_edit_singleline(field).changed() {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(amplitude, 0.0..=2.0).text("Amplitude")).changed();
-            changed |= ui.add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency")).changed();
+            changed |= ui
+                .add(egui::Slider::new(amplitude, 0.0..=2.0).text("Amplitude"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency"))
+                .changed();
         }
 
         // Springs
-        RuleConfig::ChainSprings { stiffness, damping, rest_length, max_stretch } => {
-            changed |= ui.add(egui::Slider::new(stiffness, 1.0..=1000.0).logarithmic(true).text("Stiffness")).changed();
-            changed |= ui.add(egui::Slider::new(damping, 0.0..=50.0).text("Damping")).changed();
-            changed |= ui.add(egui::Slider::new(rest_length, 0.001..=0.5).text("Rest Length")).changed();
+        RuleConfig::ChainSprings {
+            stiffness,
+            damping,
+            rest_length,
+            max_stretch,
+        } => {
+            changed |= ui
+                .add(
+                    egui::Slider::new(stiffness, 1.0..=1000.0)
+                        .logarithmic(true)
+                        .text("Stiffness"),
+                )
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(damping, 0.0..=50.0).text("Damping"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(rest_length, 0.001..=0.5).text("Rest Length"))
+                .changed();
             ui.horizontal(|ui| {
                 let mut has_max = max_stretch.is_some();
                 if ui.checkbox(&mut has_max, "Max Stretch").changed() {
@@ -750,38 +1752,443 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
                 if let Some(max_s) = max_stretch {
-                    changed |= ui.add(egui::Slider::new(max_s, 1.0..=3.0).text("")).changed();
+                    changed |= ui
+                        .add(egui::Slider::new(max_s, 1.0..=3.0).text(""))
+                        .changed();
                 }
             });
         }
-        RuleConfig::RadialSprings { hub_stiffness, ring_stiffness, damping, hub_length, ring_length } => {
-            changed |= ui.add(egui::Slider::new(hub_stiffness, 1.0..=500.0).logarithmic(true).text("Hub Stiffness")).changed();
-            changed |= ui.add(egui::Slider::new(ring_stiffness, 1.0..=500.0).logarithmic(true).text("Ring Stiffness")).changed();
-            changed |= ui.add(egui::Slider::new(damping, 0.0..=50.0).text("Damping")).changed();
-            changed |= ui.add(egui::Slider::new(hub_length, 0.01..=1.0).text("Hub Length")).changed();
-            changed |= ui.add(egui::Slider::new(ring_length, 0.01..=1.0).text("Ring Length")).changed();
+        RuleConfig::RadialSprings {
+            hub_stiffness,
+            ring_stiffness,
+            damping,
+            hub_length,
+            ring_length,
+        } => {
+            changed |= ui
+                .add(
+                    egui::Slider::new(hub_stiffness, 1.0..=500.0)
+                        .logarithmic(true)
+                        .text("Hub Stiffness"),
+                )
+                .changed();
+            changed |= ui
+                .add(
+                    egui::Slider::new(ring_stiffness, 1.0..=500.0)
+                        .logarithmic(true)
+                        .text("Ring Stiffness"),
+                )
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(damping, 0.0..=50.0).text("Damping"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(hub_length, 0.01..=1.0).text("Hub Length"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(ring_length, 0.01..=1.0).text("Ring Length"))
+                .changed();
+        }
+        RuleConfig::BondSprings {
+            bonds,
+            stiffness,
+            damping,
+            rest_length,
+            max_stretch,
+        } => {
+            ui.label("Bond Fields (particle field names):");
+            let mut remove_idx = None;
+            for (i, bond) in bonds.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    if ui.text_edit_singleline(bond).changed() {
+                        changed = true;
+                    }
+                    if ui.small_button("X").clicked() {
+                        remove_idx = Some(i);
+                    }
+                });
+            }
+            if let Some(idx) = remove_idx {
+                bonds.remove(idx);
+                changed = true;
+            }
+            if ui.button("+ Add Bond Field").clicked() {
+                bonds.push("bond0".into());
+                changed = true;
+            }
+            ui.separator();
+            changed |= ui
+                .add(
+                    egui::Slider::new(stiffness, 1.0..=1000.0)
+                        .logarithmic(true)
+                        .text("Stiffness"),
+                )
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(damping, 0.0..=50.0).text("Damping"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(rest_length, 0.001..=1.0).text("Rest Length"))
+                .changed();
+            let mut has_max = max_stretch.is_some();
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut has_max, "Max Stretch").changed() {
+                    if has_max && max_stretch.is_none() {
+                        *max_stretch = Some(1.5);
+                    } else if !has_max {
+                        *max_stretch = None;
+                    }
+                    changed = true;
+                }
+                if let Some(max_s) = max_stretch {
+                    changed |= ui
+                        .add(egui::Slider::new(max_s, 1.0..=3.0).text(""))
+                        .changed();
+                }
+            });
+        }
+
+        // State Machine
+        RuleConfig::State { field, transitions } => {
+            ui.horizontal(|ui| {
+                ui.label("State Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            ui.separator();
+            ui.label("Transitions (from → to when condition):");
+            let mut remove_idx = None;
+            for (i, (from, to, condition)) in transitions.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label("From:");
+                    changed |= ui.add(egui::DragValue::new(from)).changed();
+                    ui.label("To:");
+                    changed |= ui.add(egui::DragValue::new(to)).changed();
+                    if ui.small_button("X").clicked() {
+                        remove_idx = Some(i);
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Condition:");
+                    if ui.text_edit_singleline(condition).changed() {
+                        changed = true;
+                    }
+                });
+                ui.separator();
+            }
+            if let Some(idx) = remove_idx {
+                transitions.remove(idx);
+                changed = true;
+            }
+            if ui.button("+ Add Transition").clicked() {
+                transitions.push((0, 1, "p.age > 1.0".into()));
+                changed = true;
+            }
+        }
+        RuleConfig::Agent {
+            state_field,
+            prev_state_field,
+            state_timer_field,
+            states,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("State Field:");
+                if ui.text_edit_singleline(state_field).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Prev State Field:");
+                if ui.text_edit_singleline(prev_state_field).changed() {
+                    changed = true;
+                }
+            });
+            let mut has_timer = state_timer_field.is_some();
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut has_timer, "State Timer").changed() {
+                    if has_timer && state_timer_field.is_none() {
+                        *state_timer_field = Some("state_timer".into());
+                    } else if !has_timer {
+                        *state_timer_field = None;
+                    }
+                    changed = true;
+                }
+                if let Some(timer) = state_timer_field {
+                    if ui.text_edit_singleline(timer).changed() {
+                        changed = true;
+                    }
+                }
+            });
+            ui.separator();
+            ui.label("States:");
+            let mut remove_state_idx = None;
+            for (si, state) in states.iter_mut().enumerate() {
+                let state_header = state
+                    .name
+                    .as_ref()
+                    .map(|n| format!("State {} ({})", state.id, n))
+                    .unwrap_or(format!("State {}", state.id));
+                egui::CollapsingHeader::new(state_header)
+                    .id_salt(format!("agent_state_{}", si))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("ID:");
+                            if ui.add(egui::DragValue::new(&mut state.id)).changed() {
+                                changed = true;
+                            }
+                            if ui.small_button("X Remove State").clicked() {
+                                remove_state_idx = Some(si);
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Name:");
+                            let mut name_str = state.name.clone().unwrap_or_default();
+                            if ui.text_edit_singleline(&mut name_str).changed() {
+                                state.name = if name_str.is_empty() {
+                                    None
+                                } else {
+                                    Some(name_str)
+                                };
+                                changed = true;
+                            }
+                        });
+                        ui.collapsing("On Enter", |ui| {
+                            let mut code = state.on_enter.clone().unwrap_or_default();
+                            if ui
+                                .add(
+                                    egui::TextEdit::multiline(&mut code)
+                                        .code_editor()
+                                        .desired_rows(2),
+                                )
+                                .changed()
+                            {
+                                state.on_enter = if code.is_empty() { None } else { Some(code) };
+                                changed = true;
+                            }
+                        });
+                        ui.collapsing("On Update", |ui| {
+                            let mut code = state.on_update.clone().unwrap_or_default();
+                            if ui
+                                .add(
+                                    egui::TextEdit::multiline(&mut code)
+                                        .code_editor()
+                                        .desired_rows(2),
+                                )
+                                .changed()
+                            {
+                                state.on_update = if code.is_empty() { None } else { Some(code) };
+                                changed = true;
+                            }
+                        });
+                        ui.collapsing("On Exit", |ui| {
+                            let mut code = state.on_exit.clone().unwrap_or_default();
+                            if ui
+                                .add(
+                                    egui::TextEdit::multiline(&mut code)
+                                        .code_editor()
+                                        .desired_rows(2),
+                                )
+                                .changed()
+                            {
+                                state.on_exit = if code.is_empty() { None } else { Some(code) };
+                                changed = true;
+                            }
+                        });
+                        ui.label("Transitions:");
+                        let mut remove_trans_idx = None;
+                        for (ti, trans) in state.transitions.iter_mut().enumerate() {
+                            ui.horizontal(|ui| {
+                                ui.label("→");
+                                if ui.add(egui::DragValue::new(&mut trans.to)).changed() {
+                                    changed = true;
+                                }
+                                ui.label("Pri:");
+                                if ui.add(egui::DragValue::new(&mut trans.priority)).changed() {
+                                    changed = true;
+                                }
+                                if ui.small_button("X").clicked() {
+                                    remove_trans_idx = Some(ti);
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("When:");
+                                if ui.text_edit_singleline(&mut trans.condition).changed() {
+                                    changed = true;
+                                }
+                            });
+                        }
+                        if let Some(idx) = remove_trans_idx {
+                            state.transitions.remove(idx);
+                            changed = true;
+                        }
+                        if ui.small_button("+ Transition").clicked() {
+                            state.transitions.push(TransitionConfig {
+                                to: 0,
+                                condition: "false".into(),
+                                priority: 0,
+                            });
+                            changed = true;
+                        }
+                    });
+            }
+            if let Some(idx) = remove_state_idx {
+                states.remove(idx);
+                changed = true;
+            }
+            if ui.button("+ Add State").clicked() {
+                let new_id = states.iter().map(|s| s.id).max().unwrap_or(0) + 1;
+                states.push(AgentStateConfig::new(new_id));
+                changed = true;
+            }
+        }
+
+        // Conditional (simplified)
+        RuleConfig::Switch {
+            condition,
+            then_code,
+            else_code,
+        } => {
+            ui.label("Condition:");
+            if ui
+                .add(
+                    egui::TextEdit::multiline(condition)
+                        .code_editor()
+                        .desired_rows(1),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+            ui.label("Then (WGSL):");
+            if ui
+                .add(
+                    egui::TextEdit::multiline(then_code)
+                        .code_editor()
+                        .desired_rows(3),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+            let mut has_else = else_code.is_some();
+            if ui.checkbox(&mut has_else, "Else Branch").changed() {
+                if has_else && else_code.is_none() {
+                    *else_code = Some("// else code".into());
+                } else if !has_else {
+                    *else_code = None;
+                }
+                changed = true;
+            }
+            if let Some(code) = else_code {
+                ui.label("Else (WGSL):");
+                if ui
+                    .add(
+                        egui::TextEdit::multiline(code)
+                            .code_editor()
+                            .desired_rows(3),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            }
+        }
+        RuleConfig::TypedNeighbor {
+            self_type,
+            other_type,
+            radius,
+            code,
+        } => {
+            let mut has_self_type = self_type.is_some();
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut has_self_type, "Self Type").changed() {
+                    if has_self_type && self_type.is_none() {
+                        *self_type = Some(0);
+                    } else if !has_self_type {
+                        *self_type = None;
+                    }
+                    changed = true;
+                }
+                if let Some(t) = self_type {
+                    if ui.add(egui::DragValue::new(t)).changed() {
+                        changed = true;
+                    }
+                }
+            });
+            let mut has_other_type = other_type.is_some();
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut has_other_type, "Other Type").changed() {
+                    if has_other_type && other_type.is_none() {
+                        *other_type = Some(0);
+                    } else if !has_other_type {
+                        *other_type = None;
+                    }
+                    changed = true;
+                }
+                if let Some(t) = other_type {
+                    if ui.add(egui::DragValue::new(t)).changed() {
+                        changed = true;
+                    }
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            ui.label("Neighbor WGSL Code:");
+            ui.label(
+                egui::RichText::new("Available: neighbor_dist, neighbor_dir, neighbor_pos, other")
+                    .small()
+                    .weak(),
+            );
+            if ui
+                .add(
+                    egui::TextEdit::multiline(code)
+                        .code_editor()
+                        .desired_rows(4),
+                )
+                .changed()
+            {
+                changed = true;
+            }
         }
 
         // Advanced Physics
-        RuleConfig::DensityBuoyancy { density_field, medium_density, strength } => {
+        RuleConfig::DensityBuoyancy {
+            density_field,
+            medium_density,
+            strength,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Density Field:");
                 if ui.text_edit_singleline(density_field).changed() {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(medium_density, 0.1..=10.0).text("Medium Density")).changed();
-            changed |= ui.add(egui::Slider::new(strength, 0.1..=20.0).text("Strength")).changed();
+            changed |= ui
+                .add(egui::Slider::new(medium_density, 0.1..=10.0).text("Medium Density"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.1..=20.0).text("Strength"))
+                .changed();
         }
-        RuleConfig::Diffuse { field, rate, radius } => {
+        RuleConfig::Diffuse {
+            field,
+            rate,
+            radius,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Field:");
                 if ui.text_edit_singleline(field).changed() {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(rate, 0.0..=1.0).text("Rate")).changed();
-            changed |= ui.add(egui::Slider::new(radius, 0.01..=0.5).text("Radius")).changed();
+            changed |= ui
+                .add(egui::Slider::new(rate, 0.0..=1.0).text("Rate"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=0.5).text("Radius"))
+                .changed();
         }
         RuleConfig::Mass { field } => {
             ui.horizontal(|ui| {
@@ -791,7 +2198,13 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 }
             });
         }
-        RuleConfig::Refractory { trigger, charge, active_threshold, depletion_rate, regen_rate } => {
+        RuleConfig::Refractory {
+            trigger,
+            charge,
+            active_threshold,
+            depletion_rate,
+            regen_rate,
+        } => {
             ui.horizontal(|ui| {
                 ui.label("Trigger Field:");
                 if ui.text_edit_singleline(trigger).changed() {
@@ -804,9 +2217,931 @@ fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                     changed = true;
                 }
             });
-            changed |= ui.add(egui::Slider::new(active_threshold, 0.0..=1.0).text("Active Threshold")).changed();
-            changed |= ui.add(egui::Slider::new(depletion_rate, 0.0..=5.0).text("Depletion Rate")).changed();
-            changed |= ui.add(egui::Slider::new(regen_rate, 0.0..=2.0).text("Regen Rate")).changed();
+            changed |= ui
+                .add(egui::Slider::new(active_threshold, 0.0..=1.0).text("Active Threshold"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(depletion_rate, 0.0..=5.0).text("Depletion Rate"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(regen_rate, 0.0..=2.0).text("Regen Rate"))
+                .changed();
+        }
+
+        // Math / Signal
+        RuleConfig::Smooth {
+            field,
+            target,
+            rate,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(target, -10.0..=10.0).text("Target"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(rate, 0.0..=10.0).text("Rate"))
+                .changed();
+        }
+        RuleConfig::Modulo { field, min, max } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(min, -10.0..=10.0).text("Min"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(max, -10.0..=10.0).text("Max"))
+                .changed();
+        }
+        RuleConfig::Copy {
+            from,
+            to,
+            scale,
+            offset,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("From:");
+                if ui.text_edit_singleline(from).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("To:");
+                if ui.text_edit_singleline(to).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(scale, -10.0..=10.0).text("Scale"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(offset, -10.0..=10.0).text("Offset"))
+                .changed();
+        }
+        RuleConfig::Threshold {
+            input_field,
+            output_field,
+            threshold,
+            above,
+            below,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Input:");
+                if ui.text_edit_singleline(input_field).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output_field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(threshold, -10.0..=10.0).text("Threshold"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(above, 0.0..=1.0).text("Above Value"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(below, 0.0..=1.0).text("Below Value"))
+                .changed();
+        }
+        RuleConfig::Gate { condition, action } => {
+            ui.label("Condition (WGSL):");
+            if ui.text_edit_multiline(condition).changed() {
+                changed = true;
+            }
+            ui.label("Action (WGSL):");
+            if ui.text_edit_multiline(action).changed() {
+                changed = true;
+            }
+        }
+        RuleConfig::Tween {
+            field,
+            from,
+            to,
+            duration,
+            timer_field,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Field:");
+                if ui.text_edit_singleline(field).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(from, 0.0..=10.0).text("From"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(to, 0.0..=10.0).text("To"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(duration, 0.1..=30.0).text("Duration"))
+                .changed();
+            ui.horizontal(|ui| {
+                ui.label("Timer Field:");
+                if ui.text_edit_singleline(timer_field).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Periodic {
+            interval,
+            phase_field,
+            action,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(interval, 0.01..=10.0).text("Interval"))
+                .changed();
+            ui.horizontal(|ui| {
+                let mut has_phase = phase_field.is_some();
+                if ui.checkbox(&mut has_phase, "Phase Field").changed() {
+                    if has_phase {
+                        *phase_field = Some("phase".into());
+                    } else {
+                        *phase_field = None;
+                    }
+                    changed = true;
+                }
+                if let Some(pf) = phase_field {
+                    if ui.text_edit_singleline(pf).changed() {
+                        changed = true;
+                    }
+                }
+            });
+            ui.label("Action (WGSL):");
+            if ui.text_edit_multiline(action).changed() {
+                changed = true;
+            }
+        }
+
+        // Field Interactions
+        RuleConfig::Deposit {
+            field_index,
+            source,
+            amount,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(field_index, 0..=7).text("Field Index"))
+                .changed();
+            ui.horizontal(|ui| {
+                ui.label("Source:");
+                if ui.text_edit_singleline(source).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(amount, 0.0..=10.0).text("Amount"))
+                .changed();
+        }
+        RuleConfig::Sense {
+            field_index,
+            target,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(field_index, 0..=7).text("Field Index"))
+                .changed();
+            ui.horizontal(|ui| {
+                ui.label("Target:");
+                if ui.text_edit_singleline(target).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Consume {
+            field_index,
+            target,
+            rate,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(field_index, 0..=7).text("Field Index"))
+                .changed();
+            ui.horizontal(|ui| {
+                ui.label("Target:");
+                if ui.text_edit_singleline(target).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(rate, 0.0..=10.0).text("Rate"))
+                .changed();
+        }
+        RuleConfig::Gradient {
+            field,
+            strength,
+            ascending,
+        } => {
+            changed |= ui
+                .add(egui::Slider::new(field, 0..=7).text("Field Index"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
+            changed |= ui.checkbox(ascending, "Ascending").changed();
+        }
+
+        // Neighbor Field Operations
+        RuleConfig::Accumulate {
+            source,
+            target,
+            radius,
+            operation,
+            falloff,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Source:");
+                if ui.text_edit_singleline(source).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Target:");
+                if ui.text_edit_singleline(target).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            ui.horizontal(|ui| {
+                ui.label("Operation:");
+                if ui.text_edit_singleline(operation).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                let mut has_falloff = falloff.is_some();
+                if ui.checkbox(&mut has_falloff, "Falloff").changed() {
+                    if has_falloff {
+                        *falloff = Some(Falloff::Linear);
+                    } else {
+                        *falloff = None;
+                    }
+                    changed = true;
+                }
+                if let Some(f) = falloff {
+                    changed |= render_falloff(ui, f);
+                }
+            });
+        }
+        RuleConfig::Signal {
+            source,
+            target,
+            radius,
+            strength,
+            falloff,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Source:");
+                if ui.text_edit_singleline(source).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Target:");
+                if ui.text_edit_singleline(target).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
+            ui.horizontal(|ui| {
+                let mut has_falloff = falloff.is_some();
+                if ui.checkbox(&mut has_falloff, "Falloff").changed() {
+                    if has_falloff {
+                        *falloff = Some(Falloff::Linear);
+                    } else {
+                        *falloff = None;
+                    }
+                    changed = true;
+                }
+                if let Some(f) = falloff {
+                    changed |= render_falloff(ui, f);
+                }
+            });
+        }
+        RuleConfig::Absorb {
+            target_type,
+            radius,
+            source_field,
+            target_field,
+        } => {
+            ui.horizontal(|ui| {
+                let mut has_type = target_type.is_some();
+                if ui.checkbox(&mut has_type, "Target Type").changed() {
+                    if has_type {
+                        *target_type = Some(0);
+                    } else {
+                        *target_type = None;
+                    }
+                    changed = true;
+                }
+                if let Some(t) = target_type {
+                    changed |= ui.add(egui::Slider::new(t, 0..=7).text("")).changed();
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            ui.horizontal(|ui| {
+                ui.label("Source Field:");
+                if ui.text_edit_singleline(source_field).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Target Field:");
+                if ui.text_edit_singleline(target_field).changed() {
+                    changed = true;
+                }
+            });
+        }
+
+        // Logic Gates
+        RuleConfig::And { a, b, output } => {
+            ui.horizontal(|ui| {
+                ui.label("A:");
+                if ui.text_edit_singleline(a).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("B:");
+                if ui.text_edit_singleline(b).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Or { a, b, output } => {
+            ui.horizontal(|ui| {
+                ui.label("A:");
+                if ui.text_edit_singleline(a).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("B:");
+                if ui.text_edit_singleline(b).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Not { input, output, max } => {
+            ui.horizontal(|ui| {
+                ui.label("Input:");
+                if ui.text_edit_singleline(input).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(max, 0.0..=10.0).text("Max"))
+                .changed();
+        }
+        RuleConfig::Xor { a, b, output } => {
+            ui.horizontal(|ui| {
+                ui.label("A:");
+                if ui.text_edit_singleline(a).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("B:");
+                if ui.text_edit_singleline(b).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Hysteresis {
+            input,
+            output,
+            low_threshold,
+            high_threshold,
+            on_value,
+            off_value,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Input:");
+                if ui.text_edit_singleline(input).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(low_threshold, 0.0..=1.0).text("Low Threshold"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(high_threshold, 0.0..=1.0).text("High Threshold"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(on_value, 0.0..=1.0).text("On Value"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(off_value, 0.0..=1.0).text("Off Value"))
+                .changed();
+        }
+        RuleConfig::Latch {
+            output,
+            set_condition,
+            reset_condition,
+            set_value,
+            reset_value,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+            ui.label("Set Condition (WGSL):");
+            if ui.text_edit_multiline(set_condition).changed() {
+                changed = true;
+            }
+            ui.label("Reset Condition (WGSL):");
+            if ui.text_edit_multiline(reset_condition).changed() {
+                changed = true;
+            }
+            changed |= ui
+                .add(egui::Slider::new(set_value, 0.0..=1.0).text("Set Value"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(reset_value, 0.0..=1.0).text("Reset Value"))
+                .changed();
+        }
+        RuleConfig::Edge {
+            input,
+            prev_field,
+            output,
+            threshold,
+            rising,
+            falling,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Input:");
+                if ui.text_edit_singleline(input).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Prev Field:");
+                if ui.text_edit_singleline(prev_field).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+            changed |= ui
+                .add(egui::Slider::new(threshold, 0.0..=1.0).text("Threshold"))
+                .changed();
+            changed |= ui.checkbox(rising, "Rising Edge").changed();
+            changed |= ui.checkbox(falling, "Falling Edge").changed();
+        }
+        RuleConfig::Select {
+            condition,
+            then_field,
+            else_field,
+            output,
+        } => {
+            ui.label("Condition (WGSL):");
+            if ui.text_edit_multiline(condition).changed() {
+                changed = true;
+            }
+            ui.horizontal(|ui| {
+                ui.label("Then Field:");
+                if ui.text_edit_singleline(then_field).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Else Field:");
+                if ui.text_edit_singleline(else_field).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Blend {
+            a,
+            b,
+            weight,
+            output,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("A:");
+                if ui.text_edit_singleline(a).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("B:");
+                if ui.text_edit_singleline(b).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Weight:");
+                if ui.text_edit_singleline(weight).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Output:");
+                if ui.text_edit_singleline(output).changed() {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::Sync {
+            phase_field,
+            frequency,
+            field,
+            emit_amount,
+            coupling,
+            detection_threshold,
+            on_fire,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Phase Field:");
+                if ui.text_edit_singleline(phase_field).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Frequency:");
+                if ui
+                    .add(
+                        egui::DragValue::new(frequency)
+                            .speed(0.1)
+                            .range(0.0..=100.0),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Field Index:");
+                if ui.add(egui::DragValue::new(field)).changed() {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Emit Amount:");
+                if ui
+                    .add(
+                        egui::DragValue::new(emit_amount)
+                            .speed(0.01)
+                            .range(0.0..=10.0),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Coupling:");
+                if ui
+                    .add(egui::DragValue::new(coupling).speed(0.01).range(0.0..=10.0))
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Detection Threshold:");
+                if ui
+                    .add(
+                        egui::DragValue::new(detection_threshold)
+                            .speed(0.01)
+                            .range(0.0..=10.0),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            let mut has_on_fire = on_fire.is_some();
+            if ui.checkbox(&mut has_on_fire, "On Fire WGSL").changed() {
+                if has_on_fire && on_fire.is_none() {
+                    *on_fire = Some("// Fire event code".into());
+                } else if !has_on_fire {
+                    *on_fire = None;
+                }
+                changed = true;
+            }
+            if let Some(code) = on_fire {
+                ui.label("On Fire Code:");
+                if ui
+                    .add(
+                        egui::TextEdit::multiline(code)
+                            .code_editor()
+                            .desired_width(f32::INFINITY),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            }
+        }
+        RuleConfig::Split {
+            condition,
+            offspring_count,
+            offspring_type,
+            resource_field,
+            resource_cost,
+            spread,
+            speed_min,
+            speed_max,
+        } => {
+            ui.label("Condition:");
+            if ui
+                .add(
+                    egui::TextEdit::multiline(condition)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(2),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+            ui.horizontal(|ui| {
+                ui.label("Offspring Count:");
+                if ui
+                    .add(egui::DragValue::new(offspring_count).range(1..=10))
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            let mut has_offspring_type = offspring_type.is_some();
+            ui.horizontal(|ui| {
+                if ui
+                    .checkbox(&mut has_offspring_type, "Override Type")
+                    .changed()
+                {
+                    if has_offspring_type && offspring_type.is_none() {
+                        *offspring_type = Some(0);
+                    } else if !has_offspring_type {
+                        *offspring_type = None;
+                    }
+                    changed = true;
+                }
+                if let Some(t) = offspring_type {
+                    if ui.add(egui::DragValue::new(t)).changed() {
+                        changed = true;
+                    }
+                }
+            });
+            let mut has_resource = resource_field.is_some();
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut has_resource, "Resource Field").changed() {
+                    if has_resource && resource_field.is_none() {
+                        *resource_field = Some("energy".into());
+                    } else if !has_resource {
+                        *resource_field = None;
+                    }
+                    changed = true;
+                }
+                if let Some(f) = resource_field {
+                    if ui.text_edit_singleline(f).changed() {
+                        changed = true;
+                    }
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Resource Cost:");
+                if ui
+                    .add(
+                        egui::DragValue::new(resource_cost)
+                            .speed(0.01)
+                            .range(0.0..=100.0),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Spread:");
+                if ui
+                    .add(
+                        egui::DragValue::new(spread)
+                            .speed(0.01)
+                            .range(0.0..=std::f32::consts::PI),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Speed Min:");
+                if ui
+                    .add(
+                        egui::DragValue::new(speed_min)
+                            .speed(0.01)
+                            .range(0.0..=10.0),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+                ui.label("Max:");
+                if ui
+                    .add(
+                        egui::DragValue::new(speed_max)
+                            .speed(0.01)
+                            .range(0.0..=10.0),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+        }
+        RuleConfig::OnCollisionDynamic {
+            radius,
+            response,
+            params,
+        } => {
+            ui.horizontal(|ui| {
+                ui.label("Radius:");
+                if ui
+                    .add(egui::DragValue::new(radius).speed(0.01).range(0.0..=10.0))
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            ui.label("Response (WGSL):");
+            ui.label(
+                egui::RichText::new("Access params via uniforms.rule_N_paramname")
+                    .small()
+                    .weak(),
+            );
+            if ui
+                .add(
+                    egui::TextEdit::multiline(response)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(4),
+                )
+                .changed()
+            {
+                changed = true;
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label("Dynamic Parameters:");
+                if ui
+                    .small_button("+")
+                    .on_hover_text("Add parameter")
+                    .clicked()
+                {
+                    let new_name = format!("param_{}", params.len());
+                    params.push((new_name, UniformValueConfig::F32(1.0)));
+                    changed = true;
+                }
+            });
+            let mut to_remove = None;
+            for (idx, (name, value)) in params.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    let mut name_edit = name.clone();
+                    if ui
+                        .add(egui::TextEdit::singleline(&mut name_edit).desired_width(80.0))
+                        .changed()
+                    {
+                        *name = name_edit;
+                        changed = true;
+                    }
+                    ui.label("=");
+                    match value {
+                        UniformValueConfig::F32(v) => {
+                            if ui.add(egui::DragValue::new(v).speed(0.01)).changed() {
+                                changed = true;
+                            }
+                        }
+                        UniformValueConfig::Vec2(v) => {
+                            if ui
+                                .add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                            if ui
+                                .add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                        }
+                        UniformValueConfig::Vec3(v) => {
+                            if ui
+                                .add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                            if ui
+                                .add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                            if ui
+                                .add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                        }
+                        UniformValueConfig::Vec4(v) => {
+                            if ui
+                                .add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                            if ui
+                                .add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                            if ui
+                                .add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                            if ui
+                                .add(egui::DragValue::new(&mut v[3]).speed(0.01).prefix("w:"))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                        }
+                    }
+                    if ui.small_button("X").on_hover_text("Remove").clicked() {
+                        to_remove = Some(idx);
+                    }
+                });
+            }
+            if let Some(idx) = to_remove {
+                params.remove(idx);
+                changed = true;
+            }
         }
     }
 
@@ -817,9 +3152,15 @@ fn render_vec3(ui: &mut Ui, label: &str, v: &mut [f32; 3]) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.label(format!("{}:", label));
-        changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x:")).changed();
-        changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y:")).changed();
-        changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z:")).changed();
+        changed |= ui
+            .add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x:"))
+            .changed();
+        changed |= ui
+            .add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y:"))
+            .changed();
+        changed |= ui
+            .add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z:"))
+            .changed();
     });
     changed
 }

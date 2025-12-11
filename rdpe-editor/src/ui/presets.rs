@@ -2,7 +2,7 @@
 
 use crate::config::{
     BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff, FieldConfigEntry,
-    FieldTypeConfig, InitialVelocity, PaletteConfig, ParticleFieldDef, ParticleFieldType,
+    FieldTypeConfig, InitialVelocity, MouseConfig, PaletteConfig, ParticleFieldDef, ParticleFieldType,
     ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape, UniformValueConfig,
     VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
 };
@@ -23,6 +23,7 @@ pub static PRESETS: &[Preset] = &[
             particle_count: 5000,
             bounds: 1.0,
             particle_size: 0.01,
+            speed: 1.0,
             spatial_cell_size: 0.15,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -53,6 +54,7 @@ pub static PRESETS: &[Preset] = &[
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -63,6 +65,7 @@ pub static PRESETS: &[Preset] = &[
             particle_count: 20000,
             bounds: 2.0,
             particle_size: 0.005,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -86,6 +89,7 @@ pub static PRESETS: &[Preset] = &[
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -93,13 +97,14 @@ pub static PRESETS: &[Preset] = &[
         description: "SPH-like fluid with pressure and viscosity",
         config: || SimConfig {
             name: "Fluid Simulation".into(),
-            particle_count: 8000,
+            particle_count: 10000,
             bounds: 1.0,
-            particle_size: 0.012,
+            particle_size: 0.010,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
-                shape: SpawnShape::Cube { size: 0.4 },
+                shape: SpawnShape::Sphere { radius: 0.5 },
                 velocity: InitialVelocity::Zero,
                 color_mode: ColorMode::Uniform {
                     r: 0.2,
@@ -109,15 +114,15 @@ pub static PRESETS: &[Preset] = &[
                 ..Default::default()
             },
             rules: vec![
-                RuleConfig::Gravity(5.0),
+                RuleConfig::Gravity(1.5),
                 RuleConfig::Pressure {
-                    radius: 0.08,
-                    strength: 3.0,
-                    target_density: 10.0,
+                    radius: 0.05,
+                    strength: 1.0,
+                    target_density: 1.0,
                 },
                 RuleConfig::Viscosity {
-                    radius: 0.08,
-                    strength: 0.5,
+                    radius: 2.0,
+                    strength: 1.0,
                 },
                 RuleConfig::BounceWalls,
             ],
@@ -128,130 +133,7 @@ pub static PRESETS: &[Preset] = &[
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
-        },
-    },
-    Preset {
-        name: "Predator Prey",
-        description: "Chase and evade dynamics between two species",
-        config: || SimConfig {
-            name: "Predator Prey".into(),
-            particle_count: 5000,
-            bounds: 1.0,
-            particle_size: 0.012,
-            spatial_cell_size: 0.2,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Sphere { radius: 0.8 },
-                velocity: InitialVelocity::RandomDirection { speed: 0.1 },
-                color_mode: ColorMode::RandomHue {
-                    saturation: 0.8,
-                    value: 0.9,
-                },
-                ..Default::default()
-            },
-            rules: vec![
-                RuleConfig::Chase {
-                    self_type: 1,
-                    target_type: 0,
-                    radius: 0.3,
-                    strength: 3.0,
-                },
-                RuleConfig::Evade {
-                    self_type: 0,
-                    threat_type: 1,
-                    radius: 0.2,
-                    strength: 4.0,
-                },
-                RuleConfig::Separate {
-                    radius: 0.05,
-                    strength: 2.0,
-                },
-                RuleConfig::SpeedLimit { min: 0.1, max: 1.0 },
-                RuleConfig::BounceWalls,
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig::default(),
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-            particle_fields: Vec::new(),
-        },
-    },
-    Preset {
-        name: "Curl Noise Flow",
-        description: "Smooth, divergence-free fluid-like motion",
-        config: || SimConfig {
-            name: "Curl Noise Flow".into(),
-            particle_count: 20000,
-            bounds: 1.5,
-            particle_size: 0.004,
-            spatial_cell_size: 0.1,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Cube { size: 1.2 },
-                velocity: InitialVelocity::Zero,
-                color_mode: ColorMode::ByVelocity,
-                ..Default::default()
-            },
-            rules: vec![
-                RuleConfig::Curl {
-                    scale: 2.0,
-                    strength: 1.5,
-                },
-                RuleConfig::Drag(0.2),
-                RuleConfig::WrapWalls,
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig::default(),
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-            particle_fields: Vec::new(),
-        },
-    },
-    Preset {
-        name: "N-Body Gravity",
-        description: "Mutual gravitational attraction between particles",
-        config: || SimConfig {
-            name: "N-Body Gravity".into(),
-            particle_count: 2000,
-            bounds: 2.0,
-            particle_size: 0.015,
-            spatial_cell_size: 0.3,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Shell {
-                    inner: 0.5,
-                    outer: 1.5,
-                },
-                velocity: InitialVelocity::Swirl { speed: 0.2 },
-                color_mode: ColorMode::RandomHue {
-                    saturation: 0.7,
-                    value: 0.9,
-                },
-                ..Default::default()
-            },
-            rules: vec![
-                RuleConfig::NBodyGravity {
-                    strength: 0.3,
-                    softening: 0.05,
-                    radius: 1.0,
-                },
-                RuleConfig::Collide {
-                    radius: 0.03,
-                    restitution: 0.5,
-                },
-                RuleConfig::Drag(0.05),
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig::default(),
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-            particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -263,6 +145,7 @@ pub static PRESETS: &[Preset] = &[
             particle_count: 8000,
             bounds: 1.5,
             particle_size: 0.015,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -290,6 +173,7 @@ pub static PRESETS: &[Preset] = &[
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         }
         },
     },
@@ -299,8 +183,9 @@ pub static PRESETS: &[Preset] = &[
         config: || SimConfig {
             name: "Volume Field Demo".into(),
             particle_count: 5000,
-            bounds: 1.2,
-            particle_size: 0.008,
+            bounds: 1.0,
+            particle_size: 0.005,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -315,7 +200,7 @@ pub static PRESETS: &[Preset] = &[
             rules: vec![
                 RuleConfig::PointGravity {
                     point: [0.0, 0.0, 0.0],
-                    strength: 1.0,
+                    strength: 0.5,
                     softening: 0.1,
                 },
                 RuleConfig::Curl {
@@ -325,7 +210,7 @@ pub static PRESETS: &[Preset] = &[
                 RuleConfig::Drag(0.1),
                 RuleConfig::SpeedLimit {
                     min: 0.05,
-                    max: 0.8,
+                    max: 1.0,
                 },
                 RuleConfig::BounceWalls,
                 // Write particle presence to the field - each particle deposits a value
@@ -356,6 +241,7 @@ pub static PRESETS: &[Preset] = &[
                 additive: true,
             },
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -366,6 +252,7 @@ pub static PRESETS: &[Preset] = &[
             particle_count: 8000,
             bounds: 1.0,
             particle_size: 0.006,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -429,6 +316,7 @@ field_write(0u, p.position, 0.5);
                 additive: true,
             },
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     // === New presets from examples ===
@@ -440,6 +328,7 @@ field_write(0u, p.position, 0.5);
             particle_count: 30000,
             bounds: 1.5,
             particle_size: 0.012,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -491,6 +380,7 @@ field_write(0u, p.position, 0.5);
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -498,32 +388,27 @@ field_write(0u, p.position, 0.5);
         description: "Stars orbiting a central mass with spiral arm dynamics",
         config: || SimConfig {
             name: "Galaxy".into(),
-            particle_count: 25000,
+            particle_count: 100,
             bounds: 2.0,
-            particle_size: 0.008,
+            particle_size: 0.01,
+            speed: 1.0,
             spatial_cell_size: 0.2,
             spatial_resolution: 32,
             spawn: SpawnConfig {
                 shape: SpawnShape::Shell {
-                    inner: 0.1,
-                    outer: 0.9,
+                    inner: 0.5,
+                    outer: 1.0,
                 },
                 velocity: InitialVelocity::Swirl { speed: 0.5 },
                 color_mode: ColorMode::ByVelocity,
                 ..Default::default()
             },
             rules: vec![
-                // Central gravitational attractor
-                RuleConfig::PointGravity {
-                    point: [0.0, 0.0, 0.0],
-                    strength: 0.4,
-                    softening: 0.1,
-                },
                 // N-body gravity between nearby stars (mass-weighted)
                 RuleConfig::NBodyGravity {
-                    strength: 0.02,
-                    softening: 0.03,
-                    radius: 0.3,
+                    strength: 0.01,
+                    softening: 0.05,
+                    radius: 0.5,
                 },
                 // Very light drag (dynamical friction)
                 RuleConfig::Drag(0.1),
@@ -553,6 +438,7 @@ if t > 0.6 {
             visuals: VisualsConfig {
                 blend_mode: BlendModeConfig::Additive,
                 background_color: [0.0, 0.0, 0.02],
+                velocity_stretch: true,
                 ..Default::default()
             },
             custom_uniforms: HashMap::new(),
@@ -560,6 +446,7 @@ if t > 0.6 {
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -567,17 +454,16 @@ if t > 0.6 {
         description: "Diffusion-limited aggregation creating dendritic fractal structures",
         config: || SimConfig {
             name: "Crystal Growth".into(),
-            particle_count: 10000,
+            particle_count: 5000,
             bounds: 1.0,
-            particle_size: 0.015,
-            spatial_cell_size: 0.08,
+            particle_size: 0.02,
+            speed: 1.0,
+            spatial_cell_size: 0.1,
             spatial_resolution: 32,
-            particle_fields: vec![
-                ParticleFieldDef {
-                    name: "custom".into(),
-                    field_type: ParticleFieldType::F32,
-                },
-            ],
+            particle_fields: vec![ParticleFieldDef {
+                name: "custom".into(),
+                field_type: ParticleFieldType::F32,
+            }],
             spawn: SpawnConfig {
                 shape: SpawnShape::Sphere { radius: 0.8 },
                 velocity: InitialVelocity::Zero,
@@ -676,6 +562,7 @@ if p.particle_type == 0u && other.particle_type == 1u {
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -684,16 +571,15 @@ if p.particle_type == 0u && other.particle_type == 1u {
         config: || SimConfig {
             name: "Slime Mold".into(),
             particle_count: 25000,
-            bounds: 1.2,
-            particle_size: 0.004,
+            bounds: 1.0,
+            particle_size: 0.01,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
-            particle_fields: vec![
-                ParticleFieldDef {
-                    name: "custom".into(),
-                    field_type: ParticleFieldType::F32,
-                },
-            ],
+            particle_fields: vec![ParticleFieldDef {
+                name: "custom".into(),
+                field_type: ParticleFieldType::F32,
+            }],
             spawn: SpawnConfig {
                 shape: SpawnShape::Shell {
                     inner: 0.0,
@@ -708,6 +594,8 @@ if p.particle_type == 0u && other.particle_type == 1u {
                 ..Default::default()
             },
             rules: vec![
+                // Wall wrapping
+                RuleConfig::WrapWalls,
                 // Slime mold behavior - sense and follow pheromones
                 RuleConfig::Custom {
                     code: r#"
@@ -788,6 +676,7 @@ p.velocity = vec3<f32>(0.0, 0.0, 0.0);
                 threshold: 0.01,
                 additive: true,
             },
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -798,6 +687,7 @@ p.velocity = vec3<f32>(0.0, 0.0, 0.0);
             particle_count: 15000,
             bounds: 1.5,
             particle_size: 0.01,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -868,222 +758,7 @@ p.color *= smoothstep(0.0, 0.3, height) * (1.0 - smoothstep(0.7, 1.0, height));
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
-        },
-    },
-    Preset {
-        name: "Aquarium",
-        description: "Schooling fish with predator/prey dynamics",
-        config: || SimConfig {
-            name: "Aquarium".into(),
-            particle_count: 1500,
-            bounds: 1.0,
-            particle_size: 0.018,
-            spatial_cell_size: 0.15,
-            spatial_resolution: 32,
-            particle_fields: vec![
-                ParticleFieldDef {
-                    name: "energy".into(),
-                    field_type: ParticleFieldType::F32,
-                },
-            ],
-            spawn: SpawnConfig {
-                shape: SpawnShape::Cube { size: 1.5 },
-                velocity: InitialVelocity::RandomDirection { speed: 0.05 },
-                color_mode: ColorMode::RandomHue {
-                    saturation: 0.6,
-                    value: 0.9,
-                },
-                ..Default::default()
-            },
-            rules: vec![
-                // Fish schooling
-                RuleConfig::Separate {
-                    radius: 0.03,
-                    strength: 1.5,
-                },
-                RuleConfig::Cohere {
-                    radius: 0.15,
-                    strength: 0.3,
-                },
-                RuleConfig::Align {
-                    radius: 0.1,
-                    strength: 1.0,
-                },
-                // Evade shark (type 1)
-                RuleConfig::Evade {
-                    self_type: 0,
-                    threat_type: 1,
-                    radius: 0.2,
-                    strength: 2.0,
-                },
-                // Shark chases fish
-                RuleConfig::Chase {
-                    self_type: 1,
-                    target_type: 0,
-                    radius: 0.6,
-                    strength: 0.3,
-                },
-                // Fish behaviors
-                RuleConfig::Custom {
-                    code: r#"
-// Darting behavior for fish
-if p.particle_type == 0u {
-    p.energy = p.energy + 0.015;
-    if p.energy > 1.0 && length(p.velocity) > 0.01 {
-        p.velocity = p.velocity + normalize(p.velocity) * 0.1;
-        p.energy = 0.0;
-    }
-    // Avoid surface/bottom
-    if p.position.y > 0.85 { p.velocity.y = p.velocity.y - 0.08; }
-    if p.position.y < -0.85 { p.velocity.y = p.velocity.y + 0.08; }
-}
-
-// Shark behavior
-if p.particle_type == 1u {
-    p.scale = 4.0;
-    p.color = vec3<f32>(0.9, 0.2, 0.15);
-    // Slow wall avoidance
-    if abs(p.position.x) > 0.7 { p.velocity.x = p.velocity.x - sign(p.position.x) * 0.015; }
-    if abs(p.position.z) > 0.7 { p.velocity.z = p.velocity.z - sign(p.position.z) * 0.015; }
-}
-"#
-                    .into(),
-                },
-                // Spawn first particle as shark
-                RuleConfig::OnSpawn {
-                    action: r#"
-if index == 0u {
-    p.particle_type = 1u;
-    p.position = vec3<f32>(0.0, 0.0, 0.0);
-}
-"#
-                    .into(),
-                },
-                RuleConfig::Drag(2.5),
-                RuleConfig::SpeedLimit {
-                    min: 0.02,
-                    max: 0.5,
-                },
-                RuleConfig::BounceWalls,
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig {
-                background_color: [0.01, 0.04, 0.1],
-                velocity_stretch: true,
-                velocity_stretch_factor: 3.0,
-                ..Default::default()
-            },
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-        },
-    },
-    Preset {
-        name: "Magnetic Field",
-        description: "Particles exhibiting magnetic attraction and repulsion",
-        config: || SimConfig {
-            name: "Magnetic Field".into(),
-            particle_count: 4000,
-            bounds: 1.0,
-            particle_size: 0.02,
-            spatial_cell_size: 0.15,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Cube { size: 0.8 },
-                velocity: InitialVelocity::RandomDirection { speed: 0.1 },
-                color_mode: ColorMode::RandomHue {
-                    saturation: 0.9,
-                    value: 0.9,
-                },
-                ..Default::default()
-            },
-            rules: vec![
-                RuleConfig::Magnetism {
-                    radius: 0.2,
-                    strength: 1.5,
-                    same_repel: true,
-                },
-                RuleConfig::Drag(0.5),
-                RuleConfig::SpeedLimit { min: 0.0, max: 0.8 },
-                RuleConfig::BounceWalls,
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig {
-                connections_enabled: true,
-                connections_radius: 0.08,
-                ..Default::default()
-            },
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-            particle_fields: Vec::new(),
-        },
-    },
-    Preset {
-        name: "Fountain",
-        description: "Upward water fountain with respawning particles",
-        config: || SimConfig {
-            name: "Fountain".into(),
-            particle_count: 15000,
-            bounds: 1.5,
-            particle_size: 0.008,
-            spatial_cell_size: 0.1,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Point,
-                velocity: InitialVelocity::Directional {
-                    direction: [0.0, 1.0, 0.0],
-                    speed: 1.5,
-                },
-                color_mode: ColorMode::Uniform {
-                    r: 0.3,
-                    g: 0.6,
-                    b: 1.0,
-                },
-                ..Default::default()
-            },
-            rules: vec![
-                RuleConfig::Gravity(4.0),
-                // Add spread to initial velocity
-                RuleConfig::OnSpawn {
-                    action: r#"
-let seed = index * 31337u;
-let spread = 0.3;
-p.velocity.x = p.velocity.x + (rand(seed) - 0.5) * spread;
-p.velocity.z = p.velocity.z + (rand(seed + 1u) - 0.5) * spread;
-p.velocity.y = p.velocity.y + (rand(seed + 2u) - 0.5) * 0.1;
-"#
-                    .into(),
-                },
-                // Respawn at bottom
-                RuleConfig::RespawnBelow {
-                    threshold_y: -1.2,
-                    spawn_y: 0.0,
-                    reset_velocity: true,
-                },
-                RuleConfig::Drag(0.3),
-                // Color by height
-                RuleConfig::Custom {
-                    code: r#"
-let height = (p.position.y + 1.5) / 3.0;
-p.color = mix(vec3<f32>(0.2, 0.4, 0.8), vec3<f32>(0.8, 0.9, 1.0), height);
-"#
-                    .into(),
-                },
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig {
-                blend_mode: BlendModeConfig::Additive,
-                trail_length: 5,
-                ..Default::default()
-            },
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-            particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -1094,6 +769,7 @@ p.color = mix(vec3<f32>(0.2, 0.4, 0.8), vec3<f32>(0.8, 0.9, 1.0), height);
             particle_count: 500,
             bounds: 1.5,
             particle_size: 0.03,
+            speed: 1.0,
             spatial_cell_size: 0.2,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -1140,6 +816,7 @@ p.scale = 0.5 + glow * 0.5;
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
     Preset {
@@ -1148,8 +825,9 @@ p.scale = 0.5 + glow * 0.5;
         config: || SimConfig {
             name: "Tornado".into(),
             particle_count: 20000,
-            bounds: 1.5,
-            particle_size: 0.006,
+            bounds: 2.0,
+            particle_size: 0.005,
+            speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
@@ -1166,7 +844,7 @@ p.scale = 0.5 + glow * 0.5;
                 RuleConfig::Vortex {
                     center: [0.0, 0.0, 0.0],
                     axis: [0.0, 1.0, 0.0],
-                    strength: 5.0,
+                    strength: 10.0,
                 },
                 // Pull toward center
                 RuleConfig::AttractTo {
@@ -1190,7 +868,7 @@ if p.position.y > 1.4 {
                     .into(),
                 },
                 RuleConfig::Drag(1.0),
-                RuleConfig::SpeedLimit { min: 0.0, max: 2.0 },
+                RuleConfig::SpeedLimit { min: 0.0, max: 5.0 },
                 RuleConfig::BounceWalls,
             ],
             vertex_effects: Vec::new(),
@@ -1205,6 +883,7 @@ if p.position.y > 1.4 {
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
         },
     },
 ];

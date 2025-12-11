@@ -163,7 +163,7 @@ fn render_field_editor(ui: &mut Ui, field: &mut FieldConfigEntry) -> bool {
     changed
 }
 
-fn idx_from_name(name: &str) -> &str {
+fn idx_from_name(_name: &str) -> &str {
     // Just use 0 as placeholder since actual index depends on registry order
     "0u"
 }

@@ -3,7 +3,7 @@
 //! This module generates WGSL compute and render shaders from SimConfig,
 //! using the actual rdpe rule system for proper behavior.
 
-use crate::config::{SimConfig, ParticleShapeConfig, PaletteConfig, ColorMappingConfig};
+use crate::config::{SimConfig, ParticleShapeConfig, PaletteConfig, ColorMappingConfig, MousePower};
 use rdpe::Rule;
 
 /// Generate field declarations and helper functions from config.
@@ -15,6 +15,16 @@ fn generate_field_code(config: &SimConfig) -> String {
     let registry = config.to_field_registry();
     // Field bindings start at group(2) binding(0)
     registry.to_wgsl_declarations(0)
+}
+
+/// Generate mouse power WGSL code based on the selected power.
+fn generate_mouse_power_code(power: &MousePower) -> String {
+    power.to_wgsl()
+}
+
+/// Generate early mouse power WGSL code (runs before dead particle skip).
+fn generate_early_mouse_power_code(power: &MousePower) -> String {
+    power.to_early_wgsl()
 }
 
 /// Generate custom uniform fields for the Uniforms struct.
@@ -74,6 +84,10 @@ fn generate_compute_shader_simple(config: &SimConfig, rules: &[Rule], particle_s
     let field_code = generate_field_code(config);
     let has_fields = !config.fields.is_empty();
 
+    // Generate mouse power code
+    let mouse_power_code = generate_mouse_power_code(&config.mouse.power);
+    let early_mouse_power_code = generate_early_mouse_power_code(&config.mouse.power);
+
     format!(r#"
 // ============================================
 // RDPE Compute Shader (Generated)
@@ -82,11 +96,20 @@ fn generate_compute_shader_simple(config: &SimConfig, rules: &[Rule], particle_s
 // Particle struct
 {particle_struct}
 
+// Mouse interaction data
+struct Mouse {{
+    pos: vec4<f32>,                    // xyz = world position
+    down_radius_strength: vec4<f32>,   // x = down (0/1), y = radius, z = strength
+    color: vec4<f32>,                  // rgb = color for paint/spawn
+}}
+
 // Uniforms
 struct Uniforms {{
     view_proj: mat4x4<f32>,
     time: f32,
     delta_time: f32,
+    _pad: vec2<f32>,
+    mouse: Mouse,
 {custom_uniform_fields}}}
 
 // Bindings
@@ -108,20 +131,39 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
 
     var p = particles[idx];
 
-    // Skip dead particles
-    if (p.alive == 0u) {{
-        return;
-    }}
-
     let time = uniforms.time;
     let delta_time = uniforms.delta_time;
     let bounds = {bounds:.6};
+
+    // Mouse interaction helpers (needed for early mouse powers)
+    let mouse_pos = uniforms.mouse.pos.xyz;
+    let mouse_down = uniforms.mouse.down_radius_strength.x;
+    let mouse_radius = uniforms.mouse.down_radius_strength.y;
+    let mouse_strength = uniforms.mouse.down_radius_strength.z;
+    let mouse_color = uniforms.mouse.color.xyz;
+
+    // ============================================
+    // Early mouse powers (run on dead particles too)
+    // ============================================
+{early_mouse_power_code}
+
+    // Skip dead particles for remaining logic
+    if (p.alive == 0u) {{
+        particles[idx] = p;  // Write back in case early power revived it
+        return;
+    }}
+
     {field_count_decl}
 
     // ============================================
     // Apply rules
     // ============================================
 {rules_code}
+
+    // ============================================
+    // Apply mouse power
+    // ============================================
+{mouse_power_code}
 
     // ============================================
     // Integrate velocity
@@ -142,6 +184,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
         bounds = config.bounds,
         field_count_decl = if has_fields { format!("let field_count = {}u;", config.fields.len()) } else { String::new() },
         rules_code = indent_code(&rules_code, "    "),
+        early_mouse_power_code = indent_code(&early_mouse_power_code, "    "),
+        mouse_power_code = indent_code(&mouse_power_code, "    "),
     )
 }
 
@@ -186,6 +230,10 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
     let field_code = generate_field_code(config);
     let has_fields = !config.fields.is_empty();
 
+    // Generate mouse power code
+    let mouse_power_code = generate_mouse_power_code(&config.mouse.power);
+    let early_mouse_power_code = generate_early_mouse_power_code(&config.mouse.power);
+
     format!(r#"
 // ============================================
 // RDPE Compute Shader (Generated with Spatial Hashing)
@@ -194,11 +242,20 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
 // Particle struct
 {particle_struct}
 
+// Mouse interaction data
+struct Mouse {{
+    pos: vec4<f32>,                    // xyz = world position
+    down_radius_strength: vec4<f32>,   // x = down (0/1), y = radius, z = strength
+    color: vec4<f32>,                  // rgb = color for paint/spawn
+}}
+
 // Uniforms
 struct Uniforms {{
     view_proj: mat4x4<f32>,
     time: f32,
     delta_time: f32,
+    _pad: vec2<f32>,
+    mouse: Mouse,
 {custom_uniform_fields}}}
 
 // Spatial params for neighbor queries
@@ -244,14 +301,28 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
 
     var p = particles[idx];
 
-    // Skip dead particles
-    if (p.alive == 0u) {{
-        return;
-    }}
-
     let time = uniforms.time;
     let delta_time = uniforms.delta_time;
     let bounds = {bounds:.6};
+
+    // Mouse interaction helpers (needed for early mouse powers)
+    let mouse_pos = uniforms.mouse.pos.xyz;
+    let mouse_down = uniforms.mouse.down_radius_strength.x;
+    let mouse_radius = uniforms.mouse.down_radius_strength.y;
+    let mouse_strength = uniforms.mouse.down_radius_strength.z;
+    let mouse_color = uniforms.mouse.color.xyz;
+
+    // ============================================
+    // Early mouse powers (run on dead particles too)
+    // ============================================
+{early_mouse_power_code}
+
+    // Skip dead particles for remaining logic
+    if (p.alive == 0u) {{
+        particles[idx] = p;  // Write back in case early power revived it
+        return;
+    }}
+
     {field_count_decl}
 
     let my_pos = p.position;
@@ -332,6 +403,11 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
 {simple_rules_code}
 
     // ============================================
+    // Apply mouse power
+    // ============================================
+{mouse_power_code}
+
+    // ============================================
     // Integrate velocity
     // ============================================
     p.position += p.velocity * delta_time;
@@ -355,6 +431,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
         neighbor_rules_code = indent_code(&neighbor_rules_code, "            "),
         post_neighbor_code = indent_code(&post_neighbor_code, "    "),
         simple_rules_code = indent_code(&simple_rules_code, "    "),
+        early_mouse_power_code = indent_code(&early_mouse_power_code, "    "),
+        mouse_power_code = indent_code(&mouse_power_code, "    "),
     )
 }
 

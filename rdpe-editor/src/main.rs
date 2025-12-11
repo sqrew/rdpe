@@ -9,8 +9,9 @@ use rdpe_editor::config::*;
 use rdpe_editor::embedded::{EmbeddedSimulation, SimulationResources, ParsedParticle};
 use rdpe_editor::ui::{
     render_custom_panel, render_effects_panel, render_export_button, render_export_window,
-    render_fields_panel, render_particle_fields_panel, render_rules_panel, render_spawn_panel,
-    render_visuals_panel, render_volume_panel, AddUniformState, ExportPanelState, PRESETS,
+    render_fields_panel, render_mouse_panel, render_particle_fields_panel, render_rules_panel,
+    render_spawn_panel, render_visuals_panel, render_volume_panel, AddUniformState,
+    ExportPanelState, PRESETS,
 };
 
 /// Sidebar tabs for organizing the editor panels
@@ -22,6 +23,7 @@ enum SidebarTab {
     Particle,
     Fields,
     Visuals,
+    Mouse,
     Custom,
 }
 
@@ -127,7 +129,7 @@ impl EditorApp {
     fn save_config_as(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("JSON", &["json"])
-            .set_file_name(&format!("{}.json", self.config.name))
+            .set_file_name(format!("{}.json", self.config.name))
             .save_file()
         {
             let path_str = path.display().to_string();
@@ -248,21 +250,21 @@ impl eframe::App for EditorApp {
 
         // Check if rebuild needed (either from timer or manual)
         if self.needs_rebuild {
-            if let Some(ref state) = wgpu_render_state {
+            if let Some(state) = wgpu_render_state {
                 self.rebuild_simulation(state);
             }
         }
 
         // Check if full reset needed
         if self.needs_reset {
-            if let Some(ref state) = wgpu_render_state {
+            if let Some(state) = wgpu_render_state {
                 self.reset_simulation(state);
             }
         }
 
         // Live update: background color (hot-swappable)
         if self.config.visuals.background_color != self.last_background_color {
-            if let Some(ref state) = wgpu_render_state {
+            if let Some(state) = wgpu_render_state {
                 if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
                     sim.set_background_color(Vec3::from_array(self.config.visuals.background_color));
                 }
@@ -272,7 +274,7 @@ impl eframe::App for EditorApp {
 
         // Live update: grid opacity (hot-swappable)
         if self.config.visuals.spatial_grid_opacity != self.last_grid_opacity {
-            if let Some(ref state) = wgpu_render_state {
+            if let Some(state) = wgpu_render_state {
                 if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
                     sim.set_grid_opacity(&state.queue, self.config.visuals.spatial_grid_opacity);
                 }
@@ -281,7 +283,7 @@ impl eframe::App for EditorApp {
         }
 
         // Live update: custom uniform values (hot-swappable)
-        if let Some(ref state) = wgpu_render_state {
+        if let Some(state) = wgpu_render_state {
             if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
                 sim.sync_custom_uniforms(&self.config.custom_uniforms);
             }
@@ -344,7 +346,7 @@ impl eframe::App for EditorApp {
                     }
 
                     // Pause/Play
-                    if let Some(ref state) = wgpu_render_state {
+                    if let Some(state) = wgpu_render_state {
                         let is_paused = state.renderer.read()
                             .callback_resources
                             .get::<rdpe_editor::embedded::SimulationResources>()
@@ -546,7 +548,7 @@ impl eframe::App for EditorApp {
 
             // Write changes back to GPU if particle was modified
             if particle_changed {
-                if let Some(ref state) = wgpu_render_state {
+                if let Some(state) = wgpu_render_state {
                     let layout = self.config.particle_layout();
                     let bytes = particle.to_bytes(&layout);
                     if let Some(sim) = state.renderer.read().callback_resources.get::<SimulationResources>() {
@@ -557,7 +559,7 @@ impl eframe::App for EditorApp {
 
             // Handle clear selection after the closure
             if clear_clicked {
-                if let Some(ref state) = wgpu_render_state {
+                if let Some(state) = wgpu_render_state {
                     if let Some(sim) = state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
                         sim.clear_selection();
                     }
@@ -588,6 +590,7 @@ impl eframe::App for EditorApp {
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Particle, "Particle");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Mouse, "Mouse");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Custom, "Custom");
                 });
                 ui.separator();
@@ -646,6 +649,28 @@ impl eframe::App for EditorApp {
                             // Vertex effects
                             render_effects_panel(ui, &mut self.config.vertex_effects);
                         }
+                        SidebarTab::Mouse => {
+                            let old_power = self.config.mouse.power;
+                            let mouse_changed = render_mouse_panel(ui, &mut self.config.mouse);
+                            if mouse_changed {
+                                // Check if power changed - this requires shader rebuild
+                                if self.config.mouse.power != old_power {
+                                    self.needs_rebuild = true;
+                                } else {
+                                    // Just config change (radius/strength/color) - update immediately
+                                    if let Some(wgpu_render_state) = frame.wgpu_render_state() {
+                                        if let Some(sim) = wgpu_render_state
+                                            .renderer
+                                            .write()
+                                            .callback_resources
+                                            .get_mut::<SimulationResources>()
+                                        {
+                                            sim.set_mouse_config(self.config.mouse.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         SidebarTab::Custom => {
                             render_custom_panel(
                                 ui,
@@ -674,8 +699,8 @@ impl eframe::App for EditorApp {
             )))
             .show(ctx, |ui| {
                 // Show the simulation viewport
-                if let Some(ref state) = wgpu_render_state {
-                    self.simulation.show(ui, state);
+                if let Some(state) = wgpu_render_state {
+                    self.simulation.show(ui, state, self.config.speed);
                 } else {
                     ui.centered_and_justified(|ui| {
                         ui.label("wgpu not available - simulation requires GPU");
