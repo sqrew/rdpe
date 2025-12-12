@@ -26,7 +26,31 @@ wgpu = { version = "24.0", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 glam = "0.29"
-rfd = "0.15"
 bytemuck = { version = "1.24", features = ["derive"] }
 rand = "0.8"
 naga = { version = "24.0", features = ["wgsl-in"] }
+
+# Native-only dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rfd = "0.15"
+
+# WASM dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "HtmlElement",
+    "Blob",
+    "BlobPropertyBag",
+    "Url",
+    "HtmlAnchorElement",
+    "FileReader",
+    "HtmlInputElement",
+    "FileList",
+    "File",
+] }
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+web-time = "1.1"

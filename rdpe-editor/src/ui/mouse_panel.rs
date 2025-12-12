@@ -1,7 +1,7 @@
 //! UI panel for mouse interaction settings
 
-use eframe::egui;
 use crate::config::{MouseConfig, MousePower};
+use eframe::egui;
 
 pub fn render_mouse_panel(ui: &mut egui::Ui, mouse: &mut MouseConfig) -> bool {
     let mut changed = false;
@@ -46,7 +46,11 @@ pub fn render_mouse_panel(ui: &mut egui::Ui, mouse: &mut MouseConfig) -> bool {
     ui.label(egui::RichText::new(description).small().weak());
 
     if mouse.power != MousePower::None {
-        ui.label(egui::RichText::new("Hold Shift + Left Mouse in viewport").italics().weak());
+        ui.label(
+            egui::RichText::new("Hold Shift + Left Mouse in viewport")
+                .italics()
+                .weak(),
+        );
     }
 
     ui.add_space(8.0);
@@ -58,12 +62,16 @@ pub fn render_mouse_panel(ui: &mut egui::Ui, mouse: &mut MouseConfig) -> bool {
 
         // Radius (world space units)
         changed |= ui
-            .add(egui::Slider::new(&mut mouse.radius, 0.1..=2.0).text("Radius"))
+            .add(egui::Slider::new(&mut mouse.radius, 0.1..=10.0).text("Radius"))
             .changed();
 
         // Strength
         changed |= ui
-            .add(egui::Slider::new(&mut mouse.strength, 0.1..=20.0).text("Strength").logarithmic(true))
+            .add(
+                egui::Slider::new(&mut mouse.strength, 0.1..=50.0)
+                    .text("Strength")
+                    .logarithmic(true),
+            )
             .changed();
 
         // Color (only for Paint and Spawn)
@@ -81,22 +89,22 @@ pub fn render_mouse_panel(ui: &mut egui::Ui, mouse: &mut MouseConfig) -> bool {
         ui.label("Quick Presets:");
         ui.horizontal_wrapped(|ui| {
             if ui.small_button("Gentle").clicked() {
-                mouse.radius = 0.3;
+                mouse.radius = 0.5;
                 mouse.strength = 2.0;
                 changed = true;
             }
             if ui.small_button("Medium").clicked() {
-                mouse.radius = 0.5;
+                mouse.radius = 2.5;
                 mouse.strength = 5.0;
                 changed = true;
             }
             if ui.small_button("Strong").clicked() {
-                mouse.radius = 0.8;
+                mouse.radius = 5.0;
                 mouse.strength = 10.0;
                 changed = true;
             }
             if ui.small_button("Massive").clicked() {
-                mouse.radius = 1.5;
+                mouse.radius = 7.5;
                 mouse.strength = 20.0;
                 changed = true;
             }

@@ -17,7 +17,7 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
         .changed();
 
     changed |= ui
-        .add(egui::Slider::new(&mut config.bounds, 0.5..=5.0).text("Bounds"))
+        .add(egui::Slider::new(&mut config.bounds, 0.1..=10.0).text("Bounds"))
         .changed();
 
     changed |= ui

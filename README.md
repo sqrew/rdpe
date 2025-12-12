@@ -87,11 +87,11 @@ cargo run --example neon_assault
 
 ### Controls
 
-| Input | Action |
-|-------|--------|
-| Left-drag | Orbit camera |
-| Right-drag | Pan camera |
-| Scroll | Zoom |
+| Input      | Action       |
+|------------|--------------|
+| Left-drag  | Orbit camera |
+| Right-drag | Pan camera   |
+| Scroll     | Zoom         |
 
 ## Visual Editor
 
@@ -132,8 +132,6 @@ cargo run --package rdpe-editor
 **Logic/Control** — `Custom`, `NeighborCustom`, `Maybe`, `Trigger`, `Periodic`, `State`, `Agent`, `Switch`, `Threshold`, `Gate`
 
 **Events** — `OnSpawn`, `OnDeath`, `OnCondition`, `OnInterval`, `OnCollision`
-
-See the [full rule documentation](https://docs.rs/rdpe/latest/rdpe/rules/enum.Rule.html) for all 100+ rules.
 
 ### Custom Rules
 
@@ -225,14 +223,14 @@ Particles that spawn particles:
 
 45+ examples included:
 
-| Category | Examples |
-|----------|----------|
-| **Core** | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
-| **Simulation** | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field` |
-| **Forces** | `galaxy`, `gravity_visualizer`, `shockwave`, `glow` |
-| **Visual** | `custom_shader`, `post_process`, `wireframe`, `volume_render` |
-| **Advanced** | `multi_particle`, `multi_field`, `inbox`, `agent_demo` |
-| **Experimental** | 20+ creative examples in `examples/experimental/` |
+| Category         | Examples                                                        |
+|------------------|-----------------------------------------------------------------|
+| **Core**         | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
+| **Simulation**   | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field`   |
+| **Forces**       | `galaxy`, `gravity_visualizer`, `shockwave`, `glow`             |
+| **Visual**       | `custom_shader`, `post_process`, `wireframe`, `volume_render`   |
+| **Advanced**     | `multi_particle`, `multi_field`, `inbox`, `agent_demo`          |
+| **Experimental** | 20+ creative examples in `examples/experimental/`               |
 
 ```bash
 cargo run --example boids
@@ -244,11 +242,11 @@ cargo run --example galaxy
 
 All simulation runs on GPU compute shaders with no CPU-GPU sync during updates.
 
-| Scenario | Particles | Notes |
-|----------|-----------|-------|
-| No neighbors | 500k+ | Compute-bound only |
-| Full boids | 50k+ | Neighbor-bound |
-| With spatial fields | 100k+ | Field resolution dependent |
+| Scenario            | Particles | Notes                      |
+|---------------------|-----------|----------------------------|
+| No neighbors        | 500k+     | Compute-bound only         |
+| Full boids          | 50k+      | Neighbor-bound             |
+| With spatial fields | 100k+     | Field resolution dependent |
 
 ### Tuning Tips
 
@@ -262,13 +260,13 @@ All simulation runs on GPU compute shaders with no CPU-GPU sync during updates.
 
 RDPE is GPU-first: all simulation state lives on the GPU with no CPU-GPU sync during frame updates. Rules compile into a single compute shader to minimize dispatch overhead.
 
-| Component | Purpose |
-|-----------|---------|
-| **Simulation** | Builder pattern orchestrator; generates WGSL from rules |
-| **Rules** | 100+ composable behaviors compiled into compute shader |
-| **Spatial Hashing** | Radix sort + Morton codes for O(N) neighbor discovery |
-| **Fields** | 3D grids with atomic writes, blur, decay |
-| **Derive Macros** | Auto-generate GPU structs with proper alignment |
+| Component           | Purpose                                                 |
+|---------------------|---------------------------------------------------------|
+| **Simulation**      | Builder pattern orchestrator; generates WGSL from rules |
+| **Rules**           | 100+ composable behaviors compiled into compute shader  |
+| **Spatial Hashing** | Radix sort + Morton codes for O(N) neighbor discovery   |
+| **Fields**          | 3D grids with atomic writes, blur, decay                |
+| **Derive Macros**   | Auto-generate GPU structs with proper alignment         |
 
 ## API
 

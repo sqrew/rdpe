@@ -1,8 +1,8 @@
 //! Rule parameter renderers
 
-use egui::Ui;
+use super::helpers::{render_falloff, render_vec3};
 use crate::config::*;
-use super::helpers::{render_vec3, render_falloff};
+use egui::Ui;
 
 /// Renders the parameter UI for a given rule configuration
 pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
@@ -17,7 +17,7 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
         }
         RuleConfig::Drag(d) => {
             changed |= ui
-                .add(egui::Slider::new(d, 0.0..=2.0).text("Drag"))
+                .add(egui::Slider::new(d, 0.0..=10.0).text("Drag"))
                 .changed();
         }
         RuleConfig::Acceleration { direction } => {
@@ -33,7 +33,7 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
         RuleConfig::AttractTo { point, strength } => {
             changed |= render_vec3(ui, "Point", point);
             changed |= ui
-                .add(egui::Slider::new(strength, -5.0..=5.0).text("Strength"))
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
                 .changed();
         }
         RuleConfig::RepelFrom {
@@ -46,7 +46,7 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
                 .changed();
             changed |= ui
-                .add(egui::Slider::new(radius, 0.01..=2.0).text("Radius"))
+                .add(egui::Slider::new(radius, 0.01..=10.0).text("Radius"))
                 .changed();
         }
         RuleConfig::PointGravity {
@@ -59,7 +59,7 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 .add(egui::Slider::new(strength, -10.0..=10.0).text("Strength"))
                 .changed();
             changed |= ui
-                .add(egui::Slider::new(softening, 0.001..=0.5).text("Softening"))
+                .add(egui::Slider::new(softening, 0.001..=1.0).text("Softening"))
                 .changed();
         }
         RuleConfig::Orbit { center, strength } => {
@@ -224,7 +224,7 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
             frequency,
         } => {
             changed |= ui
-                .add(egui::Slider::new(strength, 0.0..=5.0).text("Strength"))
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
                 .changed();
             changed |= ui
                 .add(egui::Slider::new(frequency, 0.1..=10.0).text("Frequency"))

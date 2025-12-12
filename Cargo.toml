@@ -28,8 +28,15 @@ rdpe-derive = { path = "rdpe-derive" }
 # Optional egui support
 egui = { version = "0.31", optional = true }
 egui-wgpu = { version = "0.31", optional = true }
-egui-winit = { version = "0.31", optional = true }
 eframe = { version = "0.31", optional = true }
+
+# egui-winit with platform-specific clipboard handling
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+egui-winit = { version = "0.31", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Disable arboard (clipboard) on WASM - it doesn't support web platform
+egui-winit = { version = "0.31", optional = true, default-features = false, features = ["links", "accesskit"] }
 
 [dev-dependencies]
 criterion = "0.5"

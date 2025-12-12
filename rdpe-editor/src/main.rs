@@ -5,6 +5,12 @@
 
 use eframe::egui;
 use glam::Vec3;
+
+// Use web-time on WASM for Instant compatibility
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 use rdpe_editor::config::*;
 use rdpe_editor::embedded::{EmbeddedSimulation, SimulationResources, ParsedParticle};
 use rdpe_editor::ui::{
@@ -27,6 +33,11 @@ enum SidebarTab {
     Custom,
 }
 
+// ============================================================================
+// Native entry point
+// ============================================================================
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -48,6 +59,58 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+// ============================================================================
+// WASM entry point
+// ============================================================================
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    use wasm_bindgen::JsCast;
+
+    // Redirect panic messages to console.error
+    console_error_panic_hook::set_once();
+
+    wasm_bindgen_futures::spawn_local(async {
+        // Configure to use WebGPU instead of WebGL
+        use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
+
+        let web_options = eframe::WebOptions {
+            wgpu_options: WgpuConfiguration {
+                wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
+                    instance_descriptor: wgpu::InstanceDescriptor {
+                        backends: wgpu::Backends::BROWSER_WEBGPU,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // Get the canvas element from the DOM
+        let document = web_sys::window()
+            .expect("No window")
+            .document()
+            .expect("No document");
+
+        let canvas = document
+            .get_element_by_id("rdpe-canvas")
+            .expect("No canvas element with id 'rdpe-canvas'")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("Element is not a canvas");
+
+        eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(|cc| Ok(Box::new(EditorApp::new(cc)))),
+            )
+            .await
+            .expect("Failed to start eframe");
+    });
+}
+
 struct EditorApp {
     config: SimConfig,
     /// Config that's currently running in the simulation
@@ -55,7 +118,7 @@ struct EditorApp {
     /// Config from last frame (for detecting changes)
     previous_config: SimConfig,
     current_file: Option<String>,
-    status_message: Option<(String, std::time::Instant)>,
+    status_message: Option<(String, Instant)>,
     simulation: EmbeddedSimulation,
     needs_rebuild: bool,
     needs_reset: bool,
@@ -112,9 +175,14 @@ impl EditorApp {
 
 impl EditorApp {
     fn show_status(&mut self, msg: impl Into<String>) {
-        self.status_message = Some((msg.into(), std::time::Instant::now()));
+        self.status_message = Some((msg.into(), Instant::now()));
     }
 
+    // ========================================================================
+    // Native file operations (using rfd)
+    // ========================================================================
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn save_config(&mut self) {
         if let Some(path) = &self.current_file {
             match self.config.save(path) {
@@ -126,6 +194,7 @@ impl EditorApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn save_config_as(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("JSON", &["json"])
@@ -143,6 +212,7 @@ impl EditorApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn load_config(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("JSON", &["json"])
@@ -159,6 +229,65 @@ impl EditorApp {
                 Err(e) => self.show_status(format!("Load failed: {}", e)),
             }
         }
+    }
+
+    // ========================================================================
+    // WASM file operations (using browser APIs)
+    // ========================================================================
+
+    #[cfg(target_arch = "wasm32")]
+    fn save_config(&mut self) {
+        // On web, always do "Save As" (download)
+        self.save_config_as();
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn save_config_as(&mut self) {
+        use wasm_bindgen::JsCast;
+
+        let json = match serde_json::to_string_pretty(&self.config) {
+            Ok(j) => j,
+            Err(e) => {
+                self.show_status(format!("Save failed: {}", e));
+                return;
+            }
+        };
+
+        // Create a blob and trigger download
+        let window = match web_sys::window() {
+            Some(w) => w,
+            None => return,
+        };
+        let document = match window.document() {
+            Some(d) => d,
+            None => return,
+        };
+
+        let blob_parts = js_sys::Array::new();
+        blob_parts.push(&json.into());
+
+        let options = web_sys::BlobPropertyBag::new();
+        options.set_type("application/json");
+
+        if let Ok(blob) = web_sys::Blob::new_with_str_sequence_and_options(&blob_parts, &options) {
+            if let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) {
+                if let Ok(anchor) = document.create_element("a") {
+                    let anchor: web_sys::HtmlAnchorElement = anchor.unchecked_into();
+                    anchor.set_href(&url);
+                    anchor.set_download(&format!("{}.json", self.config.name));
+                    anchor.click();
+                    let _ = web_sys::Url::revoke_object_url(&url);
+                    self.show_status("Downloaded config file");
+                }
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn load_config(&mut self) {
+        // For WASM, we need async file reading. We'll trigger a file input click
+        // and handle the result via a callback. For simplicity, show a message.
+        self.show_status("Use drag-and-drop or paste JSON in Custom tab");
     }
 
     fn rebuild_simulation(&mut self, wgpu_render_state: &egui_wgpu::RenderState) {
@@ -314,9 +443,12 @@ impl eframe::App for EditorApp {
                         self.save_config_as();
                         ui.close_menu();
                     }
-                    ui.separator();
-                    if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        ui.separator();
+                        if ui.button("Quit").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
                     }
                 });
 

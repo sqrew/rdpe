@@ -8,7 +8,7 @@ pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
         "Forces",
         &[
             ("Gravity", || RuleConfig::Gravity(2.0)),
-            ("Drag", || RuleConfig::Drag(0.5)),
+            ("Drag", || RuleConfig::Drag(1.0)),
             ("Acceleration", || RuleConfig::Acceleration {
                 direction: [0.0, -1.0, 0.0],
             }),

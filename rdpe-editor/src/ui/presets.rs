@@ -2,9 +2,9 @@
 
 use crate::config::{
     BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff, FieldConfigEntry,
-    FieldTypeConfig, InitialVelocity, MouseConfig, PaletteConfig, ParticleFieldDef, ParticleFieldType,
-    ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape, UniformValueConfig,
-    VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
+    FieldTypeConfig, InitialVelocity, MouseConfig, PaletteConfig, ParticleFieldDef,
+    ParticleFieldType, ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape,
+    UniformValueConfig, VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
 };
 use std::collections::HashMap;
 
@@ -62,7 +62,7 @@ pub static PRESETS: &[Preset] = &[
         description: "Particles exploding outward with gravity",
         config: || SimConfig {
             name: "Explosion".into(),
-            particle_count: 20000,
+            particle_count: 50000,
             bounds: 2.0,
             particle_size: 0.005,
             speed: 1.0,
@@ -99,7 +99,7 @@ pub static PRESETS: &[Preset] = &[
             name: "Fluid Simulation".into(),
             particle_count: 10000,
             bounds: 1.0,
-            particle_size: 0.010,
+            particle_size: 0.001,
             speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
@@ -114,7 +114,7 @@ pub static PRESETS: &[Preset] = &[
                 ..Default::default()
             },
             rules: vec![
-                RuleConfig::Gravity(1.5),
+                RuleConfig::Gravity(1.0),
                 RuleConfig::Pressure {
                     radius: 0.05,
                     strength: 1.0,
@@ -125,13 +125,36 @@ pub static PRESETS: &[Preset] = &[
                     strength: 1.0,
                 },
                 RuleConfig::BounceWalls,
+                // Write fluid density to field for volume visualization
+                RuleConfig::Custom {
+                    code: "field_write(0u, p.position, 1.0);".into(),
+                },
             ],
             vertex_effects: Vec::new(),
-            visuals: VisualsConfig::default(),
+            visuals: VisualsConfig {
+                background_color: [0.02, 0.02, 0.05],
+                ..Default::default()
+            },
             custom_uniforms: HashMap::new(),
             custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
+            fields: vec![FieldConfigEntry {
+                name: "density".into(),
+                resolution: 48,
+                extent: 1.1,
+                decay: 0.92,
+                blur: 0.2,
+                blur_iterations: 2,
+                field_type: FieldTypeConfig::Scalar,
+            }],
+            volume_render: VolumeRenderConfig {
+                enabled: true,
+                field_index: 0,
+                steps: 64,
+                density_scale: 4.0,
+                palette: PaletteConfig::Ocean,
+                threshold: 0.02,
+                additive: true,
+            },
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
         },
@@ -142,7 +165,7 @@ pub static PRESETS: &[Preset] = &[
         config: || {
             SimConfig {
             name: "Custom Shader Demo".into(),
-            particle_count: 8000,
+            particle_count: 10000,
             bounds: 1.5,
             particle_size: 0.015,
             speed: 1.0,
@@ -294,7 +317,10 @@ field_write(0u, p.position, 0.5);
                 },
             ],
             vertex_effects: Vec::new(),
-            visuals: VisualsConfig::default(),
+            visuals: VisualsConfig {
+                palette: PaletteConfig::Magma,
+                ..Default::default()
+            },
             custom_uniforms: HashMap::new(),
             custom_shaders: CustomShaderConfig::default(),
             fields: vec![FieldConfigEntry {
@@ -311,7 +337,7 @@ field_write(0u, p.position, 0.5);
                 field_index: 0,
                 steps: 48,
                 density_scale: 5.0,
-                palette: PaletteConfig::Neon,
+                palette: PaletteConfig::Magma,
                 threshold: 0.02,
                 additive: true,
             },

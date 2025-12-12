@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RDPE Editor</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+
+        #rdpe-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Loading indicator */
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 1.5rem;
+            text-align: center;
+        }
+
+        #loading .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #333;
+            border-top-color: #0af;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Hide loading when canvas is active */
+        #rdpe-canvas:not([data-raw-handle]) + #loading {
+            display: block;
+        }
+
+        body.loaded #loading {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="rdpe-canvas"></canvas>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>Loading RDPE Editor...</div>
+        <div style="font-size: 0.9rem; color: #888; margin-top: 0.5rem;">
+            Requires WebGPU support
+        </div>
+    </div>
+
+    <script type="module">
+        import init from './rdpe-editor.js';
+
+        async function run() {
+            try {
+                await init();
+                document.body.classList.add('loaded');
+            } catch (error) {
+                document.getElementById('loading').innerHTML = `
+                    <div style="color: #f66;">Failed to load</div>
+                    <div style="font-size: 0.9rem; color: #888; margin-top: 0.5rem;">
+                        ${error.message || 'WebGPU may not be supported in your browser'}
+                    </div>
+                    <div style="font-size: 0.8rem; color: #666; margin-top: 1rem;">
+                        Try Chrome 113+, Edge 113+, or Firefox Nightly with WebGPU enabled
+                    </div>
+                `;
+                console.error('Failed to initialize RDPE Editor:', error);
+            }
+        }
+
+        run();
+    </script>
+</body>
+</html>

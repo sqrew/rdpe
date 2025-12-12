@@ -18,10 +18,7 @@ Visual editor for designing GPU-accelerated particle simulations. Design, previe
 ## Installation
 
 ```bash
-# From the rdpe workspace
-cargo build --release --package rdpe-editor
-
-# Run the editor
+# Build and run the editor
 cargo run --release --package rdpe-editor
 ```
 
@@ -113,98 +110,36 @@ Enable volume rendering to visualize fields with configurable palettes.
 
 ## Presets
 
-| Preset | Description |
-|--------|-------------|
-| Boids Flocking | Classic separation, cohesion, alignment |
-| Explosion | Particles exploding outward with gravity |
-| Fluid Simulation | SPH-like pressure and viscosity |
-| Predator Prey | Chase and evade dynamics |
-| Curl Noise Flow | Smooth, divergence-free motion |
-| N-Body Gravity | Mutual gravitational attraction |
-| Custom Shader Demo | Custom uniforms and shader code |
-| Volume Field Demo | 3D fields with volume rendering |
-| Pheromone Trails | Ant-like trail following |
-| Shockwave | Expanding shockwaves |
-| Galaxy | Spiral arm dynamics |
-| Crystal Growth | Diffusion-limited aggregation |
-| Slime Mold | Physarum-inspired pheromone agents |
-| Aurora | Northern lights effect |
-| Aquarium | Schooling fish with shark |
-| Magnetic Field | Attraction and repulsion |
-| Fountain | Upward water with respawning |
-| Fireflies | Pulsing, wandering lights |
-| Tornado | Swirling vortex |
-
-## File Format
-
-Configurations are saved as JSON:
-
-```json
-{
-  "name": "My Simulation",
-  "particle_count": 10000,
-  "bounds": 1.0,
-  "particle_size": 0.01,
-  "spatial_cell_size": 0.1,
-  "spatial_resolution": 32,
-  "spawn": { ... },
-  "rules": [ ... ],
-  "visuals": { ... },
-  "custom_uniforms": { ... },
-  "custom_shaders": { ... },
-  "fields": [ ... ],
-  "particle_fields": [ ... ]
-}
-```
-
-## Code Export
-
-The editor can generate standalone Rust code that uses the rdpe library directly:
-
-1. Configure your simulation in the editor
-2. Go to the **Custom** tab
-3. Click **Export Code**
-4. Copy or save the generated Rust code
-
-The exported code creates a complete `main.rs` with all rules, visuals, and custom shaders.
+| Preset             | Description                              |
+|--------------------|------------------------------------------|
+| Boids Flocking     | Classic separation, cohesion, alignment  |
+| Explosion          | Particles exploding outward with gravity |
+| Fluid Simulation   | SPH-like pressure and viscosity          |
+| Predator Prey      | Chase and evade dynamics                 |
+| Curl Noise Flow    | Smooth, divergence-free motion           |
+| N-Body Gravity     | Mutual gravitational attraction          |
+| Custom Shader Demo | Custom uniforms and shader code          |
+| Volume Field Demo  | 3D fields with volume rendering          |
+| Pheromone Trails   | Ant-like trail following                 |
+| Shockwave          | Expanding shockwaves                     |
+| Galaxy             | Spiral arm dynamics                      |
+| Crystal Growth     | Diffusion-limited aggregation            |
+| Slime Mold         | Physarum-inspired pheromone agents       |
+| Aurora             | Northern lights effect                   |
+| Aquarium           | Schooling fish with shark                |
+| Magnetic Field     | Attraction and repulsion                 |
+| Fountain           | Upward water with respawning             |
+| Fireflies          | Pulsing, wandering lights                |
+| Tornado            | Swirling vortex                          |
 
 ## Keyboard Shortcuts
 
-| Key | Action |
-|-----|--------|
-| Space | Pause/Resume simulation |
-| Click particle | Select for inspection |
-| Mouse drag | Orbit camera |
-| Scroll | Zoom camera |
-
-## Architecture
-
-```
-rdpe-editor/
-├── src/
-│   ├── main.rs          # Editor application
-│   ├── lib.rs           # Public exports
-│   ├── config.rs        # SimConfig and RuleConfig types
-│   ├── code_export.rs   # Rust code generation
-│   ├── embedded.rs      # GPU simulation viewport
-│   ├── shader_gen.rs    # WGSL shader generation
-│   ├── shader_validate.rs # naga-based validation
-│   ├── spawn.rs         # Particle generation
-│   ├── particle.rs      # MetaParticle definition
-│   ├── bin/
-│   │   └── runner.rs    # Standalone runner binary
-│   └── ui/
-│       ├── spawn_panel.rs
-│       ├── rules_panel.rs
-│       ├── particle_fields_panel.rs
-│       ├── fields_panel.rs
-│       ├── visuals_panel.rs
-│       ├── effects_panel.rs
-│       ├── volume_panel.rs
-│       ├── custom_panel.rs
-│       ├── export_panel.rs
-│       └── presets.rs
-```
+| Key            | Action                  |
+|----------------|-------------------------|
+| Space          | Pause/Resume simulation |
+| Click particle | Select for inspection   |
+| Mouse drag     | Orbit camera            |
+| Scroll         | Zoom camera             |
 
 ## Dependencies
 
