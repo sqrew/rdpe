@@ -126,7 +126,7 @@ pub struct SimulationResources {
     // Buffers
     particle_buffer: wgpu::Buffer,
     uniform_buffer: wgpu::Buffer,
-    uniform_buffer_size: usize,
+    _uniform_buffer_size: usize,
 
     // Bind groups
     compute_bind_group: wgpu::BindGroup,
@@ -163,7 +163,7 @@ pub struct SimulationResources {
 
     // Volume rendering (optional)
     volume_render_state: Option<VolumeRenderState>,
-    volume_config: Option<VolumeRenderConfig>,
+    _volume_config: Option<VolumeRenderConfig>,
 
     // Spatial hashing (optional, for neighbor queries)
     spatial: Option<SpatialGpu>,
@@ -654,7 +654,7 @@ impl SimulationResources {
             render_pipeline,
             particle_buffer,
             uniform_buffer,
-            uniform_buffer_size,
+            _uniform_buffer_size: uniform_buffer_size,
             compute_bind_group,
             render_bind_group,
             num_particles,
@@ -673,7 +673,7 @@ impl SimulationResources {
             empty_bind_group: if field_bind_group.is_some() { Some(empty_bind_group) } else { None },
             field_bind_group,
             volume_render_state,
-            volume_config: stored_volume_config,
+            _volume_config: stored_volume_config,
             spatial,
             grid_viz,
             connections,
@@ -921,7 +921,9 @@ impl SimulationResources {
     }
 
     /// Read particle data from GPU.
-    pub fn read_particles(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u8> {
+    ///
+    /// Returns `None` if the buffer cannot be mapped for reading.
+    pub fn read_particles(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Vec<u8>> {
         let buffer_size = (self.num_particles as usize) * self.particle_stride;
 
         let staging = device.create_buffer(&wgpu::BufferDescriptor {
@@ -940,18 +942,22 @@ impl SimulationResources {
         let buffer_slice = staging.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            // Ignore send errors - receiver may have been dropped
             let _ = tx.send(result);
         });
 
         device.poll(wgpu::Maintain::Wait);
-        rx.recv().unwrap().expect("Failed to map buffer");
+
+        // Handle channel receive and buffer mapping errors gracefully
+        let map_result = rx.recv().ok()?.ok()?;
+        drop(map_result); // We just needed to confirm success
 
         let data = buffer_slice.get_mapped_range();
         let result = data.to_vec();
         drop(data);
         staging.unmap();
 
-        result
+        Some(result)
     }
 
     /// Write particle data to GPU.

@@ -161,7 +161,7 @@ pub(crate) struct TrailVisualization {
     /// Buffer storing past positions for each particle.
     /// Layout: [p0_t0, p0_t1, ..., p0_tN, p1_t0, p1_t1, ..., p1_tN, ...]
     /// Each position is vec4 (xyz + alpha).
-    trail_buffer: wgpu::Buffer,
+    _trail_buffer: wgpu::Buffer,
     /// Compute pipeline to update trail history.
     compute_pipeline: wgpu::ComputePipeline,
     /// Compute bind group.
@@ -370,7 +370,7 @@ impl TrailVisualization {
         });
 
         Self {
-            trail_buffer,
+            _trail_buffer: trail_buffer,
             compute_pipeline,
             compute_bind_group,
             render_pipeline,

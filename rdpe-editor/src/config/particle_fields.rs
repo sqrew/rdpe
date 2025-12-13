@@ -155,10 +155,9 @@ impl ParticleFieldDef {
 
     /// Validate that the field name is a valid WGSL identifier.
     pub fn is_valid_name(&self) -> bool {
-        if self.name.is_empty() {
-            return false;
-        }
-        let first = self.name.chars().next().unwrap();
+        let Some(first) = self.name.chars().next() else {
+            return false; // Empty name
+        };
         if !first.is_ascii_alphabetic() && first != '_' {
             return false;
         }

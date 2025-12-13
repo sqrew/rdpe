@@ -148,7 +148,7 @@ fn main() {
             p.position.y = sin(uniforms.time + p.position.x * 3.0 + p.position.z * 2.0) * 0.05;
         "#.into()))
 
-        .run();
+        .run().expect("Simulation failed");
 }
 
 fn energy_to_color(energy: f32) -> Vec3 {

@@ -152,5 +152,5 @@ fn main() {
         .with_rule(Rule::BounceWalls)
         .with_rule_inspector()
         .with_particle_inspector()
-        .run();
+        .run().expect("Simulation failed");
 }

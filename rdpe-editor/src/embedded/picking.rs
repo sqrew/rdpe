@@ -300,15 +300,13 @@ impl PickingState {
         particle_buffer: &wgpu::Buffer,
         num_particles: u32,
     ) {
-        if self.pending_pick.is_none() {
+        let Some((pick_x, pick_y)) = self.pending_pick.take() else {
             // Still update selected particle data if we have a selection
             if self.selected_particle.is_some() {
                 self.copy_and_read_particle_data(device, queue, particle_buffer);
             }
             return;
-        }
-
-        let (pick_x, pick_y) = self.pending_pick.take().unwrap();
+        };
 
         // Create command encoder for picking
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {

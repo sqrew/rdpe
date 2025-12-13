@@ -611,7 +611,7 @@ pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
         ],
     ),
     (
-        "Logic",
+        "Logic (Requires Particle Fields)",
         &[
             ("And", || RuleConfig::And {
                 a: "input1".into(),

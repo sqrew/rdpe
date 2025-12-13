@@ -118,5 +118,5 @@ fn main() {
         // Enable both inspectors!
         .with_particle_inspector()
         .with_rule_inspector()
-        .run();
+        .run().expect("Simulation failed");
 }

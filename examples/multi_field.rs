@@ -182,5 +182,5 @@ fn main() {
         "#
             .into(),
         ))
-        .run();
+        .run().expect("Simulation failed");
 }

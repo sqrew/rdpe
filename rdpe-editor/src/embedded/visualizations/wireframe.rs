@@ -16,7 +16,7 @@ use crate::config::BlendModeConfig;
 /// and each line is rendered as a thin quad to ensure visibility.
 pub(crate) struct WireframeVisualization {
     /// Buffer storing mesh line segments (6 floats per line: x0,y0,z0,x1,y1,z1).
-    mesh_buffer: wgpu::Buffer,
+    _mesh_buffer: wgpu::Buffer,
     /// Number of lines per mesh.
     lines_per_mesh: u32,
     /// Render pipeline.
@@ -24,11 +24,11 @@ pub(crate) struct WireframeVisualization {
     /// Bind group.
     bind_group: wgpu::BindGroup,
     /// Params buffer.
-    params_buffer: wgpu::Buffer,
+    _params_buffer: wgpu::Buffer,
     /// Number of particles.
     num_particles: u32,
     /// Base particle size.
-    base_size: f32,
+    _base_size: f32,
 }
 
 impl WireframeVisualization {
@@ -198,13 +198,13 @@ impl WireframeVisualization {
         });
 
         Self {
-            mesh_buffer,
+            _mesh_buffer: mesh_buffer,
             lines_per_mesh,
             pipeline,
             bind_group,
-            params_buffer,
+            _params_buffer: params_buffer,
             num_particles,
-            base_size: particle_size,
+            _base_size: particle_size,
         }
     }
 
@@ -368,13 +368,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         render_pass.draw(0..6, 0..(self.lines_per_mesh * self.num_particles));
     }
 
-    pub(crate) fn set_line_thickness(&mut self, queue: &wgpu::Queue, thickness: f32) {
+    pub(crate) fn _set_line_thickness(&mut self, queue: &wgpu::Queue, thickness: f32) {
         let params: [f32; 4] = [
             thickness,
             f32::from_bits(self.lines_per_mesh),
-            self.base_size,
+            self._base_size,
             0.0,
         ];
-        queue.write_buffer(&self.params_buffer, 0, bytemuck::cast_slice(&params));
+        queue.write_buffer(&self._params_buffer, 0, bytemuck::cast_slice(&params));
     }
 }

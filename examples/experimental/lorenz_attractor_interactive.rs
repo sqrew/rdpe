@@ -251,7 +251,7 @@ fn main() {
             v.trails(100);
         })
         .with_particle_size(0.008)
-        .run();
+        .run().expect("Simulation failed");
 }
 
 /// Convert hue (0-1) to RGB color

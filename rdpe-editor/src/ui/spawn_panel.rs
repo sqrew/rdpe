@@ -22,7 +22,7 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
 
     changed |= ui
         .add(
-            egui::Slider::new(&mut config.particle_size, 0.001..=0.1)
+            egui::Slider::new(&mut config.particle_size, 0.0..=0.1)
                 .text("Particle Size")
                 .logarithmic(true),
         )

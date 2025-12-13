@@ -201,73 +201,6 @@ pub static PRESETS: &[Preset] = &[
         },
     },
     Preset {
-        name: "Volume Field Demo",
-        description: "3D field with volume rendering - particles leave glowing trails",
-        config: || SimConfig {
-            name: "Volume Field Demo".into(),
-            particle_count: 5000,
-            bounds: 1.0,
-            particle_size: 0.005,
-            speed: 1.0,
-            spatial_cell_size: 0.1,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Shell {
-                    inner: 0.3,
-                    outer: 0.8,
-                },
-                velocity: InitialVelocity::Swirl { speed: 0.3 },
-                color_mode: ColorMode::ByVelocity,
-                ..Default::default()
-            },
-            rules: vec![
-                RuleConfig::PointGravity {
-                    point: [0.0, 0.0, 0.0],
-                    strength: 0.5,
-                    softening: 0.1,
-                },
-                RuleConfig::Curl {
-                    scale: 3.0,
-                    strength: 0.5,
-                },
-                RuleConfig::Drag(0.1),
-                RuleConfig::SpeedLimit {
-                    min: 0.05,
-                    max: 1.0,
-                },
-                RuleConfig::BounceWalls,
-                // Write particle presence to the field - each particle deposits a value
-                RuleConfig::Custom {
-                    code: "field_write(0u, p.position, 1.0);".into(),
-                },
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig::default(),
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: vec![FieldConfigEntry {
-                name: "density".into(),
-                resolution: 64,
-                extent: 1.2,
-                decay: 0.96,
-                blur: 0.3,
-                blur_iterations: 2,
-                field_type: FieldTypeConfig::Scalar,
-            }],
-            volume_render: VolumeRenderConfig {
-                enabled: true,
-                field_index: 0,
-                steps: 64,
-                density_scale: 3.0,
-                palette: PaletteConfig::Inferno,
-                threshold: 0.01,
-                additive: true,
-            },
-            particle_fields: Vec::new(),
-            mouse: MouseConfig::default(),
-        },
-    },
-    Preset {
         name: "Pheromone Trails",
         description: "Particles follow and deposit pheromone trails like ants",
         config: || SimConfig {
@@ -902,6 +835,515 @@ if p.position.y > 1.4 {
                 velocity_stretch: true,
                 velocity_stretch_factor: 2.0,
                 trail_length: 8,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
+        },
+    },
+    Preset {
+        name: "Plasma Core",
+        description: "Pulsating energy core with swirling plasma field and volume rendering",
+        config: || SimConfig {
+            name: "Plasma Core".into(),
+            particle_count: 15000,
+            bounds: 1.5,
+            particle_size: 0.008,
+            speed: 1.0,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Shell {
+                    inner: 0.2,
+                    outer: 0.6,
+                },
+                velocity: InitialVelocity::Swirl { speed: 0.4 },
+                color_mode: ColorMode::Uniform {
+                    r: 0.6,
+                    g: 0.8,
+                    b: 1.0,
+                },
+                ..Default::default()
+            },
+            rules: vec![
+                // Soft attraction to center - creates the core
+                RuleConfig::PointGravity {
+                    point: [0.0, 0.0, 0.0],
+                    strength: 0.8,
+                    softening: 0.15,
+                },
+                // Swirling vortex motion around Y axis
+                RuleConfig::Vortex {
+                    center: [0.0, 0.0, 0.0],
+                    axis: [0.0, 1.0, 0.0],
+                    strength: 2.0,
+                },
+                // Turbulent organic motion
+                RuleConfig::Curl {
+                    scale: 4.0,
+                    strength: 0.6,
+                },
+                // Breathing pulse - expand and contract
+                RuleConfig::Pulse {
+                    point: [0.0, 0.0, 0.0],
+                    strength: 0.4,
+                    frequency: 0.5,
+                    radius: 0.0,
+                },
+                RuleConfig::Drag(0.8),
+                RuleConfig::SpeedLimit {
+                    min: 0.05,
+                    max: 1.2,
+                },
+                RuleConfig::BounceWalls,
+                // Deposit energy to field and color particles
+                RuleConfig::Custom {
+                    code: r#"
+// Distance from center determines energy intensity
+let dist = length(p.position);
+let core_intensity = smoothstep(0.8, 0.0, dist);
+let speed = length(p.velocity);
+
+// Deposit more energy near center and when moving fast
+let energy = core_intensity * (0.5 + speed * 0.5);
+field_write(0u, p.position, energy);
+
+// Color gradient: hot center (white/cyan) to cool edges (blue/purple)
+let t = smoothstep(0.0, 0.6, dist);
+var core_color: vec3<f32>;
+if t < 0.3 {
+    // Inner core: white to cyan
+    let blend = t / 0.3;
+    core_color = mix(vec3<f32>(1.0, 1.0, 1.0), vec3<f32>(0.4, 0.9, 1.0), blend);
+} else if t < 0.6 {
+    // Mid region: cyan to blue
+    let blend = (t - 0.3) / 0.3;
+    core_color = mix(vec3<f32>(0.4, 0.9, 1.0), vec3<f32>(0.3, 0.5, 1.0), blend);
+} else {
+    // Outer region: blue to purple/magenta
+    let blend = (t - 0.6) / 0.4;
+    core_color = mix(vec3<f32>(0.3, 0.5, 1.0), vec3<f32>(0.7, 0.3, 0.9), blend);
+}
+
+// Add shimmer based on speed
+let shimmer = sin(uniforms.time * 8.0 + f32(index) * 0.1) * 0.1 + 0.9;
+p.color = core_color * shimmer * (0.6 + core_intensity * 0.4);
+
+// Particles near center glow brighter (scale up)
+p.scale = 0.5 + core_intensity * 1.0;
+"#
+                    .into(),
+                },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Additive,
+                background_color: [0.01, 0.01, 0.03],
+                trail_length: 6,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: vec![FieldConfigEntry {
+                name: "energy".into(),
+                resolution: 48,
+                extent: 1.2,
+                decay: 0.92,
+                blur: 0.25,
+                blur_iterations: 2,
+                field_type: FieldTypeConfig::Scalar,
+            }],
+            volume_render: VolumeRenderConfig {
+                enabled: true,
+                field_index: 0,
+                steps: 64,
+                density_scale: 5.0,
+                palette: PaletteConfig::Plasma,
+                threshold: 0.02,
+                additive: true,
+            },
+            particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
+        },
+    },
+    Preset {
+        name: "Immortal Jellyfish",
+        description: "Bioluminescent jellyfish with pulsing bell and flowing tentacles",
+        config: || SimConfig {
+            name: "Jellyfish".into(),
+            particle_count: 6000,
+            bounds: 2.0,
+            particle_size: 0.015,
+            speed: 1.0,
+            spatial_cell_size: 0.15,
+            spatial_resolution: 32,
+            particle_fields: vec![ParticleFieldDef {
+                name: "custom".into(),
+                field_type: ParticleFieldType::F32,
+            }],
+            spawn: SpawnConfig {
+                shape: SpawnShape::Shell {
+                    inner: 0.0,
+                    outer: 0.4,
+                },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform {
+                    r: 0.5,
+                    g: 0.7,
+                    b: 1.0,
+                },
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::Drag(3.0),
+                RuleConfig::Custom {
+                    code: r#"
+// Use index to determine role: first 60% are bell, rest are tentacles
+let is_bell = index < u32(f32(arrayLength(&particles)) * 0.6);
+
+// Store random phase in custom field (initialize once)
+if uniforms.time < 0.02 {
+    var seed = f32(index) * 17.31 + 0.5;
+    p.custom = rand(&seed) * 6.283;
+}
+
+// Pulsing
+let pulse = sin(uniforms.time * 4.0 + p.custom * 0.2) * 0.5 + 0.5;
+
+// Jellyfish center drifts gently
+let jelly_center = vec3<f32>(
+    sin(uniforms.time * 0.2) * 0.3,
+    sin(uniforms.time * 0.15) * 0.2,
+    cos(uniforms.time * 0.18) * 0.3
+);
+
+if is_bell {
+    // === BELL ===
+    // Create dome shape based on index
+    let bell_count = u32(f32(arrayLength(&particles)) * 0.6);
+    let bell_idx = f32(index) / f32(bell_count);
+
+    // Spherical coordinates for dome
+    let theta = bell_idx * 6.283 * 13.0 + p.custom;  // Angle around
+    let phi_raw = bell_idx * 3.14159 * 0.4;  // 0 to ~72 degrees from top
+    let phi = phi_raw + sin(bell_idx * 50.0) * 0.1;  // Add variation
+
+    // Dome radius pulses
+    let dome_radius = 0.25 + pulse * 0.08;
+
+    // Convert to cartesian (dome shape - hemisphere facing down)
+    let target_x = jelly_center.x + sin(phi) * cos(theta) * dome_radius;
+    let target_z = jelly_center.z + sin(phi) * sin(theta) * dome_radius;
+    let target_y = jelly_center.y + cos(phi) * dome_radius * 0.6;  // Flatten vertically
+
+    let dest = vec3<f32>(target_x, target_y, target_z);
+
+    // Move toward target position
+    p.velocity = (dest - p.position) * 4.0;
+
+    // Color: white center fading to pink/cyan at edges
+    let edge = sin(phi) / sin(3.14159 * 0.4);  // 0 at top, 1 at edge
+    let glow = 0.6 + pulse * 0.4;
+    p.color = mix(
+        vec3<f32>(0.9, 0.95, 1.0),
+        vec3<f32>(0.9, 0.5, 0.8),
+        edge
+    ) * glow;
+    p.scale = 1.0 - edge * 0.3;
+
+} else {
+    // === TENTACLES ===
+    let tent_start = u32(f32(arrayLength(&particles)) * 0.6);
+    let tent_count = arrayLength(&particles) - tent_start;
+    let tent_idx = f32(index - tent_start) / f32(tent_count);
+
+    // 8 tentacle strands
+    let strand = floor(tent_idx * 8.0);
+    let along = fract(tent_idx * 8.0);  // Position along strand (0=top, 1=bottom)
+
+    // Strand angle
+    let strand_angle = strand * 0.785398 + p.custom * 0.1;  // PI/4 spacing
+
+    // Attachment point at bell edge
+    let attach_radius = 0.22 + pulse * 0.05;
+    let attach = vec3<f32>(
+        jelly_center.x + cos(strand_angle) * attach_radius,
+        jelly_center.y - 0.05,
+        jelly_center.z + sin(strand_angle) * attach_radius
+    );
+
+    // Tentacle hangs down with wave motion
+    let hang_depth = along * 0.7;
+    let wave_time = uniforms.time * 2.0 + along * 3.0 + p.custom;
+    let wave_amp = along * 0.15;  // More wave at tips
+
+    let target_x = attach.x + sin(wave_time) * wave_amp;
+    let target_z = attach.z + cos(wave_time * 0.7) * wave_amp;
+    let target_y = attach.y - hang_depth + pulse * 0.1 * (1.0 - along);
+
+    let dest = vec3<f32>(target_x, target_y, target_z);
+
+    // Tentacles move slower/laggier the further from attachment
+    let lag = 2.0 + along * 4.0;
+    p.velocity = (dest - p.position) * lag;
+
+    // Color: pink to purple to blue gradient down tentacle
+    let glow = 0.4 + pulse * 0.3;
+    if along < 0.4 {
+        p.color = vec3<f32>(1.0, 0.5, 0.85) * glow;
+    } else if along < 0.7 {
+        let t = (along - 0.4) / 0.3;
+        p.color = mix(vec3<f32>(1.0, 0.5, 0.85), vec3<f32>(0.6, 0.3, 0.9), t) * glow;
+    } else {
+        let t = (along - 0.7) / 0.3;
+        p.color = mix(vec3<f32>(0.6, 0.3, 0.9), vec3<f32>(0.3, 0.4, 0.8), t) * glow;
+    }
+    p.scale = 0.6 - along * 0.3;
+}
+"#
+                    .into(),
+                },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Additive,
+                background_color: [0.0, 0.02, 0.08],
+                trail_length: 5,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+            mouse: MouseConfig::default(),
+        },
+    },
+    Preset {
+        name: "Water Cycle",
+        description: "Evaporating water rises, condenses into clouds, and rains back down",
+        config: || SimConfig {
+            name: "Water Cycle".into(),
+            particle_count: 5000,
+            bounds: 1.5,
+            particle_size: 0.015,
+            speed: 1.0,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            particle_fields: vec![ParticleFieldDef {
+                name: "custom".into(),
+                field_type: ParticleFieldType::F32,
+            }],
+            spawn: SpawnConfig {
+                shape: SpawnShape::Plane {
+                    width: 2.0,
+                    depth: 2.0,
+                },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform {
+                    r: 0.4,
+                    g: 0.7,
+                    b: 1.0,
+                },
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::Drag(0.3),
+                RuleConfig::Custom {
+                    code: r#"
+// State machine: 0 = water/pool, 1 = vapor (rising), 2 = cloud, 3 = rain (falling)
+// Use custom field to track state
+
+// Initialize state randomly on first frame
+if uniforms.time < 0.02 {
+    var seed = f32(index) * 13.37;
+    p.custom = floor(rand(&seed) * 4.0);  // Random initial state
+    // Spread out vertically based on state
+    p.position.y = -0.9 + rand(&seed) * 1.8;
+}
+
+let state = u32(p.custom);
+
+// Ground level and sky level
+let ground = -0.9;
+let sky = 0.9;
+
+if state == 0u {
+    // POOL - sitting at bottom, occasionally evaporates
+    p.position.y = ground;
+    p.velocity = vec3<f32>(0.0, 0.0, 0.0);
+
+    // Random chance to start evaporating
+    var seed = f32(index) * 7.7 + uniforms.time * 2.0;
+    if rand(&seed) < 0.005 {
+        p.custom = 1.0;  // Become vapor
+    }
+
+    // Water color - blue
+    p.color = vec3<f32>(0.2, 0.5, 0.9);
+    p.scale = 0.8;
+
+} else if state == 1u {
+    // VAPOR - rising slowly
+    p.velocity.y = 0.4;
+
+    // Drift sideways slightly
+    var seed = f32(index) * 3.14 + uniforms.time;
+    p.velocity.x = (rand(&seed) - 0.5) * 0.2;
+    seed += 1.0;
+    p.velocity.z = (rand(&seed) - 0.5) * 0.2;
+
+    // When reaching sky, become cloud
+    if p.position.y > sky - 0.2 {
+        p.custom = 2.0;
+    }
+
+    // Vapor color - light misty blue, semi-transparent look
+    let rise_t = (p.position.y - ground) / (sky - ground);
+    p.color = mix(vec3<f32>(0.4, 0.6, 0.9), vec3<f32>(0.8, 0.85, 0.95), rise_t);
+    p.scale = 0.5 + rise_t * 0.5;
+
+} else if state == 2u {
+    // CLOUD - drifting at top
+    p.position.y = sky;
+    p.velocity.y = 0.0;
+
+    // Drift horizontally
+    var seed = f32(index) * 5.5 + uniforms.time * 0.3;
+    p.velocity.x = (rand(&seed) - 0.5) * 0.3;
+    seed += 2.0;
+    p.velocity.z = (rand(&seed) - 0.5) * 0.3;
+
+    // Random chance to start raining
+    seed = f32(index) * 11.1 + uniforms.time * 3.0;
+    if rand(&seed) < 0.008 {
+        p.custom = 3.0;  // Become rain
+    }
+
+    // Cloud color - white/gray
+    p.color = vec3<f32>(0.9, 0.92, 0.95);
+    p.scale = 1.2;
+
+} else {
+    // RAIN - falling fast
+    p.velocity.y = -1.2;
+
+    // Slight sideways drift
+    var seed = f32(index) * 9.9;
+    p.velocity.x = (rand(&seed) - 0.5) * 0.1;
+
+    // When hitting ground, become pool water
+    if p.position.y < ground + 0.05 {
+        p.custom = 0.0;
+        p.position.y = ground;
+    }
+
+    // Rain color - blue droplets
+    p.color = vec3<f32>(0.3, 0.6, 1.0);
+    p.scale = 0.6;
+}
+
+// Keep in horizontal bounds
+if abs(p.position.x) > 1.0 { p.position.x *= 0.95; }
+if abs(p.position.z) > 1.0 { p.position.z *= 0.95; }
+"#
+                    .into(),
+                },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Alpha,
+                background_color: [0.1, 0.15, 0.25],
+                velocity_stretch: true,
+                velocity_stretch_factor: 2.0,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+            mouse: MouseConfig::default(),
+        },
+    },
+    Preset {
+        name: "Snowfall",
+        description: "Gentle snow drifting down with wind gusts",
+        config: || SimConfig {
+            name: "Snowfall".into(),
+            particle_count: 4000,
+            bounds: 2.0,
+            particle_size: 0.02,
+            speed: 1.0,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Cube { size: 2.5 },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                },
+                ..Default::default()
+            },
+            rules: vec![
+                // Gentle gravity
+                RuleConfig::Gravity(0.3),
+                // Air resistance
+                RuleConfig::Drag(2.0),
+                // Drifting wind and tumbling
+                RuleConfig::Custom {
+                    code: r#"
+// Gentle swaying wind that varies over time
+let wind_time = uniforms.time * 0.3;
+let wind_x = sin(wind_time) * 0.15 + sin(wind_time * 2.3) * 0.05;
+let wind_z = cos(wind_time * 0.7) * 0.1;
+p.velocity.x += wind_x;
+p.velocity.z += wind_z;
+
+// Individual snowflake tumble based on index
+var seed = f32(index) * 5.5 + uniforms.time * 2.0;
+let tumble_x = sin(uniforms.time * 3.0 + f32(index) * 0.1) * 0.08;
+let tumble_z = cos(uniforms.time * 2.5 + f32(index) * 0.15) * 0.08;
+p.velocity.x += tumble_x;
+p.velocity.z += tumble_z;
+
+// Respawn at top when hitting bottom
+if p.position.y < -1.2 {
+    p.position.y = 1.5;
+    // Randomize X and Z position
+    p.position.x = (rand(&seed) - 0.5) * 2.5;
+    seed += 1.0;
+    p.position.z = (rand(&seed) - 0.5) * 2.5;
+    p.velocity = vec3<f32>(0.0, 0.0, 0.0);
+}
+
+// Wrap horizontally for endless snowfield feel
+if p.position.x > 1.5 { p.position.x = -1.5; }
+if p.position.x < -1.5 { p.position.x = 1.5; }
+if p.position.z > 1.5 { p.position.z = -1.5; }
+if p.position.z < -1.5 { p.position.z = 1.5; }
+
+// Vary snowflake sizes
+let size_var = 0.5 + (sin(f32(index) * 1.7) * 0.5 + 0.5) * 0.8;
+p.scale = size_var;
+
+// Slight color variation - some snowflakes slightly blue/gray
+let color_var = 0.9 + (sin(f32(index) * 2.3) * 0.5 + 0.5) * 0.1;
+let blue_tint = (sin(f32(index) * 3.1) * 0.5 + 0.5) * 0.05;
+p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
+"#
+                    .into(),
+                },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Alpha,
+                background_color: [0.08, 0.1, 0.15],
+                shape: ParticleShapeConfig::Circle,
                 ..Default::default()
             },
             custom_uniforms: HashMap::new(),

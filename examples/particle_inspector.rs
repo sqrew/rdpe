@@ -160,5 +160,5 @@ fn main() {
                     });
                 });
         })
-        .run();
+        .run().expect("Simulation failed");
 }

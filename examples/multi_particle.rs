@@ -180,5 +180,5 @@ fn main() {
             v.blend_mode(BlendMode::Additive);
             v.palette(Palette::Rainbow, ColorMapping::Index);
         })
-        .run();
+        .run().expect("Simulation failed");
 }

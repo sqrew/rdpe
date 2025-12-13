@@ -116,6 +116,7 @@ impl TextureConfig {
     /// # Panics
     ///
     /// Panics if the file cannot be loaded or is not a supported format.
+    /// Use [`try_from_file`](Self::try_from_file) for a non-panicking version.
     ///
     /// # Example
     ///
@@ -123,17 +124,39 @@ impl TextureConfig {
     /// let tex = TextureConfig::from_file("assets/noise.png");
     /// ```
     pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let img = image::open(path.as_ref())
+        Self::try_from_file(path.as_ref())
             .unwrap_or_else(|e| panic!("Failed to load texture '{}': {}", path.as_ref().display(), e))
-            .into_rgba8();
+    }
+
+    /// Try to load a texture from an image file.
+    ///
+    /// This is the non-panicking version of [`from_file`](Self::from_file).
+    ///
+    /// Supports PNG, JPEG, GIF, BMP, ICO, TIFF, and WebP (if feature enabled).
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the image file
+    ///
+    /// # Errors
+    ///
+    /// Returns `TextureError` if the file cannot be read or is not a supported format.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let tex = TextureConfig::try_from_file("assets/noise.png")?;
+    /// ```
+    pub fn try_from_file<P: AsRef<Path>>(path: P) -> Result<Self, crate::error::TextureError> {
+        let img = image::open(path.as_ref())?.into_rgba8();
         let (width, height) = img.dimensions();
-        Self {
+        Ok(Self {
             data: img.into_raw(),
             width,
             height,
             filter: FilterMode::Linear,
             address_mode: AddressMode::ClampToEdge,
-        }
+        })
     }
 
     /// Set the filter mode.

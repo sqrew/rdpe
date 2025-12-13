@@ -312,5 +312,5 @@ fn main() {
 
         // Walls
         .with_rule(Rule::BounceWalls)
-        .run();
+        .run().expect("Simulation failed");
 }

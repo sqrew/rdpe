@@ -194,7 +194,7 @@ fn main() {
         "#.into()))
 
         .with_rule(Rule::BounceWalls)
-        .run();
+        .run().expect("Simulation failed");
 }
 
 /// Convert HSV to RGB

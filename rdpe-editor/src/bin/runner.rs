@@ -238,7 +238,11 @@ fn main() {
     });
 
     // Run with inspectors enabled
-    sim.with_particle_inspector()
+    if let Err(e) = sim.with_particle_inspector()
         .with_rule_inspector()
-        .run();
+        .run()
+    {
+        eprintln!("Simulation error: {}", e);
+        std::process::exit(1);
+    }
 }

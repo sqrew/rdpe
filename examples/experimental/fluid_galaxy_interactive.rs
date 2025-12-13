@@ -294,7 +294,7 @@ fn main() {
             p.density = max(p.density * 0.8, 0.5);
         "#.into()))
 
-        .run();
+        .run().expect("Simulation failed");
 }
 
 /// Generate cosmic colors based on radius and temperature

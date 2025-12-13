@@ -84,5 +84,5 @@ fn main() {
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 0.8 })
         // Bounce off walls
         .with_rule(Rule::BounceWalls)
-        .run();
+        .run().expect("Simulation failed");
 }

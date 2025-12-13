@@ -771,5 +771,5 @@ fn main() {
         .with_ui(move |ctx| {
             render_editor_ui(ctx, &mut editor_state);
         })
-        .run();
+        .run().expect("Simulation failed");
 }

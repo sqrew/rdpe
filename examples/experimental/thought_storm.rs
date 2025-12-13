@@ -207,5 +207,5 @@ fn main() {
         .with_rule(Rule::Drag(2.5))
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.0 })
         .with_rule(Rule::WrapWalls)
-        .run();
+        .run().expect("Simulation failed");
 }

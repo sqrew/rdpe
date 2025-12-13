@@ -109,5 +109,5 @@ fn main() {
         .with_visuals(|v| {
             v.background(Vec3::new(0.02, 0.02, 0.05)); // Dark background
         })
-        .run();
+        .run().expect("Simulation failed");
 }

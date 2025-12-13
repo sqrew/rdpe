@@ -253,5 +253,5 @@ fn main() {
         })
         .with_rule_inspector()
         .with_particle_inspector()
-        .run();
+        .run().expect("Simulation failed");
 }

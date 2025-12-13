@@ -333,5 +333,5 @@ fn main() {
             ctx.set("bloom_amount", s.bloom_amount);
             ctx.set("saturation", s.saturation);
         })
-        .run();
+        .run().expect("Simulation failed");
 }

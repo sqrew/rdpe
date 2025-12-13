@@ -127,7 +127,7 @@ fn main() {
             p.velocity += tangent * 0.3;
             p.velocity *= 0.98;
         "#.into()))
-        .run();
+        .run().expect("Simulation failed");
 }
 
 // Helper function to convert HSV to RGB

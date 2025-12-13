@@ -101,6 +101,7 @@
 //! | Custom | [`Rule::Custom`] for raw WGSL |
 
 mod emitter;
+pub mod error;
 pub mod field;
 mod gpu;
 pub mod input;
@@ -120,6 +121,7 @@ pub mod selection;
 
 pub use bytemuck;
 pub use emitter::Emitter;
+pub use error::{GpuError, SimulationError, TextureError};
 pub use field::{FieldConfig, FieldRegistry, FieldType};
 pub use glam::{Vec2, Vec3, Vec4};
 pub use gpu::VolumeConfig;

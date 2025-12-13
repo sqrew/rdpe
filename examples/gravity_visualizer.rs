@@ -238,5 +238,5 @@ fn main() {
             v.blend_mode(BlendMode::Additive);
             v.background(Vec3::new(0.01, 0.01, 0.02));
         })
-        .run();
+        .run().expect("Simulation failed");
 }

@@ -37,6 +37,7 @@ pub use trails::TrailState;
 pub use volume_render::{VolumeConfig, VolumeRenderState};
 pub use wireframe::WireframeState;
 
+use crate::error::GpuError;
 use crate::field::FieldRegistry;
 #[cfg(feature = "egui")]
 use crate::selection::{PendingParticleWrite, SelectedParticle, SelectedParticleData};
@@ -207,7 +208,7 @@ impl GpuState {
         wireframe_mesh: Option<&crate::visuals::WireframeMesh>,
         wireframe_thickness: f32,
         #[cfg(feature = "egui")] egui_enabled: bool,
-    ) -> Self {
+    ) -> Result<Self, GpuError> {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -215,7 +216,7 @@ impl GpuState {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window.clone()).unwrap();
+        let surface = instance.create_surface(window.clone())?;
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -224,7 +225,7 @@ impl GpuState {
                 force_fallback_adapter: false,
             })
             .await
-            .unwrap();
+            .ok_or(GpuError::NoAdapter)?;
 
         let (device, queue) = adapter
             .request_device(
@@ -236,8 +237,7 @@ impl GpuState {
                 },
                 None, // trace path
             )
-            .await
-            .unwrap();
+            .await?;
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -951,7 +951,7 @@ impl GpuState {
             scale_offset,
         );
 
-        Self {
+        Ok(Self {
             surface,
             device,
             queue,
@@ -1003,7 +1003,7 @@ impl GpuState {
             color_offset,
             alive_offset,
             scale_offset,
-        }
+        })
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
@@ -1199,23 +1199,25 @@ impl GpuState {
     ///
     /// Returns raw bytes that can be cast to your particle's GPU type:
     /// ```ignore
-    /// let bytes = gpu_state.read_particles_sync();
+    /// let bytes = gpu_state.read_particles_sync()?;
     /// let particles: &[MyParticleGpu] = bytemuck::cast_slice(&bytes);
     /// ```
-    pub fn read_particles_sync(&mut self) -> Vec<u8> {
+    ///
+    /// # Errors
+    ///
+    /// Returns `GpuError::BufferMapping` if the buffer cannot be mapped for reading.
+    pub fn read_particles_sync(&mut self) -> Result<Vec<u8>, GpuError> {
         let buffer_size = (self.num_particles as usize) * self.particle_stride;
 
         // Create or reuse staging buffer
-        if self.readback_staging.is_none() {
-            self.readback_staging = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+        let staging = self.readback_staging.get_or_insert_with(|| {
+            self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Readback Staging Buffer"),
                 size: buffer_size as u64,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
-            }));
-        }
-
-        let staging = self.readback_staging.as_ref().unwrap();
+            })
+        });
 
         // Copy particle buffer to staging
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1234,12 +1236,15 @@ impl GpuState {
         let buffer_slice = staging.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            tx.send(result).unwrap();
+            // Ignore send errors - receiver may have been dropped
+            let _ = tx.send(result);
         });
 
         // Wait for mapping to complete
         self.device.poll(wgpu::Maintain::Wait);
-        rx.recv().unwrap().expect("Failed to map readback buffer");
+        rx.recv()
+            .map_err(|_| GpuError::BufferMapping("Channel receive failed".to_string()))?
+            .map_err(|e| GpuError::BufferMapping(format!("Buffer mapping failed: {}", e)))?;
 
         // Copy data
         let data = buffer_slice.get_mapped_range();
@@ -1247,7 +1252,7 @@ impl GpuState {
         drop(data);
         staging.unmap();
 
-        result
+        Ok(result)
     }
 
     /// Write particle data from CPU to GPU.

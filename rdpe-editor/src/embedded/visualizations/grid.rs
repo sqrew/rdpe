@@ -76,7 +76,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 pub(crate) struct GridVisualization {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    line_buffer: wgpu::Buffer,
+    _line_buffer: wgpu::Buffer,
     params_buffer: wgpu::Buffer,
     line_count: u32,
     opacity: f32,
@@ -205,7 +205,7 @@ impl GridVisualization {
         Self {
             pipeline,
             bind_group,
-            line_buffer,
+            _line_buffer: line_buffer,
             params_buffer,
             line_count,
             opacity,

@@ -288,5 +288,5 @@ fn main() {
             v.background(Vec3::new(0.015, 0.015, 0.025));
         })
         .with_particle_size(0.01)
-        .run();
+        .run().expect("Simulation failed");
 }

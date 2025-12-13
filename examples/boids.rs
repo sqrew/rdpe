@@ -68,5 +68,5 @@ fn main() {
         // Keep things stable
         .with_rule(Rule::Drag(2.0))
         .with_rule(Rule::BounceWalls)
-        .run();
+        .run().expect("Simulation failed");
 }

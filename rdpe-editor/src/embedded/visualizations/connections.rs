@@ -15,7 +15,7 @@ use wgpu::util::DeviceExt;
 /// - Render connections with distance-based alpha blending
 pub(crate) struct ConnectionVisualization {
     /// Buffer storing connection line segments.
-    connection_buffer: wgpu::Buffer,
+    _connection_buffer: wgpu::Buffer,
     /// Atomic counter for connections found.
     count_buffer: wgpu::Buffer,
     /// Compute pipeline to find connections.
@@ -29,7 +29,7 @@ pub(crate) struct ConnectionVisualization {
     /// Maximum connections.
     max_connections: u32,
     /// Connection radius.
-    radius: f32,
+    _radius: f32,
     /// Number of particles.
     num_particles: u32,
 }
@@ -186,14 +186,14 @@ impl ConnectionVisualization {
         });
 
         Self {
-            connection_buffer,
+            _connection_buffer: connection_buffer,
             count_buffer,
             compute_pipeline,
             compute_bind_group,
             render_pipeline,
             render_bind_group,
             max_connections,
-            radius,
+            _radius: radius,
             num_particles,
         }
     }

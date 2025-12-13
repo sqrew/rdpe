@@ -195,7 +195,7 @@ impl EmbeddedSimulation {
             let resources = wgpu_render_state.renderer.read();
             if let Some(sim) = resources.callback_resources.get::<SimulationResources>() {
                 let particles = if sim.num_particles == config.particle_count && sim.particle_stride == layout.stride {
-                    Some(sim.read_particles(&wgpu_render_state.device, &wgpu_render_state.queue))
+                    sim.read_particles(&wgpu_render_state.device, &wgpu_render_state.queue)
                 } else {
                     None // Particle count or stride changed, can't preserve
                 };

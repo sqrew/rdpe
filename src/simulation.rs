@@ -1973,16 +1973,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
     ///     .with_spawner(|_| Ball::default())
     ///     .with_rule(Rule::Gravity(9.8))
     ///     .with_rule(Rule::BounceWalls)
-    ///     .run();  // Blocks here until window closed
+    ///     .run()
+    ///     .expect("Simulation failed");  // Blocks here until window closed
     ///
     /// // This code runs after window is closed
     /// println!("Simulation ended");
     /// ```
-    pub fn run(mut self) {
+    ///
+    /// # Errors
+    ///
+    /// Returns `SimulationError` if:
+    /// - No spawner function was provided (use `.with_spawner()`)
+    /// - Event loop creation fails
+    /// - Window creation fails
+    /// - GPU initialization fails
+    pub fn run(mut self) -> Result<(), crate::error::SimulationError> {
         let spawner = self
             .spawner
             .take()
-            .expect("Must provide a spawner with .with_spawner()");
+            .ok_or(crate::error::SimulationError::NoSpawner)?;
 
         let has_neighbors = self.has_neighbor_rules();
 
@@ -2047,7 +2056,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             particle_wgsl_struct: P::WGSL_STRUCT.to_string(),
         };
 
-        let event_loop = EventLoop::new().unwrap();
+        let event_loop = EventLoop::new()?;
         event_loop.set_control_flow(ControlFlow::Poll);
 
         #[cfg(feature = "egui")]
@@ -2068,7 +2077,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             self.custom_uniforms,
             self.update_callback,
         );
-        event_loop.run_app(&mut app).unwrap();
+        event_loop.run_app(&mut app)?;
+        Ok(())
     }
 }
 
@@ -2216,11 +2226,18 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 .with_title("RDPE - Reaction Diffusion Particle Engine")
                 .with_inner_size(winit::dpi::LogicalSize::new(1280, 720));
 
-            let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
+            let window = match event_loop.create_window(window_attrs) {
+                Ok(w) => Arc::new(w),
+                Err(e) => {
+                    eprintln!("Failed to create window: {}", e);
+                    event_loop.exit();
+                    return;
+                }
+            };
             self.window = Some(window.clone());
 
             let particle_bytes = bytemuck::cast_slice(&self.gpu_particles);
-            self.gpu_state = Some(pollster::block_on(GpuState::new(
+            match pollster::block_on(GpuState::new(
                 window,
                 particle_bytes,
                 self.config.particle_count,
@@ -2254,7 +2271,14 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 self.config.visual_config.wireframe_thickness,
                 #[cfg(feature = "egui")]
                 self.config.egui_enabled,
-            )));
+            )) {
+                Ok(state) => self.gpu_state = Some(state),
+                Err(e) => {
+                    eprintln!("Failed to initialize GPU: {}", e);
+                    event_loop.exit();
+                    return;
+                }
+            }
         }
     }
 
@@ -2450,7 +2474,10 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                         Ok(_) => {
                             // Perform readback after successful render if requested
                             if pending_readback {
-                                self.readback_data = Some(gpu_state.read_particles_sync());
+                                match gpu_state.read_particles_sync() {
+                                    Ok(data) => self.readback_data = Some(data),
+                                    Err(e) => eprintln!("Particle readback failed: {}", e),
+                                }
                             }
                         }
                         Err(wgpu::SurfaceError::Lost) => {

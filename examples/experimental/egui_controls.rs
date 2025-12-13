@@ -131,7 +131,7 @@ fn main() {
         })
         .with_rule(Rule::Drag(1.0))
         .with_rule(Rule::BounceWalls)
-        .run();
+        .run().expect("Simulation failed");
 }
 
 /// Convert HSV to RGB (helper for colorful particles)

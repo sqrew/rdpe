@@ -234,7 +234,7 @@ fn main() {
                 p.velocity -= radial * push;
             }
         "#.into()))
-        .run();
+        .run().expect("Simulation failed");
 }
 
 // HSV to RGB conversion
