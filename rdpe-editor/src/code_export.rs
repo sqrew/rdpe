@@ -24,6 +24,14 @@ pub fn generate_code(config: &SimConfig) -> String {
         ));
     }
 
+    // Adjacency buffer (if enabled)
+    if config.adjacency_enabled {
+        code.push_str(&format!(
+            "        .with_adjacency({}, {:.3})\n",
+            config.adjacency_max_neighbors, config.adjacency_radius
+        ));
+    }
+
     // Spawner closure
     code.push_str(&spawner_code(&config.spawn));
 
@@ -285,6 +293,9 @@ fn rule_code(rule: &RuleConfig) -> String {
         }
         RuleConfig::Avoid { radius, strength } => {
             format!("Rule::Avoid {{ radius: {:.2}, strength: {:.3} }}", radius, strength)
+        }
+        RuleConfig::Attract { radius, strength } => {
+            format!("Rule::Attract {{ radius: {:.2}, strength: {:.3} }}", radius, strength)
         }
 
         // Physics

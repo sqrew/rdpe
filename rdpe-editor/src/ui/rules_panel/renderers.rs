@@ -283,6 +283,14 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
                 .changed();
         }
+        RuleConfig::Attract { radius, strength } => {
+            changed |= ui
+                .add(egui::Slider::new(radius, 0.01..=1.0).text("Radius"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(strength, 0.0..=10.0).text("Strength"))
+                .changed();
+        }
 
         // === Physics ===
         RuleConfig::Collide {

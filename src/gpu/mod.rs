@@ -10,6 +10,7 @@
 // Allow dead_code for public API methods that may not be used internally
 #![allow(dead_code)]
 
+mod adjacency;
 mod camera;
 mod connections;
 mod field_gpu;
@@ -26,6 +27,7 @@ mod wireframe;
 mod egui_integration;
 
 // Re-export submodule types
+pub use adjacency::{AdjacencyGpu, adjacency_wgsl};
 pub use camera::Camera;
 pub use connections::ConnectionState;
 pub use field_gpu::{FieldSystemGpu, create_particle_field_bind_group_layout};
@@ -154,6 +156,10 @@ pub struct GpuState {
     spatial_grid_viz: Option<SpatialGridViz>,
     // Wireframe mesh rendering
     wireframe_state: Option<WireframeState>,
+    // Adjacency buffer for graph-based operations
+    adjacency: Option<AdjacencyGpu>,
+    adjacency_bind_group: Option<wgpu::BindGroup>,
+    adjacency_bind_group_layout: Option<wgpu::BindGroupLayout>,
     // CPU readback support
     particle_stride: usize,
     readback_staging: Option<wgpu::Buffer>,
@@ -207,6 +213,7 @@ impl GpuState {
         particle_wgsl_struct: &str,
         wireframe_mesh: Option<&crate::visuals::WireframeMesh>,
         wireframe_thickness: f32,
+        adjacency_config: Option<&crate::spatial::AdjacencyConfig>,
         #[cfg(feature = "egui")] egui_enabled: bool,
     ) -> Result<Self, GpuError> {
         let size = window.inner_size();
@@ -320,6 +327,21 @@ impl GpuState {
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }))
+        } else {
+            None
+        };
+
+        // Create adjacency buffer for graph-based operations
+        let adjacency = if let (Some(ref spatial), Some(adj_cfg)) = (&spatial, adjacency_config) {
+            Some(AdjacencyGpu::new(
+                &device,
+                &particle_buffer,
+                spatial,
+                num_particles,
+                adj_cfg.max_neighbors,
+                adj_cfg.radius,
+                particle_stride,
+            ))
         } else {
             None
         };
@@ -699,11 +721,42 @@ impl GpuState {
             None
         };
 
-        // Build compute pipeline layout with optional inbox, field, and sub-emitter bind groups
+        // Create adjacency bind group for read-only access in main compute shader
+        let (adjacency_bind_group_layout, adjacency_bind_group) = if let Some(ref adj) = adjacency {
+            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Adjacency Read Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Adjacency Read Bind Group"),
+                layout: &layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: adj.buffer.as_entire_binding(),
+                }],
+            });
+
+            (Some(layout), Some(bind_group))
+        } else {
+            (None, None)
+        };
+
+        // Build compute pipeline layout with optional inbox, field, sub-emitter, and adjacency bind groups
         // Group 0: particles/uniforms/spatial
         // Group 1: inbox (if enabled)
         // Group 2: fields (if enabled)
         // Group 3: sub-emitter death buffers (if enabled)
+        // Group 4: adjacency buffer (if enabled)
         let (compute_pipeline_layout, empty_bind_group) = {
             // Create empty layout/bind group for gaps
             let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -722,22 +775,30 @@ impl GpuState {
             // Group 1: inbox or empty
             if let Some(ref inbox_layout) = inbox_bind_group_layout {
                 layouts.push(inbox_layout);
-            } else if field_bind_group_layout.is_some() || sub_emitter.is_some() {
-                // Need placeholder at group 1 if we have group 2 or 3
+            } else if field_bind_group_layout.is_some() || sub_emitter.is_some() || adjacency_bind_group_layout.is_some() {
+                // Need placeholder at group 1 if we have group 2, 3, or 4
                 layouts.push(&empty_layout);
             }
 
             // Group 2: fields or empty
             if let Some(ref field_layout) = field_bind_group_layout {
                 layouts.push(field_layout);
-            } else if sub_emitter.is_some() {
-                // Need placeholder at group 2 if we have group 3
+            } else if sub_emitter.is_some() || adjacency_bind_group_layout.is_some() {
+                // Need placeholder at group 2 if we have group 3 or 4
                 layouts.push(&empty_layout);
             }
 
             // Group 3: sub-emitter death buffers
             if let Some(ref se) = sub_emitter {
                 layouts.push(&se.death_bind_group_layout);
+            } else if adjacency_bind_group_layout.is_some() {
+                // Need placeholder at group 3 if we have group 4
+                layouts.push(&empty_layout);
+            }
+
+            // Group 4: adjacency buffer
+            if let Some(ref adj_layout) = adjacency_bind_group_layout {
+                layouts.push(adj_layout);
             }
 
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -746,9 +807,10 @@ impl GpuState {
                 push_constant_ranges: &[],
             });
 
-            // Only keep empty_bg if we need it
-            let keep_empty = (inbox_bind_group_layout.is_none() && (field_bind_group_layout.is_some() || sub_emitter.is_some()))
-                || (field_bind_group_layout.is_none() && sub_emitter.is_some());
+            // Only keep empty_bg if we need it for gaps
+            let keep_empty = (inbox_bind_group_layout.is_none() && (field_bind_group_layout.is_some() || sub_emitter.is_some() || adjacency_bind_group_layout.is_some()))
+                || (field_bind_group_layout.is_none() && (sub_emitter.is_some() || adjacency_bind_group_layout.is_some()))
+                || (sub_emitter.is_none() && adjacency_bind_group_layout.is_some());
             (layout, if keep_empty { Some(empty_bg) } else { None })
         };
 
@@ -992,6 +1054,9 @@ impl GpuState {
             sub_emitter,
             spatial_grid_viz,
             wireframe_state,
+            adjacency,
+            adjacency_bind_group,
+            adjacency_bind_group_layout,
             particle_stride,
             readback_staging: None,
             picking,
@@ -1429,6 +1494,11 @@ impl GpuState {
             spatial.execute(&mut encoder, &self.queue);
         }
 
+        // Adjacency buffer computation (after spatial hashing)
+        if let Some(ref adjacency) = self.adjacency {
+            adjacency.execute(&mut encoder);
+        }
+
         // Clear inbox buffer before compute pass
         if let Some(ref inbox_buf) = self.inbox_buffer {
             let inbox_size = (self.num_particles as usize) * 16;
@@ -1463,8 +1533,8 @@ impl GpuState {
             // Set inbox bind group if enabled (group 1)
             if let Some(ref inbox_bg) = self.inbox_bind_group {
                 compute_pass.set_bind_group(1, inbox_bg, &[]);
-            } else if self.field_system.is_some() || self.sub_emitter.is_some() {
-                // Need placeholder at group 1 if we have group 2 or 3
+            } else if self.field_system.is_some() || self.sub_emitter.is_some() || self.adjacency_bind_group.is_some() {
+                // Need placeholder at group 1 if we have group 2, 3, or 4
                 if let Some(ref empty_bg) = self.empty_bind_group {
                     compute_pass.set_bind_group(1, empty_bg, &[]);
                 }
@@ -1473,8 +1543,8 @@ impl GpuState {
             // Set field bind group if enabled (group 2)
             if let Some(ref field_bg) = field_bind_group {
                 compute_pass.set_bind_group(2, field_bg, &[]);
-            } else if self.sub_emitter.is_some() {
-                // Need placeholder at group 2 if we have group 3
+            } else if self.sub_emitter.is_some() || self.adjacency_bind_group.is_some() {
+                // Need placeholder at group 2 if we have group 3 or 4
                 if let Some(ref empty_bg) = self.empty_bind_group {
                     compute_pass.set_bind_group(2, empty_bg, &[]);
                 }
@@ -1483,6 +1553,16 @@ impl GpuState {
             // Set sub-emitter death buffer bind group if enabled (group 3)
             if let Some(ref se) = self.sub_emitter {
                 compute_pass.set_bind_group(3, &se.death_bind_group, &[]);
+            } else if self.adjacency_bind_group.is_some() {
+                // Need placeholder at group 3 if we have group 4
+                if let Some(ref empty_bg) = self.empty_bind_group {
+                    compute_pass.set_bind_group(3, empty_bg, &[]);
+                }
+            }
+
+            // Set adjacency buffer bind group if enabled (group 4)
+            if let Some(ref adj_bg) = self.adjacency_bind_group {
+                compute_pass.set_bind_group(4, adj_bg, &[]);
             }
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
@@ -1776,6 +1856,11 @@ impl GpuState {
             spatial.execute(&mut encoder, &self.queue);
         }
 
+        // Adjacency buffer computation (after spatial hashing)
+        if let Some(ref adjacency) = self.adjacency {
+            adjacency.execute(&mut encoder);
+        }
+
         // Clear inbox buffer before compute pass
         if let Some(ref inbox_buf) = self.inbox_buffer {
             let inbox_size = (self.num_particles as usize) * 16;
@@ -1810,8 +1895,8 @@ impl GpuState {
             // Set inbox bind group if enabled (group 1)
             if let Some(ref inbox_bg) = self.inbox_bind_group {
                 compute_pass.set_bind_group(1, inbox_bg, &[]);
-            } else if self.field_system.is_some() || self.sub_emitter.is_some() {
-                // Need placeholder at group 1 if we have group 2 or 3
+            } else if self.field_system.is_some() || self.sub_emitter.is_some() || self.adjacency_bind_group.is_some() {
+                // Need placeholder at group 1 if we have group 2, 3, or 4
                 if let Some(ref empty_bg) = self.empty_bind_group {
                     compute_pass.set_bind_group(1, empty_bg, &[]);
                 }
@@ -1820,8 +1905,8 @@ impl GpuState {
             // Set field bind group if enabled (group 2)
             if let Some(ref field_bg) = field_bind_group {
                 compute_pass.set_bind_group(2, field_bg, &[]);
-            } else if self.sub_emitter.is_some() {
-                // Need placeholder at group 2 if we have group 3
+            } else if self.sub_emitter.is_some() || self.adjacency_bind_group.is_some() {
+                // Need placeholder at group 2 if we have group 3 or 4
                 if let Some(ref empty_bg) = self.empty_bind_group {
                     compute_pass.set_bind_group(2, empty_bg, &[]);
                 }
@@ -1830,6 +1915,16 @@ impl GpuState {
             // Set sub-emitter death buffer bind group if enabled (group 3)
             if let Some(ref se) = self.sub_emitter {
                 compute_pass.set_bind_group(3, &se.death_bind_group, &[]);
+            } else if self.adjacency_bind_group.is_some() {
+                // Need placeholder at group 3 if we have group 4
+                if let Some(ref empty_bg) = self.empty_bind_group {
+                    compute_pass.set_bind_group(3, empty_bg, &[]);
+                }
+            }
+
+            // Set adjacency buffer bind group if enabled (group 4)
+            if let Some(ref adj_bg) = self.adjacency_bind_group {
+                compute_pass.set_bind_group(4, adj_bg, &[]);
             }
 
             let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);

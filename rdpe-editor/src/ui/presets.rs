@@ -2,7 +2,7 @@
 
 use crate::config::{
     BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff, FieldConfigEntry,
-    FieldTypeConfig, InitialVelocity, MouseConfig, PaletteConfig, ParticleFieldDef,
+    FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig, PaletteConfig, ParticleFieldDef,
     ParticleFieldType, ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape,
     UniformValueConfig, VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
 };
@@ -55,6 +55,10 @@ pub static PRESETS: &[Preset] = &[
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -90,6 +94,10 @@ pub static PRESETS: &[Preset] = &[
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -157,6 +165,10 @@ pub static PRESETS: &[Preset] = &[
             },
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -197,6 +209,10 @@ pub static PRESETS: &[Preset] = &[
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         }
         },
     },
@@ -276,6 +292,10 @@ field_write(0u, p.position, 0.5);
             },
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     // === New presets from examples ===
@@ -340,6 +360,10 @@ field_write(0u, p.position, 0.5);
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -406,6 +430,10 @@ if t > 0.6 {
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -522,6 +550,10 @@ if p.particle_type == 0u && other.particle_type == 1u {
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -636,6 +668,10 @@ p.velocity = vec3<f32>(0.0, 0.0, 0.0);
                 additive: true,
             },
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -718,6 +754,10 @@ p.color *= smoothstep(0.0, 0.3, height) * (1.0 - smoothstep(0.7, 1.0, height));
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -776,6 +816,10 @@ p.scale = 0.5 + glow * 0.5;
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -843,6 +887,10 @@ if p.position.y > 1.4 {
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -968,6 +1016,10 @@ p.scale = 0.5 + core_intensity * 1.0;
             },
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -1120,6 +1172,10 @@ if is_bell {
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -1266,6 +1322,10 @@ if abs(p.position.z) > 1.0 { p.position.z *= 0.95; }
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
     Preset {
@@ -1352,6 +1412,121 @@ p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
+        },
+    },
+    Preset {
+        name: "Network Contagion",
+        description: "Signal spreads through adjacency graph connections",
+        config: || SimConfig {
+            name: "Network Contagion".into(),
+            particle_count: 2000,
+            bounds: 1.0,
+            particle_size: 0.02,
+            speed: 1.0,
+            spatial_cell_size: 0.15,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Sphere { radius: 0.8 },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform { r: 0.2, g: 0.3, b: 0.8 },
+                ..Default::default()
+            },
+            rules: vec![
+                // Gentle separation to spread particles out
+                RuleConfig::Separate {
+                    radius: 0.08,
+                    strength: 0.5,
+                },
+                // Light cohesion to keep them together
+                RuleConfig::Cohere {
+                    radius: 0.2,
+                    strength: 0.1,
+                },
+                // Damping to settle
+                RuleConfig::Drag(3.0),
+                RuleConfig::SpeedLimit { min: 0.0, max: 0.3 },
+                RuleConfig::BounceWalls,
+                // Initialize signal for a few "seed" particles
+                RuleConfig::Custom {
+                    code: r#"
+// Seed particles: first 3 particles start with signal
+if index < 3u && p.age < 0.1 {
+    p.signal = 1.0;
+}
+"#.into(),
+                },
+                // Spread signal through adjacency connections
+                RuleConfig::Custom {
+                    code: r#"
+// Propagate signal through the adjacency graph
+let my_signal = p.signal;
+let adj_count = adjacency_count(index);
+
+// Accumulate signal from infected neighbors
+var incoming_signal = 0.0;
+for (var i = 0u; i < adj_count; i++) {
+    let adj_neighbor_idx = adjacency_neighbor(index, i);
+    let adj_neighbor_signal = particles[adj_neighbor_idx].signal;
+    if adj_neighbor_signal > 0.5 {
+        incoming_signal += 0.02; // Infection rate per neighbor
+    }
+}
+
+// Apply infection (once infected, stay infected but slowly fade)
+if my_signal < 0.5 && incoming_signal > 0.0 {
+    p.signal = min(1.0, my_signal + incoming_signal);
+} else if my_signal > 0.0 {
+    // Slowly decay signal (creates wave effect)
+    p.signal = max(0.0, my_signal - 0.002);
+}
+
+// Color based on signal level
+let t = p.signal;
+// Blue (cold) -> Yellow (warming) -> Red (hot) -> dim
+if t < 0.01 {
+    p.color = vec3<f32>(0.15, 0.2, 0.4); // Uninfected: dark blue
+} else if t < 0.5 {
+    let s = t * 2.0;
+    p.color = mix(vec3<f32>(0.2, 0.3, 0.8), vec3<f32>(1.0, 0.9, 0.2), s);
+} else {
+    let s = (t - 0.5) * 2.0;
+    p.color = mix(vec3<f32>(1.0, 0.9, 0.2), vec3<f32>(1.0, 0.2, 0.1), s);
+}
+
+// Pulse size when highly infected
+p.scale = 1.0 + p.signal * 0.5;
+"#.into(),
+                },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Alpha,
+                background_color: [0.02, 0.03, 0.06],
+                shape: ParticleShapeConfig::Circle,
+                connections_enabled: true,
+                connections_radius: 0.12,
+                connections_color: [0.2, 0.25, 0.4],
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+            particle_fields: vec![
+                ParticleFieldDef {
+                    name: "signal".into(),
+                    field_type: ParticleFieldType::F32,
+                },
+            ],
+            mouse: MouseConfig::default(),
+            adjacency_enabled: true,
+            adjacency_max_neighbors: 16,
+            adjacency_radius: 0.12,
+            interactions: InteractionConfig::default(),
         },
     },
 ];

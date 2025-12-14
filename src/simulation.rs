@@ -163,6 +163,8 @@ pub struct Simulation<P: ParticleTrait> {
     field_registry: FieldRegistry,
     /// Volume rendering configuration for fields.
     volume_config: Option<crate::gpu::VolumeConfig>,
+    /// Adjacency buffer configuration for graph-based operations.
+    adjacency_config: Option<crate::spatial::AdjacencyConfig>,
     /// Custom fragment shader code (replaces default fragment body).
     custom_fragment_shader: Option<String>,
     /// Custom vertex shader code (replaces default vertex body).
@@ -220,6 +222,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
             start_dead: false,
             field_registry: FieldRegistry::new(),
             volume_config: None,
+            adjacency_config: None,
             custom_fragment_shader: None,
             custom_vertex_shader: None,
             vertex_effects: Vec::new(),
@@ -489,6 +492,55 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// ```
     pub fn with_max_neighbors(mut self, max: u32) -> Self {
         self.spatial_config.max_neighbors = max;
+        self
+    }
+
+    /// Enable adjacency buffer for graph-based particle operations.
+    ///
+    /// When enabled, the simulation pre-computes and stores neighbor relationships
+    /// in a GPU buffer. Each particle stores up to `max_neighbors` indices of nearby
+    /// particles within the specified `radius`.
+    ///
+    /// This is useful for:
+    /// - Information propagation along particle connections
+    /// - Constraint-based physics (springs between connected particles)
+    /// - Network analysis (degree counting, clustering)
+    /// - Graph-based algorithms that need stable neighbor lists
+    ///
+    /// # Arguments
+    ///
+    /// * `max_neighbors` - Maximum neighbors to store per particle (e.g., 32)
+    /// * `radius` - Distance threshold for neighbor detection
+    ///
+    /// # WGSL Functions
+    ///
+    /// When adjacency is enabled, these functions become available in custom rules:
+    /// - `adjacency_count(particle_idx)` - Number of neighbors for a particle
+    /// - `adjacency_neighbor(particle_idx, n)` - Get the nth neighbor's index
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Simulation::<Particle>::new()
+    ///     .with_spatial_config(0.1, 32)
+    ///     .with_adjacency(32, 0.1)  // Store up to 32 neighbors within radius 0.1
+    ///     .with_rule(Rule::Custom(r#"
+    ///         // Count neighbors and adjust behavior
+    ///         let neighbor_count = adjacency_count(index);
+    ///         if neighbor_count > 10u {
+    ///             p.color = vec3<f32>(1.0, 0.0, 0.0);  // Red if crowded
+    ///         }
+    ///     "#.into()))
+    ///     .run();
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// The adjacency buffer is computed after spatial hashing each frame,
+    /// so it reflects the current neighbor state. This adds some GPU overhead
+    /// but provides stable neighbor indices for the entire frame.
+    pub fn with_adjacency(mut self, max_neighbors: u32, radius: f32) -> Self {
+        self.adjacency_config = Some(crate::spatial::AdjacencyConfig::new(max_neighbors, radius));
         self
     }
 
@@ -1399,6 +1451,22 @@ fn inbox_receive_at(my_idx: u32, channel: u32) -> f32 {
             (String::new(), String::new())
         };
 
+        // Generate adjacency buffer bindings and helpers if enabled
+        let adjacency_wgsl = if let Some(ref adj_cfg) = self.adjacency_config {
+            format!(
+                r#"
+// Adjacency buffer for graph-based particle operations
+@group(4) @binding(0)
+var<storage, read> adjacency: array<u32>;
+
+{}
+"#,
+                crate::gpu::adjacency_wgsl(adj_cfg.max_neighbors)
+            )
+        } else {
+            String::new()
+        };
+
         // Check if any rules are OnDeath or OnSpawn
         let has_on_death = self.rules.iter().any(|r| r.is_on_death());
         let has_on_spawn = self.rules.iter().any(|r| r.is_on_spawn());
@@ -1474,6 +1542,7 @@ var<uniform> uniforms: Uniforms;
 {inbox_binding}
 {field_wgsl}
 {sub_emitter_bindings}
+{adjacency_wgsl}
 {inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
@@ -1658,6 +1727,7 @@ var<uniform> spatial: SpatialParams;
 {inbox_binding}
 {field_wgsl}
 {sub_emitter_bindings}
+{adjacency_wgsl}
 {inbox_helpers}
 {custom_functions_code}
 @compute @workgroup_size(256)
@@ -2054,6 +2124,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
             volume_config: self.volume_config,
             sub_emitters: self.sub_emitters,
             particle_wgsl_struct: P::WGSL_STRUCT.to_string(),
+            adjacency_config: self.adjacency_config,
         };
 
         let event_loop = EventLoop::new()?;
@@ -2140,6 +2211,8 @@ pub(crate) struct SimConfig {
     pub sub_emitters: Vec<crate::sub_emitter::SubEmitter>,
     /// WGSL struct definition for particles (needed for spawn shader).
     pub particle_wgsl_struct: String,
+    /// Adjacency buffer configuration for graph-based operations.
+    pub adjacency_config: Option<crate::spatial::AdjacencyConfig>,
 }
 
 struct App<P: ParticleTrait> {
@@ -2269,6 +2342,7 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 &self.config.particle_wgsl_struct,
                 self.config.visual_config.wireframe_mesh.as_ref(),
                 self.config.visual_config.wireframe_thickness,
+                self.config.adjacency_config.as_ref(),
                 #[cfg(feature = "egui")]
                 self.config.egui_enabled,
             )) {

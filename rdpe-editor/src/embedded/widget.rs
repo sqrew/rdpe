@@ -144,6 +144,9 @@ impl EmbeddedSimulation {
             config.particle_size,
             config.visuals.trail_length,
             config.mouse.clone(),
+            config.adjacency_enabled,
+            config.adjacency_max_neighbors,
+            config.adjacency_radius,
         );
 
         wgpu_render_state
@@ -246,6 +249,9 @@ impl EmbeddedSimulation {
             config.particle_size,
             config.visuals.trail_length,
             config.mouse.clone(),
+            config.adjacency_enabled,
+            config.adjacency_max_neighbors,
+            config.adjacency_radius,
         );
 
         // Replace resources
@@ -336,6 +342,9 @@ impl EmbeddedSimulation {
             config.particle_size,
             config.visuals.trail_length,
             config.mouse.clone(),
+            config.adjacency_enabled,
+            config.adjacency_max_neighbors,
+            config.adjacency_radius,
         );
 
         // Replace resources

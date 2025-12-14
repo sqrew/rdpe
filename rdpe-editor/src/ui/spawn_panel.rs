@@ -277,5 +277,31 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
         });
     });
 
+    ui.separator();
+    ui.heading("Adjacency Buffer");
+
+    changed |= ui
+        .checkbox(&mut config.adjacency_enabled, "Enable Adjacency")
+        .on_hover_text("Pre-compute neighbor indices for graph-based operations")
+        .changed();
+
+    if config.adjacency_enabled {
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut config.adjacency_max_neighbors, 8..=64)
+                    .text("Max Neighbors"),
+            )
+            .on_hover_text("Maximum neighbors to store per particle")
+            .changed();
+
+        changed |= ui
+            .add(
+                egui::Slider::new(&mut config.adjacency_radius, 0.01..=0.5)
+                    .text("Radius"),
+            )
+            .on_hover_text("Distance threshold for neighbor detection")
+            .changed();
+    }
+
     changed
 }

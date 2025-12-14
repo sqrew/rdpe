@@ -15,9 +15,9 @@ use rdpe_editor::config::*;
 use rdpe_editor::embedded::{EmbeddedSimulation, SimulationResources, ParsedParticle};
 use rdpe_editor::ui::{
     render_custom_panel, render_effects_panel, render_export_button, render_export_window,
-    render_fields_panel, render_mouse_panel, render_particle_fields_panel, render_rules_panel,
-    render_spawn_panel, render_visuals_panel, render_volume_panel, AddUniformState,
-    ExportPanelState, PRESETS,
+    render_fields_panel, render_interactions_panel, render_mouse_panel, render_particle_fields_panel,
+    render_rules_panel, render_spawn_panel, render_visuals_panel, render_volume_panel,
+    AddUniformState, ExportPanelState, InteractionsPanelState, PRESETS,
 };
 
 /// Sidebar tabs for organizing the editor panels
@@ -26,6 +26,7 @@ enum SidebarTab {
     #[default]
     Spawn,
     Rules,
+    Interactions,
     Particle,
     Fields,
     Visuals,
@@ -130,6 +131,8 @@ struct EditorApp {
     add_uniform_state: AddUniformState,
     /// State for the export panel
     export_panel_state: ExportPanelState,
+    /// State for the interactions (rule matrix) panel
+    interactions_panel_state: InteractionsPanelState,
     /// Currently selected sidebar tab
     selected_tab: SidebarTab,
     /// Debounce timer for auto-rebuild (seconds remaining)
@@ -166,6 +169,7 @@ impl EditorApp {
             last_grid_opacity,
             add_uniform_state: AddUniformState::default(),
             export_panel_state: ExportPanelState::default(),
+            interactions_panel_state: InteractionsPanelState::default(),
             selected_tab: SidebarTab::default(),
             rebuild_timer: None,
             editing_particle: None,
@@ -719,6 +723,7 @@ impl eframe::App for EditorApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Spawn, "Spawn");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Rules, "Rules");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Interactions, "Types");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Particle, "Particle");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
@@ -760,6 +765,17 @@ impl eframe::App for EditorApp {
                         }
                         SidebarTab::Rules => {
                             render_rules_panel(ui, &mut self.config.rules);
+                        }
+                        SidebarTab::Interactions => {
+                            // Sync num_types with spawn type_weights
+                            let spawn_types = self.config.spawn.type_weights.len().max(1);
+                            if self.config.interactions.num_types != spawn_types {
+                                self.config.interactions.resize(spawn_types);
+                            }
+
+                            if render_interactions_panel(ui, &mut self.config.interactions, &mut self.interactions_panel_state) {
+                                self.needs_rebuild = true;
+                            }
                         }
                         SidebarTab::Particle => {
                             render_particle_fields_panel(ui, &mut self.config);

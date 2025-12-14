@@ -188,6 +188,11 @@ fn main() {
         sim = sim.with_spatial_config(config.spatial_cell_size, config.spatial_resolution);
     }
 
+    // Add adjacency buffer if enabled
+    if config.adjacency_enabled {
+        sim = sim.with_adjacency(config.adjacency_max_neighbors, config.adjacency_radius);
+    }
+
     // Add rules
     for rule in rules {
         sim = sim.with_rule(rule);

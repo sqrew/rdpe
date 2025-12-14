@@ -137,7 +137,7 @@ impl InteractionMatrix {
     /// Generate WGSL code for initializing interaction variables.
     ///
     /// This goes before the neighbor loop.
-    pub(crate) fn to_wgsl_init(&self) -> String {
+    pub fn to_wgsl_init(&self) -> String {
         // Generate the lookup table as WGSL constants
         let mut table_entries = Vec::new();
         for s in 0..self.num_types {
@@ -168,7 +168,7 @@ impl InteractionMatrix {
     /// - `other` - the neighbor particle
     /// - `neighbor_dist` - distance to neighbor
     /// - `neighbor_dir` - direction toward self from neighbor
-    pub(crate) fn to_wgsl_neighbor(&self) -> String {
+    pub fn to_wgsl_neighbor(&self) -> String {
         r#"            // Interaction matrix force
             let other_type = other.particle_type;
             let lookup_idx = my_type * interaction_num_types + other_type;
@@ -187,7 +187,7 @@ impl InteractionMatrix {
     /// Generate WGSL code for applying accumulated interaction forces.
     ///
     /// This goes after the neighbor loop.
-    pub(crate) fn to_wgsl_post(&self) -> String {
+    pub fn to_wgsl_post(&self) -> String {
         "    // Apply interaction matrix forces\n    p.velocity += interaction_force * uniforms.delta_time;".to_string()
     }
 }

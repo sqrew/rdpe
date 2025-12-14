@@ -41,6 +41,37 @@ impl SpatialConfig {
     }
 }
 
+/// Configuration for adjacency buffer (stores neighbor indices per particle).
+///
+/// The adjacency buffer enables graph-based operations by storing, for each particle,
+/// a list of its neighboring particle indices. This is useful for:
+/// - Information propagation along particle connections
+/// - Constraint-based physics (springs between connected particles)
+/// - Network analysis (degree, clustering, community detection)
+#[derive(Clone, Copy, Debug)]
+pub struct AdjacencyConfig {
+    /// Maximum number of neighbors to store per particle.
+    pub max_neighbors: u32,
+    /// Radius for neighbor detection.
+    pub radius: f32,
+}
+
+impl Default for AdjacencyConfig {
+    fn default() -> Self {
+        Self {
+            max_neighbors: 32,
+            radius: 0.1,
+        }
+    }
+}
+
+impl AdjacencyConfig {
+    /// Create a new adjacency configuration.
+    pub fn new(max_neighbors: u32, radius: f32) -> Self {
+        Self { max_neighbors, radius }
+    }
+}
+
 /// WGSL code for Morton encoding utilities
 pub const MORTON_WGSL: &str = r#"
 // Expand 10-bit integer to 30 bits by inserting 2 zeros between each bit

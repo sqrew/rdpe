@@ -17,6 +17,210 @@ fn generate_field_code(config: &SimConfig) -> String {
     registry.to_wgsl_declarations(0)
 }
 
+/// Generate adjacency buffer bindings and helper functions if enabled.
+fn generate_adjacency_code(config: &SimConfig) -> String {
+    if !config.adjacency_enabled {
+        return String::new();
+    }
+
+    let adjacency_stride = 1 + config.adjacency_max_neighbors;
+
+    format!(
+        r#"
+// ============================================
+// Adjacency Buffer (graph-based operations)
+// ============================================
+@group(3) @binding(0) var<storage, read> adjacency: array<u32>;
+
+const ADJACENCY_STRIDE: u32 = {adjacency_stride}u;
+const ADJACENCY_MAX_NEIGHBORS: u32 = {}u;
+
+// Get the number of neighbors for a particle
+fn adjacency_count(particle_idx: u32) -> u32 {{
+    return adjacency[particle_idx * ADJACENCY_STRIDE];
+}}
+
+// Get the index of the nth neighbor of a particle
+fn adjacency_neighbor(particle_idx: u32, neighbor_n: u32) -> u32 {{
+    return adjacency[particle_idx * ADJACENCY_STRIDE + 1u + neighbor_n];
+}}
+"#,
+        config.adjacency_max_neighbors
+    )
+}
+
+/// Generate interaction matrix initialization code (accumulators for each rule type).
+fn generate_interaction_init_code(config: &SimConfig) -> String {
+    if !config.interactions.enabled || !config.interactions.has_any_rules() {
+        return String::new();
+    }
+
+    let mut vars = String::new();
+    vars.push_str("// Rule matrix accumulators\n");
+    vars.push_str("var rm_attract_force = vec3<f32>(0.0);\n");
+    vars.push_str("var rm_separate_force = vec3<f32>(0.0);\n");
+    vars.push_str("var rm_cohesion_sum = vec3<f32>(0.0);\n");
+    vars.push_str("var rm_cohesion_count = 0.0;\n");
+    vars.push_str("var rm_alignment_sum = vec3<f32>(0.0);\n");
+    vars.push_str("var rm_alignment_count = 0.0;\n");
+    vars
+}
+
+/// Generate interaction code for inside the neighbor loop (type-conditional rules).
+fn generate_interaction_neighbor_code(config: &SimConfig) -> String {
+    if !config.interactions.enabled || !config.interactions.has_any_rules() {
+        return String::new();
+    }
+
+    let mut code = String::new();
+    code.push_str("// Type-based rule matrix interactions\n");
+    code.push_str("let my_type = p.particle_type;\n");
+    code.push_str("let other_type = other.particle_type;\n");
+
+    let num_types = config.interactions.num_types;
+
+    // Generate code for each cell in the matrix that has rules
+    for from in 0..num_types {
+        for to in 0..num_types {
+            let cell = config.interactions.get(from, to);
+            if cell.is_empty() {
+                continue;
+            }
+
+            code.push_str(&format!(
+                "if my_type == {}u && other_type == {}u {{\n",
+                from, to
+            ));
+
+            // Built-in rules
+            for rule in &cell.rules {
+                code.push_str(&generate_rule_matrix_neighbor_code(rule));
+            }
+
+            // Custom WGSL code
+            if cell.has_custom_code() {
+                code.push_str("    // Custom code\n");
+                // Indent each line of custom code
+                for line in cell.custom_code.lines() {
+                    code.push_str("    ");
+                    code.push_str(line);
+                    code.push('\n');
+                }
+            }
+
+            code.push_str("}\n");
+        }
+    }
+
+    code
+}
+
+/// Generate neighbor loop code for a single rule in the rule matrix.
+fn generate_rule_matrix_neighbor_code(rule: &crate::config::RuleConfig) -> String {
+    use crate::config::RuleConfig;
+
+    match rule {
+        RuleConfig::Attract { radius, strength } => {
+            format!(
+                r#"    // Attract
+    if neighbor_dist < {radius} && neighbor_dist > 0.001 {{
+        let falloff = 1.0 - neighbor_dist / {radius};
+        rm_attract_force -= neighbor_dir * falloff * {strength} * uniforms.delta_time;
+    }}
+"#
+            )
+        }
+        RuleConfig::Separate { radius, strength } => {
+            format!(
+                r#"    // Separate
+    if neighbor_dist < {radius} && neighbor_dist > 0.001 {{
+        let falloff = 1.0 - neighbor_dist / {radius};
+        rm_separate_force += neighbor_dir * falloff * falloff * {strength} * uniforms.delta_time;
+    }}
+"#
+            )
+        }
+        RuleConfig::Cohere { radius, strength: _ } => {
+            format!(
+                r#"    // Cohere (accumulate)
+    if neighbor_dist < {radius} {{
+        rm_cohesion_sum += neighbor_pos;
+        rm_cohesion_count += 1.0;
+    }}
+"#
+            )
+        }
+        RuleConfig::Align { radius, strength: _ } => {
+            format!(
+                r#"    // Align (accumulate)
+    if neighbor_dist < {radius} {{
+        rm_alignment_sum += neighbor_vel;
+        rm_alignment_count += 1.0;
+    }}
+"#
+            )
+        }
+        _ => String::new(), // Other rules not yet supported in matrix
+    }
+}
+
+/// Generate interaction post-neighbor code (apply accumulated forces).
+fn generate_interaction_post_code(config: &SimConfig) -> String {
+    if !config.interactions.enabled || !config.interactions.has_any_rules() {
+        return String::new();
+    }
+
+    // Collect all cohesion and alignment strengths for post-processing
+    let mut has_cohere = false;
+    let mut has_align = false;
+    let mut cohere_strength = 0.5f32;
+    let mut align_strength = 1.0f32;
+
+    for cell in &config.interactions.matrix {
+        for rule in &cell.rules {
+            match rule {
+                crate::config::RuleConfig::Cohere { strength, .. } => {
+                    has_cohere = true;
+                    cohere_strength = *strength;
+                }
+                crate::config::RuleConfig::Align { strength, .. } => {
+                    has_align = true;
+                    align_strength = *strength;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut code = String::new();
+    code.push_str("// Apply rule matrix forces\n");
+    code.push_str("p.velocity += rm_attract_force;\n");
+    code.push_str("p.velocity += rm_separate_force;\n");
+
+    if has_cohere {
+        code.push_str(&format!(
+            r#"if rm_cohesion_count > 0.0 {{
+    let center = rm_cohesion_sum / rm_cohesion_count;
+    let to_center = center - my_pos;
+    p.velocity += normalize(to_center) * {cohere_strength} * uniforms.delta_time;
+}}
+"#
+        ));
+    }
+
+    if has_align {
+        code.push_str(&format!(
+            r#"if rm_alignment_count > 0.0 {{
+    let avg_vel = rm_alignment_sum / rm_alignment_count;
+    p.velocity += (avg_vel - p.velocity) * {align_strength} * uniforms.delta_time;
+}}
+"#
+        ));
+    }
+
+    code
+}
+
 /// Generate mouse power WGSL code based on the selected power.
 fn generate_mouse_power_code(power: &MousePower) -> String {
     power.to_wgsl()
@@ -211,7 +415,7 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
         .join("\n\n");
 
     // Generate neighbor rules code, using custom WGSL when available
-    let neighbor_rules_code: String = config.rules.iter()
+    let mut neighbor_rules_code: String = config.rules.iter()
         .filter(|r| r.requires_neighbors())
         .map(|rule_config| {
             // Check if this rule has custom WGSL for the editor
@@ -226,10 +430,10 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
         .join("\n\n");
 
     // Generate accumulator variables for neighbor rules
-    let accumulator_vars = generate_accumulator_vars(&neighbor_rules);
+    let mut accumulator_vars = generate_accumulator_vars(&neighbor_rules);
 
     // Generate post-neighbor code for rules that need final processing
-    let post_neighbor_code = generate_post_neighbor_code(config, &neighbor_rules);
+    let mut post_neighbor_code = generate_post_neighbor_code(config, &neighbor_rules);
 
     // Generate custom uniform fields
     let custom_uniform_fields = generate_custom_uniform_fields(config);
@@ -237,6 +441,28 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
     // Generate field code (if any fields are defined)
     let field_code = generate_field_code(config);
     let has_fields = !config.fields.is_empty();
+
+    // Generate adjacency code (if enabled)
+    let adjacency_code = generate_adjacency_code(config);
+
+    // Generate interaction code (if enabled)
+    let interaction_init = generate_interaction_init_code(config);
+    let interaction_neighbor = generate_interaction_neighbor_code(config);
+    let interaction_post = generate_interaction_post_code(config);
+
+    // Append interaction code to the appropriate sections
+    if !interaction_init.is_empty() {
+        accumulator_vars.push_str("\n");
+        accumulator_vars.push_str(&interaction_init);
+    }
+    if !interaction_neighbor.is_empty() {
+        neighbor_rules_code.push_str("\n");
+        neighbor_rules_code.push_str(&interaction_neighbor);
+    }
+    if !interaction_post.is_empty() {
+        post_neighbor_code.push_str("\n");
+        post_neighbor_code.push_str(&interaction_post);
+    }
 
     // Generate mouse power code
     let mouse_power_code = generate_mouse_power_code(&config.mouse.power);
@@ -284,6 +510,7 @@ struct SpatialParams {{
 @group(0) @binding(5) var<uniform> spatial: SpatialParams;
 
 {field_code}
+{adjacency_code}
 // ============================================
 // Morton encoding utilities
 // ============================================

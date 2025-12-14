@@ -113,6 +113,8 @@ pub enum RuleConfig {
     Align { radius: f32, strength: f32 },
     Flock { radius: f32, separation: f32, cohesion: f32, alignment: f32 },
     Avoid { radius: f32, strength: f32 },
+    /// Simple neighbor-based attraction (move toward each neighbor).
+    Attract { radius: f32, strength: f32 },
 
     // === Physics ===
     Collide { radius: f32, restitution: f32 },
@@ -299,6 +301,7 @@ impl RuleConfig {
             RuleConfig::Align { .. } => "Align",
             RuleConfig::Flock { .. } => "Flock",
             RuleConfig::Avoid { .. } => "Avoid",
+            RuleConfig::Attract { .. } => "Attract",
             // Physics
             RuleConfig::Collide { .. } => "Collide",
             RuleConfig::NBodyGravity { .. } => "N-Body Gravity",
@@ -417,7 +420,7 @@ impl RuleConfig {
             RuleConfig::Seek { .. } | RuleConfig::Flee { .. } | RuleConfig::Arrive { .. } |
             RuleConfig::Wander { .. } => "Steering",
             RuleConfig::Separate { .. } | RuleConfig::Cohere { .. } | RuleConfig::Align { .. } |
-            RuleConfig::Flock { .. } | RuleConfig::Avoid { .. } => "Flocking",
+            RuleConfig::Flock { .. } | RuleConfig::Avoid { .. } | RuleConfig::Attract { .. } => "Flocking",
             RuleConfig::Collide { .. } | RuleConfig::NBodyGravity { .. } | RuleConfig::LennardJones { .. } |
             RuleConfig::Viscosity { .. } | RuleConfig::Pressure { .. } | RuleConfig::SurfaceTension { .. } |
             RuleConfig::Magnetism { .. } => "Physics",
@@ -454,6 +457,41 @@ impl RuleConfig {
             RuleConfig::Edge { .. } | RuleConfig::Select { .. } | RuleConfig::Blend { .. } => "Logic",
             RuleConfig::Sync { .. } | RuleConfig::Split { .. } => "Lifecycle",
             RuleConfig::OnCollisionDynamic { .. } => "Custom",
+        }
+    }
+
+    /// Get the radius of this rule if it has one (for neighbor rules).
+    pub fn radius(&self) -> Option<f32> {
+        match self {
+            RuleConfig::RepelFrom { radius, .. } => Some(*radius),
+            RuleConfig::Radial { radius, .. } => Some(*radius),
+            RuleConfig::Pulse { radius, .. } => Some(*radius),
+            RuleConfig::Flee { panic_radius, .. } => Some(*panic_radius),
+            RuleConfig::Arrive { slowing_radius, .. } => Some(*slowing_radius),
+            RuleConfig::Separate { radius, .. } => Some(*radius),
+            RuleConfig::Cohere { radius, .. } => Some(*radius),
+            RuleConfig::Align { radius, .. } => Some(*radius),
+            RuleConfig::Flock { radius, .. } => Some(*radius),
+            RuleConfig::Avoid { radius, .. } => Some(*radius),
+            RuleConfig::Collide { radius, .. } => Some(*radius),
+            RuleConfig::NBodyGravity { radius, .. } => Some(*radius),
+            RuleConfig::LennardJones { cutoff, .. } => Some(*cutoff),
+            RuleConfig::Viscosity { radius, .. } => Some(*radius),
+            RuleConfig::Pressure { radius, .. } => Some(*radius),
+            RuleConfig::SurfaceTension { radius, .. } => Some(*radius),
+            RuleConfig::Magnetism { radius, .. } => Some(*radius),
+            RuleConfig::Chase { radius, .. } => Some(*radius),
+            RuleConfig::Evade { radius, .. } => Some(*radius),
+            RuleConfig::Convert { radius, .. } => Some(*radius),
+            RuleConfig::OnCollision { radius, .. } => Some(*radius),
+            RuleConfig::DLA { stick_radius, .. } => Some(*stick_radius),
+            RuleConfig::TypedNeighbor { radius, .. } => Some(*radius),
+            RuleConfig::Diffuse { radius, .. } => Some(*radius),
+            RuleConfig::Accumulate { radius, .. } => Some(*radius),
+            RuleConfig::Signal { radius, .. } => Some(*radius),
+            RuleConfig::Absorb { radius, .. } => Some(*radius),
+            RuleConfig::Attract { radius, .. } => Some(*radius),
+            _ => None,
         }
     }
 
@@ -573,6 +611,17 @@ impl RuleConfig {
                 radius: *radius,
                 strength: *strength,
             },
+            RuleConfig::Attract { radius, strength } => {
+                // Attract is a neighbor-based rule - generate custom neighbor WGSL
+                let code = format!(
+                    r#"if neighbor_dist < {} && neighbor_dist > 0.001 {{
+    let falloff = 1.0 - neighbor_dist / {};
+    p.velocity -= neighbor_dir * falloff * {} * uniforms.delta_time;
+}}"#,
+                    radius, radius, strength
+                );
+                Rule::NeighborCustom(code)
+            }
             RuleConfig::Collide { radius, restitution } => Rule::Collide {
                 radius: *radius,
                 restitution: *restitution,
@@ -1061,7 +1110,7 @@ impl RuleConfig {
     pub fn requires_neighbors(&self) -> bool {
         matches!(self,
             RuleConfig::Separate { .. } | RuleConfig::Cohere { .. } | RuleConfig::Align { .. } |
-            RuleConfig::Flock { .. } | RuleConfig::Avoid { .. } | RuleConfig::Collide { .. } |
+            RuleConfig::Flock { .. } | RuleConfig::Avoid { .. } | RuleConfig::Attract { .. } | RuleConfig::Collide { .. } |
             RuleConfig::NBodyGravity { .. } | RuleConfig::LennardJones { .. } |
             RuleConfig::Viscosity { .. } | RuleConfig::Pressure { .. } |
             RuleConfig::SurfaceTension { .. } | RuleConfig::Magnetism { .. } |

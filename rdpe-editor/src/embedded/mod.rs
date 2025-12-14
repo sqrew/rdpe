@@ -168,6 +168,10 @@ pub struct SimulationResources {
     // Spatial hashing (optional, for neighbor queries)
     spatial: Option<SpatialGpu>,
 
+    // Adjacency buffer (optional, for graph-based operations)
+    adjacency: Option<rdpe::AdjacencyGpu>,
+    adjacency_bind_group: Option<wgpu::BindGroup>,
+
     // Spatial grid visualization (debug overlay)
     grid_viz: Option<GridVisualization>,
 
@@ -215,6 +219,9 @@ impl SimulationResources {
         particle_size: f32,
         trail_length: u32,
         mouse_config: MouseConfig,
+        adjacency_enabled: bool,
+        adjacency_max_neighbors: u32,
+        adjacency_radius: f32,
     ) -> Self {
         let particle_stride = layout.stride;
         // Create particle buffer
@@ -241,6 +248,23 @@ impl SimulationResources {
                 spatial_config,
                 particle_wgsl_struct,
             ))
+        } else {
+            None
+        };
+
+        // Create adjacency buffer if enabled (requires spatial)
+        let adjacency = if adjacency_enabled && spatial.is_some() {
+            spatial.as_ref().map(|sp| {
+                rdpe::AdjacencyGpu::new(
+                    device,
+                    &particle_buffer,
+                    sp,
+                    num_particles,
+                    adjacency_max_neighbors,
+                    adjacency_radius,
+                    particle_stride,
+                )
+            })
         } else {
             None
         };
@@ -461,6 +485,34 @@ impl SimulationResources {
             entries: &compute_bind_entries,
         });
 
+        // Create adjacency bind group layout and bind group (group 3)
+        let (adjacency_bind_group_layout, adjacency_bind_group) = if let Some(ref adj) = adjacency {
+            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Adjacency Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Adjacency Bind Group"),
+                layout: &layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: adj.buffer.as_entire_binding(),
+                }],
+            });
+            (Some(layout), Some(bind_group))
+        } else {
+            (None, None)
+        };
+
         // Create field bind group if fields exist
         let field_bind_group: Option<wgpu::BindGroup> = if let (Some(ref fs), Some(ref layout)) = (&field_system, &field_bind_group_layout) {
             fs.create_particle_bind_group(device, layout)
@@ -480,12 +532,22 @@ impl SimulationResources {
             entries: &[],
         });
 
-        // Build compute pipeline layout with optional field bind group
-        // Group 0: compute, Group 1: empty placeholder, Group 2: fields
-        let bind_group_layouts: Vec<&wgpu::BindGroupLayout> = if let Some(ref layout) = field_bind_group_layout {
-            vec![&compute_bind_group_layout, &empty_bind_group_layout, layout]
-        } else {
-            vec![&compute_bind_group_layout]
+        // Build compute pipeline layout with optional field and adjacency bind groups
+        // Group 0: compute, Group 1: empty placeholder, Group 2: fields, Group 3: adjacency
+        let bind_group_layouts: Vec<&wgpu::BindGroupLayout> = match (&field_bind_group_layout, &adjacency_bind_group_layout) {
+            (Some(field_layout), Some(adj_layout)) => {
+                vec![&compute_bind_group_layout, &empty_bind_group_layout, field_layout, adj_layout]
+            }
+            (Some(field_layout), None) => {
+                vec![&compute_bind_group_layout, &empty_bind_group_layout, field_layout]
+            }
+            (None, Some(adj_layout)) => {
+                // Need empty groups for 1 and 2 before adjacency at group 3
+                vec![&compute_bind_group_layout, &empty_bind_group_layout, &empty_bind_group_layout, adj_layout]
+            }
+            (None, None) => {
+                vec![&compute_bind_group_layout]
+            }
         };
 
         let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -649,6 +711,9 @@ impl SimulationResources {
             (None, None)
         };
 
+        // Store empty bind group if fields or adjacency need it
+        let needs_empty_bind_group = field_bind_group.is_some() || adjacency_bind_group.is_some();
+
         Self {
             compute_pipeline,
             render_pipeline,
@@ -670,11 +735,13 @@ impl SimulationResources {
             last_camera_pos: Vec3::new(0.0, 0.0, 3.0),
             picking,
             field_system,
-            empty_bind_group: if field_bind_group.is_some() { Some(empty_bind_group) } else { None },
+            empty_bind_group: if needs_empty_bind_group { Some(empty_bind_group) } else { None },
             field_bind_group,
             volume_render_state,
             _volume_config: stored_volume_config,
             spatial,
+            adjacency,
+            adjacency_bind_group,
             grid_viz,
             connections,
             wireframe,
@@ -733,6 +800,11 @@ impl SimulationResources {
                 spatial.execute(&mut encoder, queue);
             }
 
+            // Run adjacency pass (after spatial, before particle compute)
+            if let Some(ref adjacency) = self.adjacency {
+                adjacency.execute(&mut encoder);
+            }
+
             // Run particle compute pass
             {
                 let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -742,10 +814,23 @@ impl SimulationResources {
                 compute_pass.set_pipeline(&self.compute_pipeline);
                 compute_pass.set_bind_group(0, &self.compute_bind_group, &[]);
 
-                // Bind empty at group 1 and field bind group at group 2
-                if let (Some(ref empty_bg), Some(ref field_bg)) = (&self.empty_bind_group, &self.field_bind_group) {
+                // Bind optional groups based on what's enabled
+                if let Some(ref empty_bg) = self.empty_bind_group {
+                    // Always bind empty at group 1 if we have optional groups
                     compute_pass.set_bind_group(1, empty_bg, &[]);
-                    compute_pass.set_bind_group(2, field_bg, &[]);
+
+                    // Bind field at group 2 if available, otherwise empty for adjacency
+                    if let Some(ref field_bg) = self.field_bind_group {
+                        compute_pass.set_bind_group(2, field_bg, &[]);
+                    } else if self.adjacency_bind_group.is_some() {
+                        // Adjacency without fields - bind empty at group 2
+                        compute_pass.set_bind_group(2, empty_bg, &[]);
+                    }
+                }
+
+                // Bind adjacency at group 3
+                if let Some(ref adj_bg) = self.adjacency_bind_group {
+                    compute_pass.set_bind_group(3, adj_bg, &[]);
                 }
 
                 let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);

@@ -4,6 +4,7 @@
 //! to JSON and loaded by the runner.
 
 mod fields;
+mod interactions;
 mod mouse;
 mod particle_fields;
 mod rules;
@@ -19,6 +20,7 @@ use std::path::Path;
 
 // Re-export all types from submodules
 pub use fields::{CustomShaderConfig, FieldConfigEntry, FieldTypeConfig};
+pub use interactions::{InteractionConfig, RuleMatrixCell, RuleMatrixPreset, ParticleTypeInfo, DEFAULT_NUM_TYPES, MAX_NUM_TYPES};
 pub use mouse::{MouseConfig, MousePower};
 pub use particle_fields::{ParticleFieldDef, ParticleFieldInfo, ParticleFieldType, ParticleLayout};
 pub use rules::{AgentStateConfig, Falloff, RuleConfig, TransitionConfig};
@@ -34,6 +36,14 @@ fn default_speed() -> f32 {
     1.0
 }
 
+fn default_adjacency_max_neighbors() -> u32 {
+    32
+}
+
+fn default_adjacency_radius() -> f32 {
+    0.1
+}
+
 /// Complete simulation configuration
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SimConfig {
@@ -46,6 +56,15 @@ pub struct SimConfig {
     pub speed: f32,
     pub spatial_cell_size: f32,
     pub spatial_resolution: u32,
+    /// Enable adjacency buffer for graph-based particle operations.
+    #[serde(default)]
+    pub adjacency_enabled: bool,
+    /// Maximum neighbors to store per particle in adjacency buffer.
+    #[serde(default = "default_adjacency_max_neighbors")]
+    pub adjacency_max_neighbors: u32,
+    /// Radius for neighbor detection in adjacency buffer.
+    #[serde(default = "default_adjacency_radius")]
+    pub adjacency_radius: f32,
     pub spawn: SpawnConfig,
     pub rules: Vec<RuleConfig>,
     #[serde(default)]
@@ -80,6 +99,9 @@ pub struct SimConfig {
     /// Mouse interaction configuration.
     #[serde(default)]
     pub mouse: MouseConfig,
+    /// Type-based particle interaction matrix.
+    #[serde(default)]
+    pub interactions: InteractionConfig,
 }
 
 impl Default for SimConfig {
@@ -92,6 +114,9 @@ impl Default for SimConfig {
             speed: 1.0,
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
             spawn: SpawnConfig::default(),
             rules: vec![
                 RuleConfig::Gravity(2.0),
@@ -106,6 +131,7 @@ impl Default for SimConfig {
             volume_render: VolumeRenderConfig::default(),
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
+            interactions: InteractionConfig::default(),
         }
     }
 }
@@ -130,6 +156,7 @@ impl SimConfig {
         self.visuals.connections_enabled
             || self.visuals.spatial_grid_opacity > 0.0
             || self.rules.iter().any(|r| r.requires_neighbors())
+            || self.interactions.enabled
     }
 
     /// Create a FieldRegistry from the config.
