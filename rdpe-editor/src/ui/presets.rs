@@ -368,60 +368,288 @@ field_write(0u, p.position, 0.5);
     },
     Preset {
         name: "Galaxy",
-        description: "Stars orbiting a central mass with spiral arm dynamics",
+        description: "Spiral galaxy with central bulge, rotating arms, and stellar populations",
         config: || SimConfig {
             name: "Galaxy".into(),
-            particle_count: 100,
+            particle_count: 20000,
             bounds: 2.0,
-            particle_size: 0.01,
+            particle_size: 0.008,
             speed: 1.0,
             spatial_cell_size: 0.2,
             spatial_resolution: 32,
+            particle_fields: vec![ParticleFieldDef {
+                name: "custom".into(),
+                field_type: ParticleFieldType::F32,
+            }],
             spawn: SpawnConfig {
-                shape: SpawnShape::Shell {
-                    inner: 0.5,
-                    outer: 1.0,
-                },
-                velocity: InitialVelocity::Swirl { speed: 0.5 },
-                color_mode: ColorMode::ByVelocity,
+                shape: SpawnShape::Sphere { radius: 0.01 },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform { r: 1.0, g: 1.0, b: 1.0 },
                 ..Default::default()
             },
             rules: vec![
-                // N-body gravity between nearby stars (mass-weighted)
-                RuleConfig::NBodyGravity {
-                    strength: 0.01,
-                    softening: 0.05,
-                    radius: 0.5,
+                // Central supermassive black hole gravity
+                RuleConfig::PointGravity {
+                    point: [0.0, 0.0, 0.0],
+                    strength: 1.2,
+                    softening: 0.1,
                 },
-                // Very light drag (dynamical friction)
-                RuleConfig::Drag(0.1),
-                // Custom coloring by orbital velocity
+                // Initialize spiral structure, orbital velocities, and ongoing dynamics
                 RuleConfig::Custom {
                     code: r#"
-// Color based on velocity (orbital speed)
-let speed = length(p.velocity);
-let t = clamp(speed * 1.5, 0.0, 1.0);
+// One-time initialization
+if uniforms.time < 0.02 {
+    var seed = f32(index) * 17.31 + 0.5;
 
-if t > 0.6 {
-    let blend = (t - 0.6) / 0.4;
-    p.color = mix(vec3<f32>(0.8, 0.8, 1.0), vec3<f32>(0.9, 0.95, 1.0), blend);
-} else if t > 0.3 {
-    let blend = (t - 0.3) / 0.3;
-    p.color = mix(vec3<f32>(1.0, 0.7, 0.3), vec3<f32>(0.8, 0.8, 1.0), blend);
-} else {
-    let blend = t / 0.3;
-    p.color = mix(vec3<f32>(1.0, 0.3, 0.1), vec3<f32>(1.0, 0.7, 0.3), blend);
+    // Determine if bulge (15%), disk (75%), or halo (10%)
+    let region_roll = rand(&seed);
+
+    if region_roll < 0.15 {
+        // Central bulge - dense spherical core
+        let bulge_r = pow(rand(&seed), 0.5) * 0.2;  // Concentrated toward center
+        let theta = rand(&seed) * 6.283;
+        let phi = acos(2.0 * rand(&seed) - 1.0);
+        p.position = vec3<f32>(
+            bulge_r * sin(phi) * cos(theta),
+            bulge_r * cos(phi) * 0.3,  // Flattened
+            bulge_r * sin(phi) * sin(theta)
+        );
+        p.custom = 0.0;  // Mark as bulge star
+    } else if region_roll < 0.9 {
+        // Disk with spiral arms
+        let arm = floor(rand(&seed) * 2.0);  // 2 main arms
+        let arm_offset = arm * 3.14159;
+
+        // Distribute along arm with more stars in middle regions
+        let t = rand(&seed);
+        let spiral_r = 0.12 + t * 1.1;
+
+        // Tighter spiral winding
+        let spiral_theta = arm_offset + t * 5.0 + (rand(&seed) - 0.5) * 0.5;
+
+        // Arm thickness increases slightly outward
+        let arm_spread = (rand(&seed) - 0.5) * 0.12 * (0.3 + t * 0.7);
+        let final_r = spiral_r + arm_spread;
+
+        p.position = vec3<f32>(
+            final_r * cos(spiral_theta),
+            (rand(&seed) - 0.5) * 0.04,  // Very thin disk
+            final_r * sin(spiral_theta)
+        );
+        p.custom = 1.0 + t;  // Mark as disk star
+    } else {
+        // Halo - sparse globular cluster stars
+        let halo_r = 0.6 + rand(&seed) * 0.9;
+        let theta = rand(&seed) * 6.283;
+        let phi = acos(2.0 * rand(&seed) - 1.0);
+        p.position = vec3<f32>(
+            halo_r * sin(phi) * cos(theta),
+            halo_r * cos(phi) * 0.5,
+            halo_r * sin(phi) * sin(theta)
+        );
+        p.custom = 3.0;  // Mark as halo star
+    }
+
+    // Set initial circular orbital velocity
+    let r = length(vec2<f32>(p.position.x, p.position.z));
+    if r > 0.01 {
+        // Orbital velocity for circular orbit (with flat rotation curve like real galaxies)
+        let v_circ = sqrt(1.2 * r / (r * r + 0.1));
+        let angle = atan2(p.position.z, p.position.x);
+        p.velocity = vec3<f32>(
+            -sin(angle) * v_circ,
+            0.0,
+            cos(angle) * v_circ
+        );
+    }
 }
-"#
-                    .into(),
+
+// Frame dragging from rotating central mass - falls off with distance
+let r_xz = length(vec2<f32>(p.position.x, p.position.z));
+if r_xz > 0.01 {
+    let frame_drag = 0.15 / (r_xz * r_xz + 0.05);  // Strong near center, drops off
+    let tangent = vec3<f32>(-p.position.z, 0.0, p.position.x) / r_xz;
+    p.velocity += tangent * frame_drag * uniforms.delta_time;
+}
+
+// Keep disk flat
+p.velocity.y *= 0.92;
+p.position.y *= 0.97;
+"#.into(),
                 },
-                RuleConfig::BounceWalls,
+                // Color stars by population
+                RuleConfig::Custom {
+                    code: r#"
+let r = length(vec2<f32>(p.position.x, p.position.z));
+let star_type = p.custom;
+
+if star_type < 0.5 {
+    // Bulge stars - old, yellow/orange population II
+    let core_glow = smoothstep(0.25, 0.0, r);
+    p.color = mix(
+        vec3<f32>(1.0, 0.65, 0.35),  // Orange-red
+        vec3<f32>(1.0, 0.9, 0.7),    // Warm white core
+        core_glow
+    );
+    p.scale = 0.7 + core_glow * 0.8;
+} else if star_type < 3.0 {
+    // Disk stars - color gradient along arms
+    let arm_pos = star_type - 1.0;
+
+    // Inner: yellow (old), outer: blue (young star-forming regions)
+    if arm_pos < 0.25 {
+        let t = arm_pos / 0.25;
+        p.color = mix(vec3<f32>(1.0, 0.75, 0.45), vec3<f32>(1.0, 0.9, 0.75), t);
+    } else if arm_pos < 0.6 {
+        let t = (arm_pos - 0.25) / 0.35;
+        p.color = mix(vec3<f32>(1.0, 0.9, 0.75), vec3<f32>(0.85, 0.9, 1.0), t);
+    } else {
+        let t = (arm_pos - 0.6) / 0.5;
+        p.color = mix(vec3<f32>(0.85, 0.9, 1.0), vec3<f32>(0.5, 0.65, 1.0), t);
+    }
+
+    p.scale = 0.4 + arm_pos * 0.4;
+} else {
+    // Halo stars - old, dim red giants
+    p.color = vec3<f32>(0.85, 0.55, 0.35) * 0.4;
+    p.scale = 0.35;
+}
+
+// Subtle brightness variation
+let shimmer = 0.85 + sin(f32(index) * 3.7 + uniforms.time * 0.5) * 0.15;
+p.color *= shimmer;
+"#.into(),
+                },
+                RuleConfig::Drag(0.02),
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig {
                 blend_mode: BlendModeConfig::Additive,
-                background_color: [0.0, 0.0, 0.02],
-                velocity_stretch: true,
+                background_color: [0.0, 0.0, 0.015],
+                trail_length: 8,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+            mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
+        },
+    },
+    Preset {
+        name: "Galaxy Formation",
+        description: "Emergent galaxy from N-body gravitational collapse of a rotating gas cloud",
+        config: || SimConfig {
+            name: "Galaxy Formation".into(),
+            particle_count: 800,
+            bounds: 2.5,
+            particle_size: 0.025,
+            speed: 1.0,
+            spatial_cell_size: 0.3,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Sphere { radius: 0.01 },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform { r: 1.0, g: 1.0, b: 1.0 },
+                ..Default::default()
+            },
+            rules: vec![
+                // N-body gravity - every star pulls on nearby stars
+                RuleConfig::NBodyGravity {
+                    strength: 0.08,
+                    softening: 0.08,
+                    radius: 2.5,
+                },
+                // Initialize as rotating proto-galactic cloud
+                RuleConfig::Custom {
+                    code: r#"
+if uniforms.time < 0.02 {
+    var seed = f32(index) * 13.37 + 0.7;
+
+    // Create a flattened rotating cloud with density variations
+    // Use rejection sampling for disk-like distribution
+    let u = rand(&seed);
+    let r = sqrt(u) * 1.2;  // sqrt for uniform disk distribution
+    let theta = rand(&seed) * 6.283;
+
+    // Add some clumpiness - proto-galactic density perturbations
+    let clump_angle = floor(rand(&seed) * 5.0) * 1.257;  // 5 seed clumps
+    let clump_strength = rand(&seed) * 0.3;
+    let theta_adj = theta + sin(theta * 2.0 + clump_angle) * clump_strength;
+
+    // Vertical distribution - thicker near center (proto-bulge)
+    let z_scale = 0.15 * (1.0 - r * 0.5);
+    let z = (rand(&seed) - 0.5) * z_scale;
+
+    p.position = vec3<f32>(
+        r * cos(theta_adj),
+        z,
+        r * sin(theta_adj)
+    );
+
+    // Initial rotation - give the cloud angular momentum
+    // Velocity proportional to radius for solid-body rotation initially
+    let v_rot = r * 0.4;
+    p.velocity = vec3<f32>(
+        -sin(theta_adj) * v_rot,
+        0.0,
+        cos(theta_adj) * v_rot
+    );
+
+    // Add small random velocity dispersion (thermal motion)
+    p.velocity.x += (rand(&seed) - 0.5) * 0.1;
+    p.velocity.y += (rand(&seed) - 0.5) * 0.05;
+    p.velocity.z += (rand(&seed) - 0.5) * 0.1;
+}
+"#.into(),
+                },
+                // Dynamics and coloring
+                RuleConfig::Custom {
+                    code: r#"
+// Gentle disk flattening from gas dynamics (dissipation)
+p.velocity.y *= 0.995;
+
+// Color by velocity - shows dynamics
+let speed = length(p.velocity);
+let v_r = length(vec2<f32>(p.velocity.x, p.velocity.z));
+
+// Fast = blue-white (hot), slow = red-orange (cool)
+let temp = clamp(speed * 3.0, 0.0, 1.0);
+if temp > 0.6 {
+    let t = (temp - 0.6) / 0.4;
+    p.color = mix(vec3<f32>(0.9, 0.9, 1.0), vec3<f32>(0.7, 0.85, 1.0), t);
+} else if temp > 0.3 {
+    let t = (temp - 0.3) / 0.3;
+    p.color = mix(vec3<f32>(1.0, 0.8, 0.4), vec3<f32>(0.9, 0.9, 1.0), t);
+} else {
+    let t = temp / 0.3;
+    p.color = mix(vec3<f32>(1.0, 0.4, 0.2), vec3<f32>(1.0, 0.8, 0.4), t);
+}
+
+// Brighter stars in denser regions (will naturally cluster)
+p.color *= 0.8 + speed * 0.5;
+
+// Size based on distance from center (inner stars appear in denser field)
+let dist = length(p.position);
+p.scale = 0.6 + smoothstep(1.5, 0.0, dist) * 0.6;
+"#.into(),
+                },
+                // Very light drag - represents dynamical friction / gas interactions
+                RuleConfig::Drag(0.08),
+                RuleConfig::SpeedLimit { min: 0.0, max: 1.5 },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Additive,
+                background_color: [0.0, 0.0, 0.012],
+                trail_length: 15,
+                connections_enabled: true,
+                connections_radius: 0.15,
+                connections_color: [0.15, 0.12, 0.08],
                 ..Default::default()
             },
             custom_uniforms: HashMap::new(),
@@ -1687,6 +1915,126 @@ p.color *= 0.7 + spd * 0.5;
                 adjacency_radius: 0.1,
                 interactions,
             }
+        },
+    },
+    Preset {
+        name: "Event Horizon",
+        description: "Black hole with spiraling accretion disk and relativistic jets",
+        config: || SimConfig {
+            name: "Event Horizon".into(),
+            particle_count: 25000,
+            bounds: 2.0,
+            particle_size: 0.006,
+            speed: 1.0,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Shell { inner: 0.6, outer: 1.5 },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform { r: 1.0, g: 0.8, b: 0.5 },
+                ..Default::default()
+            },
+            rules: vec![
+                // Strong gravity toward center
+                RuleConfig::PointGravity {
+                    point: [0.0, 0.0, 0.0],
+                    strength: 3.0,
+                    softening: 0.15,
+                },
+                // Initial orbital kick and continuous tangential force
+                RuleConfig::Custom {
+                    code: r#"
+// Give particles orbital velocity (tangential to center)
+let to_center = -p.position;
+let dist = length(to_center);
+
+if dist > 0.01 {
+    let radial = normalize(to_center);
+    // Tangent vector (cross with up, or use perpendicular in XZ plane)
+    let tangent = normalize(cross(radial, vec3<f32>(0.0, 1.0, 0.0)));
+
+    // Orbital velocity decreases with distance (Keplerian-ish)
+    let orbital_speed = 0.8 / sqrt(dist + 0.1);
+
+    // Add slight tangential acceleration to maintain orbit
+    p.velocity += tangent * orbital_speed * 0.1 * uniforms.delta_time;
+
+    // Flatten toward disk plane (reduce Y velocity)
+    p.velocity.y *= 0.98;
+    p.position.y *= 0.995;
+}
+
+// Event horizon - particles that get too close respawn at edge
+if dist < 0.12 {
+    // Respawn in outer disk
+    var seed = f32(index) * 7.77 + uniforms.time;
+    let angle = seed * 6.28;
+    let spawn_dist = 1.0 + fract(seed * 3.33) * 0.5;
+    p.position = vec3<f32>(cos(angle) * spawn_dist, 0.0, sin(angle) * spawn_dist);
+    p.velocity = vec3<f32>(0.0);
+}
+"#.into(),
+                },
+                // Color based on distance and speed - hot near center
+                RuleConfig::Custom {
+                    code: r#"
+let col_dist = length(p.position);
+let speed = length(p.velocity);
+
+// Temperature gradient: white-hot center to red outer
+let temp = clamp(1.0 - col_dist * 0.5, 0.0, 1.0);
+let temp2 = temp * temp;
+
+// Inner: white/blue-white, middle: yellow/orange, outer: red/dim
+var col: vec3<f32>;
+if temp > 0.7 {
+    // Inner disk - blue-white hot
+    let t = (temp - 0.7) / 0.3;
+    col = mix(vec3<f32>(1.0, 0.9, 0.6), vec3<f32>(0.9, 0.95, 1.0), t);
+} else if temp > 0.3 {
+    // Middle disk - yellow to orange
+    let t = (temp - 0.3) / 0.4;
+    col = mix(vec3<f32>(1.0, 0.4, 0.1), vec3<f32>(1.0, 0.9, 0.6), t);
+} else {
+    // Outer disk - red to dim
+    let t = temp / 0.3;
+    col = mix(vec3<f32>(0.3, 0.05, 0.02), vec3<f32>(1.0, 0.4, 0.1), t);
+}
+
+// Boost brightness with speed (doppler-ish effect)
+col *= 0.7 + speed * 0.8;
+
+// Particles very close to center glow intensely
+if col_dist < 0.2 {
+    col *= 1.5;
+}
+
+p.color = col;
+p.scale = 0.5 + temp * 0.8;
+"#.into(),
+                },
+                RuleConfig::Drag(0.3),
+                RuleConfig::SpeedLimit { min: 0.0, max: 3.0 },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Additive,
+                background_color: [0.0, 0.0, 0.02],
+                trail_length: 15,
+                velocity_stretch: true,
+                velocity_stretch_factor: 1.5,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: Vec::new(),
+            volume_render: VolumeRenderConfig::default(),
+            particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
         },
     },
 ];

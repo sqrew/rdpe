@@ -114,6 +114,7 @@ pub fn render_volume_panel(
         PaletteConfig::Neon => 10,
         PaletteConfig::Forest => 11,
         PaletteConfig::Grayscale => 12,
+        PaletteConfig::Custom { .. } => 13,
     };
 
     if egui::ComboBox::from_id_salt("volume_palette")
@@ -137,6 +138,7 @@ pub fn render_volume_panel(
             10 => PaletteConfig::Neon,
             11 => PaletteConfig::Forest,
             12 => PaletteConfig::Grayscale,
+            13 => PaletteConfig::default_custom(),
             _ => PaletteConfig::Inferno,
         };
         changed = true;

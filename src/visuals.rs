@@ -22,7 +22,7 @@ use glam::Vec3;
 ///
 /// These palettes are sampled based on a [`ColorMapping`] to automatically
 /// color particles without needing to set colors manually.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Palette {
     /// No palette - use particle's own color (default).
     #[default]
@@ -63,6 +63,9 @@ pub enum Palette {
 
     /// Grayscale - black to white.
     Grayscale,
+
+    /// Custom palette with user-defined color stops.
+    Custom([Vec3; 5]),
 }
 
 impl Palette {
@@ -160,6 +163,7 @@ impl Palette {
                 Vec3::new(0.75, 0.75, 0.75),
                 Vec3::new(1.0, 1.0, 1.0),   // White
             ],
+            Palette::Custom(colors) => *colors,
         }
     }
 }

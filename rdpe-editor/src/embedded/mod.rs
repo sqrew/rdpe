@@ -170,6 +170,8 @@ pub struct SimulationResources {
     camera_distance: f32,
     camera_yaw: f32,
     camera_pitch: f32,
+    pub auto_orbit: bool,
+    pub auto_orbit_speed: f32,
 
     // Cached camera info for volume rendering
     last_inv_view_proj: Mat4,
@@ -775,6 +777,8 @@ impl SimulationResources {
             camera_distance: 3.0,
             camera_yaw: 0.0,
             camera_pitch: 0.3,
+            auto_orbit: false,
+            auto_orbit_speed: 0.3,
             last_inv_view_proj: Mat4::IDENTITY,
             last_camera_pos: Vec3::new(0.0, 0.0, 3.0),
             picking,
@@ -810,6 +814,11 @@ impl SimulationResources {
         // Update time
         if !self.paused {
             self.time += delta_time;
+        }
+
+        // Auto-orbit camera (runs even when paused for nice viewing)
+        if self.auto_orbit {
+            self.camera_yaw += self.auto_orbit_speed * delta_time;
         }
 
         // Calculate view-projection matrix

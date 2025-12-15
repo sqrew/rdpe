@@ -42,8 +42,9 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
     ui.add_space(4.0);
 
     // Palette
+    let palette_name = visuals.palette.name();
     egui::ComboBox::from_label("Palette")
-        .selected_text(format!("{:?}", visuals.palette))
+        .selected_text(palette_name)
         .show_ui(ui, |ui| {
             ui.selectable_value(&mut visuals.palette, PaletteConfig::None, "None");
             ui.selectable_value(&mut visuals.palette, PaletteConfig::Viridis, "Viridis");
@@ -58,7 +59,61 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
             ui.selectable_value(&mut visuals.palette, PaletteConfig::Neon, "Neon");
             ui.selectable_value(&mut visuals.palette, PaletteConfig::Forest, "Forest");
             ui.selectable_value(&mut visuals.palette, PaletteConfig::Grayscale, "Grayscale");
+            ui.separator();
+            if ui.selectable_label(matches!(visuals.palette, PaletteConfig::Custom { .. }), "Custom").clicked() {
+                if !matches!(visuals.palette, PaletteConfig::Custom { .. }) {
+                    visuals.palette = PaletteConfig::default_custom();
+                }
+            }
         });
+
+    // Custom palette editor
+    if let PaletteConfig::Custom { colors } = &mut visuals.palette {
+        ui.group(|ui| {
+            ui.label("Custom Palette Colors:");
+            // Show color gradient preview
+            let preview_rect = ui.available_rect_before_wrap();
+            let preview_height = 20.0;
+            let preview_width = preview_rect.width().min(200.0);
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(preview_width, preview_height), egui::Sense::hover());
+
+            // Draw gradient preview
+            let painter = ui.painter();
+            for i in 0..100 {
+                let t = i as f32 / 99.0;
+                let segment = t * 4.0;
+                let idx = (segment as usize).min(3);
+                let frac = segment.fract();
+                let c1 = colors[idx];
+                let c2 = colors[(idx + 1).min(4)];
+                let color = [
+                    c1[0] + (c2[0] - c1[0]) * frac,
+                    c1[1] + (c2[1] - c1[1]) * frac,
+                    c1[2] + (c2[2] - c1[2]) * frac,
+                ];
+                let x = rect.left() + (i as f32 / 99.0) * rect.width();
+                painter.line_segment(
+                    [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                    egui::Stroke::new(2.0, egui::Color32::from_rgb(
+                        (color[0] * 255.0) as u8,
+                        (color[1] * 255.0) as u8,
+                        (color[2] * 255.0) as u8,
+                    )),
+                );
+            }
+
+            ui.add_space(4.0);
+
+            // Color stop editors
+            let labels = ["Stop 1", "Stop 2", "Stop 3", "Stop 4", "Stop 5"];
+            for (i, label) in labels.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(*label);
+                    ui.color_edit_button_rgb(&mut colors[i]);
+                });
+            }
+        });
+    }
 
     // Color Mapping (only show if palette is not None)
     if visuals.palette != PaletteConfig::None {

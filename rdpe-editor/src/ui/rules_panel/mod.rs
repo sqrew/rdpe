@@ -5,14 +5,22 @@ mod helpers;
 mod renderers;
 mod templates;
 
-use crate::config::{ParticleFieldDef, RuleConfig};
+use crate::config::{FieldConfigEntry, ParticleFieldDef, RuleConfig};
 use egui::Ui;
 
 pub use templates::RULE_TEMPLATES;
 
 use renderers::render_rule_params;
 
-pub fn render_rules_panel(ui: &mut Ui, rules: &mut Vec<RuleConfig>, particle_fields: &[ParticleFieldDef]) -> bool {
+/// Context for what shader features are available
+pub struct ShaderContext<'a> {
+    pub particle_fields: &'a [ParticleFieldDef],
+    pub fields: &'a [FieldConfigEntry],
+    pub adjacency_enabled: bool,
+    pub has_neighbor_rules: bool,
+}
+
+pub fn render_rules_panel(ui: &mut Ui, rules: &mut Vec<RuleConfig>, ctx: &ShaderContext) -> bool {
     let mut changed = false;
     let mut remove_idx = None;
     let mut move_up_idx = None;
@@ -28,15 +36,68 @@ pub fn render_rules_panel(ui: &mut Ui, rules: &mut Vec<RuleConfig>, particle_fie
                 ui.code(*field);
             }
         });
-        if !particle_fields.is_empty() {
+        if !ctx.particle_fields.is_empty() {
             ui.separator();
             ui.label("Custom fields:");
             ui.horizontal_wrapped(|ui| {
-                for field in particle_fields {
+                for field in ctx.particle_fields {
                     ui.code(format!("{}: {}", field.name, field.field_type.wgsl_type()));
                 }
             });
         }
+    });
+
+    // Available functions helper
+    ui.collapsing("Available Functions", |ui| {
+        ui.label("Always available:");
+        ui.horizontal_wrapped(|ui| {
+            ui.code("rand(&seed) -> f32");
+        });
+        ui.small("Mutates seed, returns 0.0-1.0");
+
+        if !ctx.fields.is_empty() {
+            ui.separator();
+            ui.label("Field functions:");
+            ui.horizontal_wrapped(|ui| {
+                ui.code("field_read(idx, pos) -> f32");
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.code("field_write(idx, pos, val)");
+            });
+            ui.small(format!("Fields: {}", ctx.fields.iter().enumerate()
+                .map(|(i, f)| format!("{}: {}", i, f.name))
+                .collect::<Vec<_>>()
+                .join(", ")));
+        }
+
+        if ctx.adjacency_enabled {
+            ui.separator();
+            ui.label("Adjacency functions:");
+            ui.horizontal_wrapped(|ui| {
+                ui.code("adjacency_count(idx) -> u32");
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.code("adjacency_neighbor(idx, n) -> u32");
+            });
+            ui.small("Returns neighbor particle indices");
+        }
+
+        if ctx.has_neighbor_rules {
+            ui.separator();
+            ui.label("Neighbor context (in OnCollision):");
+            ui.horizontal_wrapped(|ui| {
+                ui.code("other");
+            });
+            ui.small("Reference to neighboring particle");
+        }
+
+        ui.separator();
+        ui.label("Built-in variables:");
+        ui.horizontal_wrapped(|ui| {
+            ui.code("index");
+            ui.code("uniforms.time");
+            ui.code("uniforms.delta_time");
+        });
     });
 
     ui.separator();

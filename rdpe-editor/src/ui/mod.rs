@@ -20,7 +20,7 @@ pub use fields_panel::render_fields_panel;
 pub use interactions_panel::{render_interactions_panel, InteractionsPanelState};
 pub use mouse_panel::render_mouse_panel;
 pub use particle_fields_panel::render_particle_fields_panel;
-pub use rules_panel::render_rules_panel;
+pub use rules_panel::{render_rules_panel, ShaderContext};
 pub use spawn_panel::render_spawn_panel;
 pub use visuals_panel::render_visuals_panel;
 pub use volume_panel::render_volume_panel;

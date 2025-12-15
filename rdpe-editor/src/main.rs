@@ -17,7 +17,7 @@ use rdpe_editor::ui::{
     render_custom_panel, render_effects_panel, render_export_button, render_export_window,
     render_fields_panel, render_interactions_panel, render_mouse_panel, render_particle_fields_panel,
     render_rules_panel, render_spawn_panel, render_visuals_panel, render_volume_panel,
-    AddUniformState, ExportPanelState, InteractionsPanelState, PRESETS,
+    AddUniformState, ExportPanelState, InteractionsPanelState, ShaderContext, PRESETS,
 };
 
 /// Sidebar tabs for organizing the editor panels
@@ -509,13 +509,15 @@ impl eframe::App for EditorApp {
                             .on_hover_text("Rebuild pending...");
                     }
 
-                    // Pause/Play
+                    // Pause/Play and Camera controls
                     if let Some(state) = wgpu_render_state {
-                        let is_paused = state.renderer.read()
-                            .callback_resources
-                            .get::<rdpe_editor::embedded::SimulationResources>()
-                            .map(|s| s.is_paused())
-                            .unwrap_or(false);
+                        let (is_paused, auto_orbit, orbit_speed) = {
+                            let resources = state.renderer.read();
+                            resources.callback_resources
+                                .get::<rdpe_editor::embedded::SimulationResources>()
+                                .map(|s| (s.is_paused(), s.auto_orbit, s.auto_orbit_speed))
+                                .unwrap_or((false, false, 0.3))
+                        };
 
                         let btn_text = if is_paused { "▶ Play" } else { "⏸ Pause" };
                         if ui.button(btn_text).clicked() {
@@ -524,6 +526,32 @@ impl eframe::App for EditorApp {
                                 .get_mut::<rdpe_editor::embedded::SimulationResources>()
                             {
                                 sim.set_paused(!is_paused);
+                            }
+                        }
+
+                        ui.separator();
+
+                        // Auto-orbit toggle
+                        let orbit_text = if auto_orbit { "◐ Orbit" } else { "○ Orbit" };
+                        if ui.button(orbit_text).on_hover_text("Toggle camera auto-rotation").clicked() {
+                            if let Some(sim) = state.renderer.write()
+                                .callback_resources
+                                .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                            {
+                                sim.auto_orbit = !auto_orbit;
+                            }
+                        }
+
+                        // Orbit speed slider (only show when orbiting)
+                        if auto_orbit {
+                            let mut speed = orbit_speed;
+                            if ui.add(egui::Slider::new(&mut speed, -1.0..=1.0).text("Speed").max_decimals(2)).changed() {
+                                if let Some(sim) = state.renderer.write()
+                                    .callback_resources
+                                    .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                                {
+                                    sim.auto_orbit_speed = speed;
+                                }
                             }
                         }
                     }
@@ -792,7 +820,14 @@ impl eframe::App for EditorApp {
                             }
                         }
                         SidebarTab::Rules => {
-                            render_rules_panel(ui, &mut self.config.rules, &self.config.particle_fields);
+                            let has_neighbor_rules = self.config.rules.iter().any(|r| r.requires_neighbors());
+                            let ctx = ShaderContext {
+                                particle_fields: &self.config.particle_fields,
+                                fields: &self.config.fields,
+                                adjacency_enabled: self.config.adjacency_enabled,
+                                has_neighbor_rules,
+                            };
+                            render_rules_panel(ui, &mut self.config.rules, &ctx);
                         }
                         SidebarTab::Interactions => {
                             // Sync num_types with spawn type_weights

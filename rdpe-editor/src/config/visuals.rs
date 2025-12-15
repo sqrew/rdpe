@@ -89,7 +89,7 @@ impl ParticleShapeConfig {
 }
 
 /// Color palette for automatic coloring
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub enum PaletteConfig {
     #[default]
     None,
@@ -105,11 +105,33 @@ pub enum PaletteConfig {
     Neon,
     Forest,
     Grayscale,
+    Custom {
+        colors: [[f32; 3]; 5],
+    },
 }
 
 impl PaletteConfig {
     pub fn variants() -> &'static [&'static str] {
-        &["None", "Viridis", "Magma", "Plasma", "Inferno", "Rainbow", "Sunset", "Ocean", "Fire", "Ice", "Neon", "Forest", "Grayscale"]
+        &["None", "Viridis", "Magma", "Plasma", "Inferno", "Rainbow", "Sunset", "Ocean", "Fire", "Ice", "Neon", "Forest", "Grayscale", "Custom"]
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            PaletteConfig::None => "None",
+            PaletteConfig::Viridis => "Viridis",
+            PaletteConfig::Magma => "Magma",
+            PaletteConfig::Plasma => "Plasma",
+            PaletteConfig::Inferno => "Inferno",
+            PaletteConfig::Rainbow => "Rainbow",
+            PaletteConfig::Sunset => "Sunset",
+            PaletteConfig::Ocean => "Ocean",
+            PaletteConfig::Fire => "Fire",
+            PaletteConfig::Ice => "Ice",
+            PaletteConfig::Neon => "Neon",
+            PaletteConfig::Forest => "Forest",
+            PaletteConfig::Grayscale => "Grayscale",
+            PaletteConfig::Custom { .. } => "Custom",
+        }
     }
 
     pub fn to_palette(&self) -> rdpe::Palette {
@@ -127,12 +149,32 @@ impl PaletteConfig {
             PaletteConfig::Neon => rdpe::Palette::Neon,
             PaletteConfig::Forest => rdpe::Palette::Forest,
             PaletteConfig::Grayscale => rdpe::Palette::Grayscale,
+            PaletteConfig::Custom { colors } => rdpe::Palette::Custom([
+                Vec3::from_array(colors[0]),
+                Vec3::from_array(colors[1]),
+                Vec3::from_array(colors[2]),
+                Vec3::from_array(colors[3]),
+                Vec3::from_array(colors[4]),
+            ]),
         }
     }
 
     /// Get the 5 color stops for this palette as Vec3 RGB values.
     pub fn colors(&self) -> [glam::Vec3; 5] {
         self.to_palette().colors()
+    }
+
+    /// Create a default custom palette (rainbow-like).
+    pub fn default_custom() -> Self {
+        PaletteConfig::Custom {
+            colors: [
+                [1.0, 0.0, 0.0],   // Red
+                [1.0, 0.5, 0.0],   // Orange
+                [1.0, 1.0, 0.0],   // Yellow
+                [0.0, 1.0, 0.0],   // Green
+                [0.0, 0.5, 1.0],   // Blue
+            ],
+        }
     }
 }
 
