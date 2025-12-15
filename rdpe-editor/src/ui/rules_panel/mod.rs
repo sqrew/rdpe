@@ -5,20 +5,40 @@ mod helpers;
 mod renderers;
 mod templates;
 
-use crate::config::RuleConfig;
+use crate::config::{ParticleFieldDef, RuleConfig};
 use egui::Ui;
 
 pub use templates::RULE_TEMPLATES;
 
 use renderers::render_rule_params;
 
-pub fn render_rules_panel(ui: &mut Ui, rules: &mut Vec<RuleConfig>) -> bool {
+pub fn render_rules_panel(ui: &mut Ui, rules: &mut Vec<RuleConfig>, particle_fields: &[ParticleFieldDef]) -> bool {
     let mut changed = false;
     let mut remove_idx = None;
     let mut move_up_idx = None;
     let mut move_down_idx = None;
 
     ui.heading("Rules");
+
+    // Available fields helper
+    ui.collapsing("Available Fields", |ui| {
+        ui.label("Base fields:");
+        ui.horizontal_wrapped(|ui| {
+            for field in &["position", "velocity", "age", "particle_type", "alive", "scale", "color"] {
+                ui.code(*field);
+            }
+        });
+        if !particle_fields.is_empty() {
+            ui.separator();
+            ui.label("Custom fields:");
+            ui.horizontal_wrapped(|ui| {
+                for field in particle_fields {
+                    ui.code(format!("{}: {}", field.name, field.field_type.wgsl_type()));
+                }
+            });
+        }
+    });
+
     ui.separator();
 
     // Add rule dropdown

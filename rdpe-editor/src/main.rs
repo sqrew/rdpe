@@ -792,7 +792,7 @@ impl eframe::App for EditorApp {
                             }
                         }
                         SidebarTab::Rules => {
-                            render_rules_panel(ui, &mut self.config.rules);
+                            render_rules_panel(ui, &mut self.config.rules, &self.config.particle_fields);
                         }
                         SidebarTab::Interactions => {
                             // Sync num_types with spawn type_weights

@@ -13,16 +13,23 @@ mod picking;
 mod visualizations;
 mod widget;
 
+pub use picking::{PickingRequest, PickingState};
 pub use widget::EmbeddedSimulation;
-pub use picking::{PickingState, PickingRequest};
 
+use crate::config::{
+    BlendModeConfig, MouseConfig, ParticleLayout, UniformValueConfig, VolumeRenderConfig,
+};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
+use rdpe::{
+    FieldSystemGpu, SpatialConfig, SpatialGpu, VolumeRenderState,
+    create_particle_field_bind_group_layout,
+};
 use std::collections::HashMap;
+use visualizations::{
+    ConnectionVisualization, GridVisualization, TrailVisualization, WireframeVisualization,
+};
 use wgpu::util::DeviceExt;
-use crate::config::{BlendModeConfig, UniformValueConfig, ParticleLayout, MouseConfig, VolumeRenderConfig};
-use rdpe::{FieldSystemGpu, VolumeRenderState, create_particle_field_bind_group_layout, SpatialGpu, SpatialConfig};
-use visualizations::{GridVisualization, ConnectionVisualization, WireframeVisualization, TrailVisualization};
 
 const WORKGROUP_SIZE: u32 = 256;
 
@@ -87,15 +94,30 @@ fn build_uniform_data(
 
     // Write mouse uniforms
     let mouse = MouseUniforms {
-        ray_origin: [mouse_state.ray_origin.x, mouse_state.ray_origin.y, mouse_state.ray_origin.z, 0.0],
-        ray_dir: [mouse_state.ray_dir.x, mouse_state.ray_dir.y, mouse_state.ray_dir.z, 0.0],
+        ray_origin: [
+            mouse_state.ray_origin.x,
+            mouse_state.ray_origin.y,
+            mouse_state.ray_origin.z,
+            0.0,
+        ],
+        ray_dir: [
+            mouse_state.ray_dir.x,
+            mouse_state.ray_dir.y,
+            mouse_state.ray_dir.z,
+            0.0,
+        ],
         down_radius_strength_pad: [
             if mouse_state.is_down { 1.0 } else { 0.0 },
             mouse_config.radius,
             mouse_config.strength,
             0.0,
         ],
-        color: [mouse_config.color[0], mouse_config.color[1], mouse_config.color[2], 0.0],
+        color: [
+            mouse_config.color[0],
+            mouse_config.color[1],
+            mouse_config.color[2],
+            0.0,
+        ],
     };
     data.extend_from_slice(bytemuck::bytes_of(&mouse));
 
@@ -270,7 +292,8 @@ impl SimulationResources {
         };
 
         // Sort custom uniforms by name for deterministic order (must match shader generation)
-        let mut custom_uniforms: Vec<_> = custom_uniforms_map.iter()
+        let mut custom_uniforms: Vec<_> = custom_uniforms_map
+            .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
         custom_uniforms.sort_by(|a, b| a.0.cmp(&b.0));
@@ -307,37 +330,41 @@ impl SimulationResources {
 
         // Create connection visualization if enabled (requires spatial)
         let connections = if connections_enabled {
-            spatial.as_ref().map(|s| ConnectionVisualization::new(
-                device,
-                &particle_buffer,
-                &uniform_buffer,
-                s,
-                num_particles,
-                connections_radius,
-                connections_color,
-                particle_stride,
-                target_format,
-            ))
+            spatial.as_ref().map(|s| {
+                ConnectionVisualization::new(
+                    device,
+                    &particle_buffer,
+                    &uniform_buffer,
+                    s,
+                    num_particles,
+                    connections_radius,
+                    connections_color,
+                    particle_stride,
+                    target_format,
+                )
+            })
         } else {
             None
         };
 
         // Create wireframe visualization if mesh is provided
-        let wireframe = wireframe_mesh.map(|mesh| WireframeVisualization::new(
-            device,
-            &particle_buffer,
-            &uniform_buffer,
-            mesh,
-            wireframe_thickness,
-            particle_size,
-            num_particles,
-            particle_stride,
-            Some(layout.color_offset as u32),
-            layout.alive_offset as u32,
-            layout.scale_offset as u32,
-            target_format,
-            blend_mode,
-        ));
+        let wireframe = wireframe_mesh.map(|mesh| {
+            WireframeVisualization::new(
+                device,
+                &particle_buffer,
+                &uniform_buffer,
+                mesh,
+                wireframe_thickness,
+                particle_size,
+                num_particles,
+                particle_stride,
+                Some(layout.color_offset as u32),
+                layout.alive_offset as u32,
+                layout.scale_offset as u32,
+                target_format,
+                blend_mode,
+            )
+        });
 
         // Create trail visualization if trail_length > 0
         let trails = if trail_length > 1 {
@@ -440,10 +467,11 @@ impl SimulationResources {
             ]);
         }
 
-        let compute_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Compute Bind Group Layout"),
-            entries: &compute_layout_entries,
-        });
+        let compute_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Compute Bind Group Layout"),
+                entries: &compute_layout_entries,
+            });
 
         // Create compute bind group entries
         let mut compute_bind_entries = vec![
@@ -514,11 +542,12 @@ impl SimulationResources {
         };
 
         // Create field bind group if fields exist
-        let field_bind_group: Option<wgpu::BindGroup> = if let (Some(ref fs), Some(ref layout)) = (&field_system, &field_bind_group_layout) {
-            fs.create_particle_bind_group(device, layout)
-        } else {
-            None
-        };
+        let field_bind_group: Option<wgpu::BindGroup> =
+            if let (Some(ref fs), Some(ref layout)) = (&field_system, &field_bind_group_layout) {
+                fs.create_particle_bind_group(device, layout)
+            } else {
+                None
+            };
 
         // Create compute pipeline
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -527,34 +556,51 @@ impl SimulationResources {
         });
 
         // Create empty bind group layout for group 1 placeholder (fields are at group 2)
-        let empty_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Empty Bind Group Layout"),
-            entries: &[],
-        });
+        let empty_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Empty Bind Group Layout"),
+                entries: &[],
+            });
 
         // Build compute pipeline layout with optional field and adjacency bind groups
         // Group 0: compute, Group 1: empty placeholder, Group 2: fields, Group 3: adjacency
-        let bind_group_layouts: Vec<&wgpu::BindGroupLayout> = match (&field_bind_group_layout, &adjacency_bind_group_layout) {
-            (Some(field_layout), Some(adj_layout)) => {
-                vec![&compute_bind_group_layout, &empty_bind_group_layout, field_layout, adj_layout]
-            }
-            (Some(field_layout), None) => {
-                vec![&compute_bind_group_layout, &empty_bind_group_layout, field_layout]
-            }
-            (None, Some(adj_layout)) => {
-                // Need empty groups for 1 and 2 before adjacency at group 3
-                vec![&compute_bind_group_layout, &empty_bind_group_layout, &empty_bind_group_layout, adj_layout]
-            }
-            (None, None) => {
-                vec![&compute_bind_group_layout]
-            }
-        };
+        let bind_group_layouts: Vec<&wgpu::BindGroupLayout> =
+            match (&field_bind_group_layout, &adjacency_bind_group_layout) {
+                (Some(field_layout), Some(adj_layout)) => {
+                    vec![
+                        &compute_bind_group_layout,
+                        &empty_bind_group_layout,
+                        field_layout,
+                        adj_layout,
+                    ]
+                }
+                (Some(field_layout), None) => {
+                    vec![
+                        &compute_bind_group_layout,
+                        &empty_bind_group_layout,
+                        field_layout,
+                    ]
+                }
+                (None, Some(adj_layout)) => {
+                    // Need empty groups for 1 and 2 before adjacency at group 3
+                    vec![
+                        &compute_bind_group_layout,
+                        &empty_bind_group_layout,
+                        &empty_bind_group_layout,
+                        adj_layout,
+                    ]
+                }
+                (None, None) => {
+                    vec![&compute_bind_group_layout]
+                }
+            };
 
-        let compute_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Compute Pipeline Layout"),
-            bind_group_layouts: &bind_group_layouts,
-            push_constant_ranges: &[],
-        });
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Compute Pipeline Layout"),
+                bind_group_layouts: &bind_group_layouts,
+                push_constant_ranges: &[],
+            });
 
         // Create empty bind group for group 1
         let empty_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -573,10 +619,10 @@ impl SimulationResources {
         });
 
         // Create render bind group layout
-        let render_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Render Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let render_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Render Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
@@ -585,19 +631,16 @@ impl SimulationResources {
                         min_binding_size: None,
                     },
                     count: None,
-                },
-            ],
-        });
+                }],
+            });
 
         let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Render Bind Group"),
             layout: &render_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         });
 
         // Create render pipeline
@@ -606,11 +649,12 @@ impl SimulationResources {
             source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
         });
 
-        let render_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&render_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[&render_bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
         // Get particle offsets from layout
         let velocity_offset = layout.velocity_offset;
@@ -692,8 +736,8 @@ impl SimulationResources {
         // Create picking state with a default size (will be resized on first frame)
         let picking = PickingState::new(
             device,
-            800,  // Default width, will resize
-            600,  // Default height, will resize
+            800, // Default width, will resize
+            600, // Default height, will resize
             layout,
             &uniform_buffer,
         );
@@ -735,7 +779,11 @@ impl SimulationResources {
             last_camera_pos: Vec3::new(0.0, 0.0, 3.0),
             picking,
             field_system,
-            empty_bind_group: if needs_empty_bind_group { Some(empty_bind_group) } else { None },
+            empty_bind_group: if needs_empty_bind_group {
+                Some(empty_bind_group)
+            } else {
+                None
+            },
             field_bind_group,
             volume_render_state,
             _volume_config: stored_volume_config,
@@ -863,7 +911,9 @@ impl SimulationResources {
         };
 
         // Update volume render params (always, even when paused, for camera movement)
-        if let (Some(ref volume_state), Some(ref field_system)) = (&self.volume_render_state, &self.field_system) {
+        if let (Some(ref volume_state), Some(ref field_system)) =
+            (&self.volume_render_state, &self.field_system)
+        {
             if volume_state.field_index < field_system.fields.len() {
                 let field = &field_system.fields[volume_state.field_index];
                 volume_state.update_params_with_field(
@@ -1002,7 +1052,8 @@ impl SimulationResources {
 
     /// Run picking pass and update selected particle data.
     pub fn update_picking(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        self.picking.render_and_pick(device, queue, &self.particle_buffer, self.num_particles);
+        self.picking
+            .render_and_pick(device, queue, &self.particle_buffer, self.num_particles);
     }
 
     /// Read particle data from GPU.
@@ -1035,7 +1086,7 @@ impl SimulationResources {
 
         // Handle channel receive and buffer mapping errors gracefully
         let map_result = rx.recv().ok()?.ok()?;
-        drop(map_result); // We just needed to confirm success
+        let _ = map_result; // We just needed to confirm success
 
         let data = buffer_slice.get_mapped_range();
         let result = data.to_vec();
@@ -1073,9 +1124,9 @@ impl SimulationResources {
                 let types_match = matches!(
                     (&*value, new_value),
                     (UniformValueConfig::F32(_), UniformValueConfig::F32(_))
-                    | (UniformValueConfig::Vec2(_), UniformValueConfig::Vec2(_))
-                    | (UniformValueConfig::Vec3(_), UniformValueConfig::Vec3(_))
-                    | (UniformValueConfig::Vec4(_), UniformValueConfig::Vec4(_))
+                        | (UniformValueConfig::Vec2(_), UniformValueConfig::Vec2(_))
+                        | (UniformValueConfig::Vec3(_), UniformValueConfig::Vec3(_))
+                        | (UniformValueConfig::Vec4(_), UniformValueConfig::Vec4(_))
                 );
                 if types_match {
                     *value = new_value.clone();
@@ -1095,9 +1146,9 @@ impl SimulationResources {
                     let types_match = matches!(
                         (value, other),
                         (UniformValueConfig::F32(_), UniformValueConfig::F32(_))
-                        | (UniformValueConfig::Vec2(_), UniformValueConfig::Vec2(_))
-                        | (UniformValueConfig::Vec3(_), UniformValueConfig::Vec3(_))
-                        | (UniformValueConfig::Vec4(_), UniformValueConfig::Vec4(_))
+                            | (UniformValueConfig::Vec2(_), UniformValueConfig::Vec2(_))
+                            | (UniformValueConfig::Vec3(_), UniformValueConfig::Vec3(_))
+                            | (UniformValueConfig::Vec4(_), UniformValueConfig::Vec4(_))
                     );
                     if !types_match {
                         return false;
@@ -1179,7 +1230,7 @@ impl ParsedParticle {
             return None;
         }
 
-        use crate::spawn::{read_vec3, read_f32, read_u32, read_field_value};
+        use crate::spawn::{read_f32, read_field_value, read_u32, read_vec3};
 
         // Read base fields
         let position = read_vec3(data, layout.position_offset);
@@ -1221,15 +1272,27 @@ impl ParsedParticle {
 
     /// Serialize this particle back to bytes using the given layout.
     pub fn to_bytes(&self, layout: &ParticleLayout) -> Vec<u8> {
-        use crate::spawn::{write_vec3_pub, write_f32_pub, write_u32_pub, write_field_value_pub};
+        use crate::spawn::{write_f32_pub, write_field_value_pub, write_u32_pub, write_vec3_pub};
         use glam::Vec3;
 
         let mut bytes = vec![0u8; layout.stride];
 
         // Write base fields
-        write_vec3_pub(&mut bytes, layout.position_offset, Vec3::from_array(self.position));
-        write_vec3_pub(&mut bytes, layout.velocity_offset, Vec3::from_array(self.velocity));
-        write_vec3_pub(&mut bytes, layout.color_offset, Vec3::from_array(self.color));
+        write_vec3_pub(
+            &mut bytes,
+            layout.position_offset,
+            Vec3::from_array(self.position),
+        );
+        write_vec3_pub(
+            &mut bytes,
+            layout.velocity_offset,
+            Vec3::from_array(self.velocity),
+        );
+        write_vec3_pub(
+            &mut bytes,
+            layout.color_offset,
+            Vec3::from_array(self.color),
+        );
         write_f32_pub(&mut bytes, layout.age_offset, self.age);
         write_u32_pub(&mut bytes, layout.alive_offset, self.alive);
         write_f32_pub(&mut bytes, layout.scale_offset, self.scale);

@@ -2,9 +2,9 @@
 
 use crate::config::{
     BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff, FieldConfigEntry,
-    FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig, PaletteConfig, ParticleFieldDef,
-    ParticleFieldType, ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape,
-    UniformValueConfig, VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
+    FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig, PaletteConfig,
+    ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig,
+    SpawnShape, UniformValueConfig, VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
 };
 use std::collections::HashMap;
 
@@ -1432,7 +1432,11 @@ p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
             spawn: SpawnConfig {
                 shape: SpawnShape::Sphere { radius: 0.8 },
                 velocity: InitialVelocity::Zero,
-                color_mode: ColorMode::Uniform { r: 0.2, g: 0.3, b: 0.8 },
+                color_mode: ColorMode::Uniform {
+                    r: 0.2,
+                    g: 0.3,
+                    b: 0.8,
+                },
                 ..Default::default()
             },
             rules: vec![
@@ -1457,7 +1461,8 @@ p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
 if index < 3u && p.age < 0.1 {
     p.signal = 1.0;
 }
-"#.into(),
+"#
+                    .into(),
                 },
                 // Spread signal through adjacency connections
                 RuleConfig::Custom {
@@ -1499,7 +1504,8 @@ if t < 0.01 {
 
 // Pulse size when highly infected
 p.scale = 1.0 + p.signal * 0.5;
-"#.into(),
+"#
+                    .into(),
                 },
             ],
             vertex_effects: Vec::new(),
@@ -1516,17 +1522,171 @@ p.scale = 1.0 + p.signal * 0.5;
             custom_shaders: CustomShaderConfig::default(),
             fields: Vec::new(),
             volume_render: VolumeRenderConfig::default(),
-            particle_fields: vec![
-                ParticleFieldDef {
-                    name: "signal".into(),
-                    field_type: ParticleFieldType::F32,
-                },
-            ],
+            particle_fields: vec![ParticleFieldDef {
+                name: "signal".into(),
+                field_type: ParticleFieldType::F32,
+            }],
             mouse: MouseConfig::default(),
             adjacency_enabled: true,
             adjacency_max_neighbors: 16,
             adjacency_radius: 0.12,
             interactions: InteractionConfig::default(),
+        },
+    },
+    Preset {
+        name: "Chromatic Life",
+        description: "Emergent particle ecosystems - types attract and repel creating living patterns",
+        config: || {
+            use crate::config::{InteractionConfig, RuleMatrixCell};
+
+            // Create interaction matrix for 4 types with interesting dynamics
+            let mut interactions = InteractionConfig::with_num_types(4);
+            interactions.enabled = true;
+            let n = interactions.num_types;
+
+            // Type 0 (Red) - aggressive, chases others
+            interactions.matrix[0 * n + 0] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.15,
+                strength: 0.5,
+            });
+            interactions.matrix[0 * n + 1] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.2,
+                strength: 2.0,
+            });
+            interactions.matrix[0 * n + 2] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.15,
+                strength: 1.0,
+            });
+            interactions.matrix[0 * n + 3] = RuleMatrixCell::with_rule(RuleConfig::Separate {
+                radius: 0.1,
+                strength: 3.0,
+            });
+
+            // Type 1 (Green) - flees red, attracted to blue
+            interactions.matrix[1 * n + 0] = RuleMatrixCell::with_rule(RuleConfig::Separate {
+                radius: 0.25,
+                strength: 4.0,
+            });
+            interactions.matrix[1 * n + 1] = RuleMatrixCell::with_rule(RuleConfig::Cohere {
+                radius: 0.15,
+                strength: 1.0,
+            });
+            interactions.matrix[1 * n + 2] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.2,
+                strength: 1.5,
+            });
+            interactions.matrix[1 * n + 3] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.15,
+                strength: 0.8,
+            });
+
+            // Type 2 (Blue) - orbits around, gentle
+            interactions.matrix[2 * n + 0] = RuleMatrixCell::with_rule(RuleConfig::Separate {
+                radius: 0.15,
+                strength: 2.0,
+            });
+            interactions.matrix[2 * n + 1] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.18,
+                strength: 1.2,
+            });
+            interactions.matrix[2 * n + 2] = RuleMatrixCell::with_rules(vec![
+                RuleConfig::Cohere {
+                    radius: 0.2,
+                    strength: 0.8,
+                },
+                RuleConfig::Separate {
+                    radius: 0.05,
+                    strength: 2.0,
+                },
+            ]);
+            interactions.matrix[2 * n + 3] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.2,
+                strength: 2.0,
+            });
+
+            // Type 3 (Yellow) - catalyst, attracts everything mildly
+            interactions.matrix[3 * n + 0] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.15,
+                strength: 1.0,
+            });
+            interactions.matrix[3 * n + 1] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.15,
+                strength: 1.0,
+            });
+            interactions.matrix[3 * n + 2] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.15,
+                strength: 1.0,
+            });
+            interactions.matrix[3 * n + 3] = RuleMatrixCell::with_rule(RuleConfig::Separate {
+                radius: 0.1,
+                strength: 3.0,
+            });
+
+            SimConfig {
+                name: "Chromatic Life".into(),
+                particle_count: 8000,
+                bounds: 1.2,
+                particle_size: 0.008,
+                speed: 1.0,
+                spatial_cell_size: 0.1,
+                spatial_resolution: 32,
+                spawn: SpawnConfig {
+                    shape: SpawnShape::Sphere { radius: 0.8 },
+                    velocity: InitialVelocity::RandomDirection { speed: 0.1 },
+                    color_mode: ColorMode::Uniform {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                    },
+                    type_weights: vec![1.0, 1.0, 1.0, 1.0],
+                    ..Default::default()
+                },
+                rules: vec![
+                    RuleConfig::Drag(1.5),
+                    RuleConfig::SpeedLimit {
+                        min: 0.05,
+                        max: 0.8,
+                    },
+                    RuleConfig::BounceWalls,
+                    // Color by type
+                    RuleConfig::Custom {
+                        code: r#"
+let t = p.particle_type;
+if t == 0u {
+    p.color = vec3<f32>(1.0, 0.3, 0.2);  // Red
+} else if t == 1u {
+    p.color = vec3<f32>(0.2, 1.0, 0.4);  // Green
+} else if t == 2u {
+    p.color = vec3<f32>(0.3, 0.5, 1.0);  // Blue
+} else {
+    p.color = vec3<f32>(1.0, 0.9, 0.3);  // Yellow
+}
+// Add subtle glow based on speed
+let spd = length(p.velocity);
+p.color *= 0.7 + spd * 0.5;
+"#
+                        .into(),
+                    },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Additive,
+                    background_color: [0.02, 0.02, 0.04],
+                    trail_length: 12,
+                    shape: ParticleShapeConfig::Circle,
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: Vec::new(),
+                volume_render: VolumeRenderConfig::default(),
+                particle_fields: Vec::new(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: false,
+                adjacency_max_neighbors: 32,
+                adjacency_radius: 0.1,
+                interactions,
+            }
         },
     },
 ];
