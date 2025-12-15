@@ -492,6 +492,15 @@ fn rule_code(rule: &RuleConfig) -> String {
                     bonds_str.join(", "), stiffness, damping, rest_length)
             }
         }
+        RuleConfig::AdjacencySprings { stiffness, damping, rest_length, max_stretch } => {
+            if let Some(ms) = max_stretch {
+                format!("Rule::AdjacencySprings {{ stiffness: {:.2}, damping: {:.3}, rest_length: {:.4}, max_stretch: Some({:.2}) }}",
+                    stiffness, damping, rest_length, ms)
+            } else {
+                format!("Rule::AdjacencySprings {{ stiffness: {:.2}, damping: {:.3}, rest_length: {:.4}, max_stretch: None }}",
+                    stiffness, damping, rest_length)
+            }
+        }
 
         // State Machine
         RuleConfig::State { field, transitions } => {

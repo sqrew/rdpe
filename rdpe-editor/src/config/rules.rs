@@ -178,6 +178,9 @@ pub enum RuleConfig {
     ChainSprings { stiffness: f32, damping: f32, rest_length: f32, max_stretch: Option<f32> },
     RadialSprings { hub_stiffness: f32, ring_stiffness: f32, damping: f32, hub_length: f32, ring_length: f32 },
     BondSprings { bonds: Vec<String>, stiffness: f32, damping: f32, rest_length: f32, max_stretch: Option<f32> },
+    /// Springs applied to all neighbors in the adjacency buffer.
+    /// Creates dynamic soft-body behavior where nearby particles form temporary spring connections.
+    AdjacencySprings { stiffness: f32, damping: f32, rest_length: f32, max_stretch: Option<f32> },
 
     // === State Machine ===
     State { field: String, transitions: Vec<(u32, u32, String)> },
@@ -355,6 +358,7 @@ impl RuleConfig {
             RuleConfig::ChainSprings { .. } => "Chain Springs",
             RuleConfig::RadialSprings { .. } => "Radial Springs",
             RuleConfig::BondSprings { .. } => "Bond Springs",
+            RuleConfig::AdjacencySprings { .. } => "Adjacency Springs",
             // State Machine
             RuleConfig::State { .. } => "State",
             RuleConfig::Agent { .. } => "Agent",
@@ -439,7 +443,8 @@ impl RuleConfig {
             RuleConfig::OnSpawn { .. } => "Event Hooks",
             RuleConfig::Grow { .. } | RuleConfig::Decay { .. } | RuleConfig::Die { .. } |
             RuleConfig::DLA { .. } | RuleConfig::Refractory { .. } => "Growth & Decay",
-            RuleConfig::ChainSprings { .. } | RuleConfig::RadialSprings { .. } | RuleConfig::BondSprings { .. } => "Springs",
+            RuleConfig::ChainSprings { .. } | RuleConfig::RadialSprings { .. } | RuleConfig::BondSprings { .. } |
+            RuleConfig::AdjacencySprings { .. } => "Springs",
             RuleConfig::State { .. } | RuleConfig::Agent { .. } => "State Machine",
             RuleConfig::Switch { .. } => "Conditional",
             RuleConfig::TypedNeighbor { .. } => "Typed",
@@ -850,6 +855,12 @@ impl RuleConfig {
                 rest_length: *rest_length,
                 max_stretch: *max_stretch,
             },
+            RuleConfig::AdjacencySprings { stiffness, damping, rest_length, max_stretch } => Rule::AdjacencySprings {
+                stiffness: *stiffness,
+                damping: *damping,
+                rest_length: *rest_length,
+                max_stretch: *max_stretch,
+            },
             // State Machine
             RuleConfig::State { field, transitions } => Rule::State {
                 field: field.clone(),
@@ -1121,6 +1132,11 @@ impl RuleConfig {
             RuleConfig::Accumulate { .. } | RuleConfig::Signal { .. } | RuleConfig::Absorb { .. } |
             RuleConfig::OnCollisionDynamic { .. } | RuleConfig::TypedNeighbor { .. }
         )
+    }
+
+    /// Check if this rule requires the adjacency buffer
+    pub fn requires_adjacency(&self) -> bool {
+        matches!(self, RuleConfig::AdjacencySprings { .. })
     }
 
     /// Generate custom neighbor WGSL for rules that need editor-specific handling.

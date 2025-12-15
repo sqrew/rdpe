@@ -157,6 +157,12 @@ impl SimConfig {
             || self.visuals.spatial_grid_opacity > 0.0
             || self.rules.iter().any(|r| r.requires_neighbors())
             || self.interactions.enabled
+            || (self.adjacency_enabled && self.needs_adjacency())
+    }
+
+    /// Check if the simulation needs the adjacency buffer.
+    pub fn needs_adjacency(&self) -> bool {
+        self.rules.iter().any(|r| r.requires_adjacency())
     }
 
     /// Create a FieldRegistry from the config.

@@ -412,6 +412,12 @@ pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
                 rest_length: 0.05,
                 max_stretch: Some(1.5),
             }),
+            ("Adjacency Springs", || RuleConfig::AdjacencySprings {
+                stiffness: 200.0,
+                damping: 10.0,
+                rest_length: 0.1,
+                max_stretch: Some(1.5),
+            }),
         ],
     ),
     (

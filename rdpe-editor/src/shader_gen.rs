@@ -261,8 +261,10 @@ pub fn generate_compute_shader(config: &SimConfig) -> String {
     // Convert rules to rdpe::Rule and then to WGSL
     let rules: Vec<Rule> = config.rules.iter().map(|r| r.to_rule()).collect();
 
-    // Check if any rules need neighbor access
-    let needs_neighbors = rules.iter().any(|r| r.requires_neighbors());
+    // Check if any rules need neighbor access (including interaction matrix and adjacency)
+    let needs_neighbors = rules.iter().any(|r| r.requires_neighbors())
+        || (config.interactions.enabled && config.interactions.has_any_rules())
+        || (config.adjacency_enabled && config.needs_adjacency());
 
     if needs_neighbors {
         generate_compute_shader_with_neighbors(config, &rules, &particle_struct)

@@ -1687,6 +1687,41 @@ pub enum Rule {
         ring_length: f32,
     },
 
+    /// Springs applied to all neighbors in the adjacency buffer.
+    ///
+    /// Creates dynamic soft-body behavior where nearby particles form temporary
+    /// spring connections based on the pre-computed adjacency buffer.
+    ///
+    /// Requires adjacency to be enabled in the simulation config.
+    ///
+    /// # Fields
+    ///
+    /// - `stiffness` - Spring constant (Hooke's law)
+    /// - `damping` - Velocity damping along spring direction
+    /// - `rest_length` - Natural spring length
+    /// - `max_stretch` - Optional maximum stretch ratio before extra stiffening
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// .with_rule(Rule::AdjacencySprings {
+    ///     stiffness: 200.0,
+    ///     damping: 10.0,
+    ///     rest_length: 0.1,
+    ///     max_stretch: Some(1.5),
+    /// })
+    /// ```
+    AdjacencySprings {
+        /// Spring stiffness (Hooke's constant).
+        stiffness: f32,
+        /// Damping coefficient.
+        damping: f32,
+        /// Rest length (natural spring length).
+        rest_length: f32,
+        /// Maximum stretch ratio before extra stiffening.
+        max_stretch: Option<f32>,
+    },
+
     /// Buoyancy force based on height.
     ///
     /// Particles below `surface_y` experience upward force proportional to
@@ -5164,6 +5199,50 @@ impl Rule {
                 )
             }
 
+            Rule::AdjacencySprings { stiffness, damping, rest_length, max_stretch } => {
+                let max_stretch_code = if let Some(max_s) = max_stretch {
+                    format!(
+                        r#"
+                    let stretch_ratio = dist / {rest_length};
+                    if stretch_ratio > {max_s} {{
+                        stretch = stretch + (stretch_ratio - {max_s}) * {rest_length} * 10.0;
+                    }}"#
+                    )
+                } else {
+                    String::new()
+                };
+
+                format!(
+                    r#"    // Adjacency springs (dynamic soft-body)
+    {{
+        var adj_spring_force = vec3<f32>(0.0);
+        let dt = uniforms.delta_time;
+        let adj_count = adjacency_count(index);
+
+        for (var i = 0u; i < adj_count; i++) {{
+            let other_idx = adjacency_neighbor(index, i);
+            let other = particles[other_idx];
+            let delta = other.position - p.position;
+            let dist = length(delta);
+
+            if dist > 0.0001 {{
+                let dir = delta / dist;
+                var stretch = dist - {rest_length};{max_stretch_code}
+                adj_spring_force += dir * stretch * {stiffness};
+                let rel_vel = dot(other.velocity - p.velocity, dir);
+                adj_spring_force += dir * rel_vel * {damping};
+            }}
+        }}
+
+        p.velocity += adj_spring_force * dt;
+    }}"#,
+                    rest_length = rest_length,
+                    stiffness = stiffness,
+                    damping = damping,
+                    max_stretch_code = max_stretch_code,
+                )
+            }
+
             Rule::Buoyancy { surface_y, density } => {
                 format!(
                     r#"    // Buoyancy
@@ -6858,6 +6937,11 @@ impl Rule {
                 (format!("{}_damping", prefix), UniformValue::F32(*damping)),
                 (format!("{}_hub_length", prefix), UniformValue::F32(*hub_length)),
                 (format!("{}_ring_length", prefix), UniformValue::F32(*ring_length)),
+            ],
+            Rule::AdjacencySprings { stiffness, damping, rest_length, .. } => vec![
+                (format!("{}_stiffness", prefix), UniformValue::F32(*stiffness)),
+                (format!("{}_damping", prefix), UniformValue::F32(*damping)),
+                (format!("{}_rest_length", prefix), UniformValue::F32(*rest_length)),
             ],
             // Dynamic custom rules - extract user-defined params
             Rule::CustomDynamic { params, .. } |

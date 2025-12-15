@@ -1115,6 +1115,44 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
                 }
             });
         }
+        RuleConfig::AdjacencySprings {
+            stiffness,
+            damping,
+            rest_length,
+            max_stretch,
+        } => {
+            ui.label("⚠ Requires Adjacency to be enabled");
+            ui.separator();
+            changed |= ui
+                .add(
+                    egui::Slider::new(stiffness, 1.0..=1000.0)
+                        .logarithmic(true)
+                        .text("Stiffness"),
+                )
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(damping, 0.0..=50.0).text("Damping"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(rest_length, 0.001..=1.0).text("Rest Length"))
+                .changed();
+            ui.horizontal(|ui| {
+                let mut has_max = max_stretch.is_some();
+                if ui.checkbox(&mut has_max, "Max Stretch").changed() {
+                    if has_max {
+                        *max_stretch = Some(1.5);
+                    } else {
+                        *max_stretch = None;
+                    }
+                    changed = true;
+                }
+                if let Some(max_s) = max_stretch {
+                    changed |= ui
+                        .add(egui::Slider::new(max_s, 1.0..=3.0).text(""))
+                        .changed();
+                }
+            });
+        }
 
         // State Machine
         RuleConfig::State { field, transitions } => {

@@ -72,17 +72,42 @@ fn main() {
     console_error_panic_hook::set_once();
 
     wasm_bindgen_futures::spawn_local(async {
-        // Configure to use WebGPU instead of WebGL
-        use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
+        // Create WebGPU instance and adapter
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::BROWSER_WEBGPU,
+            ..Default::default()
+        });
+
+        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }).await.expect("WebGPU adapter required");
+
+        // Request device from adapter
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("RDPE Device"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                    memory_hints: wgpu::MemoryHints::default(),
+                },
+                None,
+            )
+            .await
+            .expect("Failed to create device");
+
+        // Configure eframe to use our existing wgpu setup
+        use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupExisting};
 
         let web_options = eframe::WebOptions {
             wgpu_options: WgpuConfiguration {
-                wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
-                    instance_descriptor: wgpu::InstanceDescriptor {
-                        backends: wgpu::Backends::BROWSER_WEBGPU,
-                        ..Default::default()
-                    },
-                    ..Default::default()
+                wgpu_setup: WgpuSetup::Existing(WgpuSetupExisting {
+                    instance,
+                    adapter,
+                    device,
+                    queue,
                 }),
                 ..Default::default()
             },
@@ -101,14 +126,17 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("Element is not a canvas");
 
-        eframe::WebRunner::new()
+        let result = eframe::WebRunner::new()
             .start(
                 canvas,
                 web_options,
                 Box::new(|cc| Ok(Box::new(EditorApp::new(cc)))),
             )
-            .await
-            .expect("Failed to start eframe");
+            .await;
+
+        if let Err(e) = result {
+            web_sys::console::error_1(&format!("RDPE: eframe failed: {:?}", e).into());
+        }
     });
 }
 

@@ -24,6 +24,12 @@ use crate::shader_validate;
 use crate::spawn;
 use super::{SimulationResources, SimulationCallback};
 
+// Use web-time on WASM for Instant compatibility
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
 /// Embedded simulation widget that manages the simulation lifecycle and UI.
 ///
 /// This struct is the main entry point for embedding a particle simulation
@@ -53,7 +59,7 @@ pub struct EmbeddedSimulation {
     /// Current delta time.
     delta_time: f32,
     /// Last frame instant for delta time calculation.
-    last_frame: std::time::Instant,
+    last_frame: Instant,
     /// Shader compilation error message (if any).
     shader_error: Option<String>,
 }
@@ -64,7 +70,7 @@ impl EmbeddedSimulation {
         Self {
             initialized: false,
             delta_time: 0.016,
-            last_frame: std::time::Instant::now(),
+            last_frame: Instant::now(),
             shader_error: None,
         }
     }
@@ -372,7 +378,7 @@ impl EmbeddedSimulation {
     /// The `speed` parameter controls simulation speed (1.0 = normal, 0.5 = half, 2.0 = double).
     pub fn show(&mut self, ui: &mut egui::Ui, wgpu_render_state: &egui_wgpu::RenderState, speed: f32) {
         // Calculate delta time with speed multiplier
-        let now = std::time::Instant::now();
+        let now = Instant::now();
         self.delta_time = now.duration_since(self.last_frame).as_secs_f32() * speed;
         self.last_frame = now;
 

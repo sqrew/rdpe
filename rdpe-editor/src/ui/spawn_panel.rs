@@ -280,10 +280,23 @@ pub fn render_spawn_panel(ui: &mut Ui, config: &mut SimConfig) -> bool {
     ui.separator();
     ui.heading("Adjacency Buffer");
 
-    changed |= ui
-        .checkbox(&mut config.adjacency_enabled, "Enable Adjacency")
-        .on_hover_text("Pre-compute neighbor indices for graph-based operations")
-        .changed();
+    let needs_adjacency = config.needs_adjacency();
+
+    // Auto-enable adjacency if required by rules
+    if needs_adjacency && !config.adjacency_enabled {
+        config.adjacency_enabled = true;
+        changed = true;
+    }
+
+    ui.horizontal(|ui| {
+        let checkbox = ui.checkbox(&mut config.adjacency_enabled, "Enable Adjacency");
+        if needs_adjacency {
+            ui.label("(required by rules)");
+        }
+        if checkbox.on_hover_text("Pre-compute neighbor indices for graph-based operations").changed() {
+            changed = true;
+        }
+    });
 
     if config.adjacency_enabled {
         changed |= ui
