@@ -255,7 +255,7 @@ impl GridVisualization {
         queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&[opacity, 0.0_f32, 0.0, 0.0]));
     }
 
-    pub(crate) fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+    pub(crate) fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         if self.opacity > 0.0 {
             render_pass.set_pipeline(&self.pipeline);
             render_pass.set_bind_group(0, &self.bind_group, &[]);

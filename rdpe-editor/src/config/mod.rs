@@ -7,6 +7,7 @@ mod fields;
 mod interactions;
 mod mouse;
 mod particle_fields;
+mod post_process;
 mod rules;
 mod spawn;
 mod uniforms;
@@ -31,6 +32,7 @@ pub use visuals::{
     VisualsConfig, WireframeMeshConfig,
 };
 pub use volume::VolumeRenderConfig;
+pub use post_process::{PostProcessConfig, PostProcessPreset};
 
 fn default_speed() -> f32 {
     1.0
@@ -102,6 +104,9 @@ pub struct SimConfig {
     /// Type-based particle interaction matrix.
     #[serde(default)]
     pub interactions: InteractionConfig,
+    /// Post-processing effects configuration.
+    #[serde(default)]
+    pub post_process: PostProcessConfig,
 }
 
 impl Default for SimConfig {
@@ -132,6 +137,7 @@ impl Default for SimConfig {
             particle_fields: Vec::new(),
             mouse: MouseConfig::default(),
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         }
     }
 }

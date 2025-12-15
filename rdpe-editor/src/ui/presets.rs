@@ -3,8 +3,9 @@
 use crate::config::{
     BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff, FieldConfigEntry,
     FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig, PaletteConfig,
-    ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, RuleConfig, SimConfig, SpawnConfig,
-    SpawnShape, UniformValueConfig, VertexEffectConfig, VisualsConfig, VolumeRenderConfig,
+    ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, PostProcessConfig, RuleConfig,
+    SimConfig, SpawnConfig, SpawnShape, UniformValueConfig, VertexEffectConfig, VisualsConfig,
+    VolumeRenderConfig,
 };
 use std::collections::HashMap;
 
@@ -59,6 +60,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -98,6 +100,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -169,6 +172,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -213,6 +217,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         }
         },
     },
@@ -296,6 +301,7 @@ field_write(0u, p.position, 0.5);
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     // === New presets from examples ===
@@ -364,6 +370,7 @@ field_write(0u, p.position, 0.5);
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -538,6 +545,7 @@ p.color *= shimmer;
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -662,6 +670,7 @@ p.scale = 0.6 + smoothstep(1.5, 0.0, dist) * 0.6;
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -782,6 +791,7 @@ if p.particle_type == 0u && other.particle_type == 1u {
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -900,6 +910,7 @@ p.velocity = vec3<f32>(0.0, 0.0, 0.0);
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -986,6 +997,7 @@ p.color *= smoothstep(0.0, 0.3, height) * (1.0 - smoothstep(0.7, 1.0, height));
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1048,6 +1060,7 @@ p.scale = 0.5 + glow * 0.5;
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1119,6 +1132,7 @@ if p.position.y > 1.4 {
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1248,6 +1262,7 @@ p.scale = 0.5 + core_intensity * 1.0;
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1404,6 +1419,7 @@ if is_bell {
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1554,6 +1570,7 @@ if abs(p.position.z) > 1.0 { p.position.z *= 0.95; }
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1644,6 +1661,7 @@ p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1759,6 +1777,7 @@ p.scale = 1.0 + p.signal * 0.5;
             adjacency_max_neighbors: 16,
             adjacency_radius: 0.12,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
     Preset {
@@ -1914,6 +1933,7 @@ p.color *= 0.7 + spd * 0.5;
                 adjacency_max_neighbors: 32,
                 adjacency_radius: 0.1,
                 interactions,
+                post_process: PostProcessConfig::default(),
             }
         },
     },
@@ -2035,6 +2055,7 @@ p.scale = 0.5 + temp * 0.8;
             adjacency_max_neighbors: 32,
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig::default(),
         },
     },
 ];

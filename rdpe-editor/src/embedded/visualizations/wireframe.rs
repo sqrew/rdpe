@@ -361,7 +361,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         )
     }
 
-    pub(crate) fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+    pub(crate) fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         // 6 vertices per line, lines_per_mesh * num_particles instances

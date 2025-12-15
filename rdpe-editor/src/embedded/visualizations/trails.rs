@@ -390,7 +390,7 @@ impl TrailVisualization {
         compute_pass.dispatch_workgroups(self.num_particles.div_ceil(256), 1, 1);
     }
 
-    pub(crate) fn render(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+    pub(crate) fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         render_pass.set_pipeline(&self.render_pipeline);
         render_pass.set_bind_group(0, &self.render_bind_group, &[]);
         // Draw 6 vertices per line segment, (trail_length - 1) segments per particle

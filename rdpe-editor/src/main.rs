@@ -16,8 +16,9 @@ use rdpe_editor::embedded::{EmbeddedSimulation, SimulationResources, ParsedParti
 use rdpe_editor::ui::{
     render_custom_panel, render_effects_panel, render_export_button, render_export_window,
     render_fields_panel, render_interactions_panel, render_mouse_panel, render_particle_fields_panel,
-    render_rules_panel, render_spawn_panel, render_visuals_panel, render_volume_panel,
-    AddUniformState, ExportPanelState, InteractionsPanelState, ShaderContext, PRESETS,
+    render_post_process_panel, render_rules_panel, render_spawn_panel, render_visuals_panel,
+    render_volume_panel, AddUniformState, ExportPanelState, InteractionsPanelState, ShaderContext,
+    PRESETS,
 };
 
 /// Sidebar tabs for organizing the editor panels
@@ -859,6 +860,15 @@ impl eframe::App for EditorApp {
 
                             // Vertex effects
                             render_effects_panel(ui, &mut self.config.vertex_effects);
+
+                            ui.separator();
+
+                            // Post-processing
+                            let pp_changed =
+                                render_post_process_panel(ui, &mut self.config.post_process);
+                            if pp_changed {
+                                self.needs_rebuild = true;
+                            }
                         }
                         SidebarTab::Mouse => {
                             let old_power = self.config.mouse.power;

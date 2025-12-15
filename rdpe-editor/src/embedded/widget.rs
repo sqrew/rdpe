@@ -153,6 +153,9 @@ impl EmbeddedSimulation {
             config.adjacency_enabled,
             config.adjacency_max_neighbors,
             config.adjacency_radius,
+            &config.post_process,
+            0, // Viewport size not known yet, will be set on first show()
+            0,
         );
 
         wgpu_render_state
@@ -258,6 +261,9 @@ impl EmbeddedSimulation {
             config.adjacency_enabled,
             config.adjacency_max_neighbors,
             config.adjacency_radius,
+            &config.post_process,
+            0, // Viewport size not known yet, will be set on first show()
+            0,
         );
 
         // Replace resources
@@ -351,6 +357,9 @@ impl EmbeddedSimulation {
             config.adjacency_enabled,
             config.adjacency_max_neighbors,
             config.adjacency_radius,
+            &config.post_process,
+            0, // Viewport size not known yet, will be set on first show()
+            0,
         );
 
         // Replace resources

@@ -10,6 +10,7 @@
 //! - `paint()` issues draw commands
 
 mod picking;
+mod post_process;
 mod visualizations;
 mod widget;
 
@@ -17,8 +18,10 @@ pub use picking::{PickingRequest, PickingState};
 pub use widget::EmbeddedSimulation;
 
 use crate::config::{
-    BlendModeConfig, MouseConfig, ParticleLayout, UniformValueConfig, VolumeRenderConfig,
+    BlendModeConfig, MouseConfig, ParticleLayout, PostProcessConfig, UniformValueConfig,
+    VolumeRenderConfig,
 };
+use post_process::PostProcessState;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use rdpe::{
@@ -211,6 +214,12 @@ pub struct SimulationResources {
     // Mouse interaction
     mouse_state: MouseState,
     mouse_config: MouseConfig,
+
+    // Post-processing (optional)
+    post_process: Option<PostProcessState>,
+    post_process_enabled: bool,
+    post_process_config: PostProcessConfig,
+    surface_format: wgpu::TextureFormat,
 }
 
 impl SimulationResources {
@@ -246,6 +255,9 @@ impl SimulationResources {
         adjacency_enabled: bool,
         adjacency_max_neighbors: u32,
         adjacency_radius: f32,
+        post_process_config: &PostProcessConfig,
+        viewport_width: u32,
+        viewport_height: u32,
     ) -> Self {
         let particle_stride = layout.stride;
         // Create particle buffer
@@ -760,6 +772,19 @@ impl SimulationResources {
         // Store empty bind group if fields or adjacency need it
         let needs_empty_bind_group = field_bind_group.is_some() || adjacency_bind_group.is_some();
 
+        // Create post-processing state if enabled
+        let post_process = if post_process_config.enabled && viewport_width > 0 && viewport_height > 0 {
+            Some(PostProcessState::new(
+                device,
+                target_format,
+                viewport_width,
+                viewport_height,
+                post_process_config,
+            ))
+        } else {
+            None
+        };
+
         Self {
             compute_pipeline,
             render_pipeline,
@@ -800,6 +825,10 @@ impl SimulationResources {
             trails,
             mouse_state: MouseState::default(),
             mouse_config,
+            post_process,
+            post_process_enabled: post_process_config.enabled,
+            post_process_config: post_process_config.clone(),
+            surface_format: target_format,
         }
     }
 
@@ -810,6 +839,8 @@ impl SimulationResources {
         queue: &wgpu::Queue,
         delta_time: f32,
         aspect_ratio: f32,
+        viewport_width: u32,
+        viewport_height: u32,
     ) -> Vec<wgpu::CommandBuffer> {
         // Update time
         if !self.paused {
@@ -846,8 +877,26 @@ impl SimulationResources {
         );
         queue.write_buffer(&self.uniform_buffer, 0, &uniform_data);
 
+        // Update post-process state (resize, uniforms)
+        if let Some(ref mut pp) = self.post_process {
+            if self.post_process_enabled && viewport_width > 0 && viewport_height > 0 {
+                // Resize checks internally if dimensions changed
+                pp.resize(device, self.surface_format, viewport_width, viewport_height, &self.post_process_config);
+                pp.update_uniforms(queue, self.time, self.post_process_config.intensity);
+            }
+        } else if self.post_process_enabled && viewport_width > 0 && viewport_height > 0 {
+            // Create post-process state if newly enabled
+            self.post_process = Some(PostProcessState::new(
+                device,
+                self.surface_format,
+                viewport_width,
+                viewport_height,
+                &self.post_process_config,
+            ));
+        }
+
         // Run compute pass if not paused
-        let result = if !self.paused {
+        let mut command_buffers = if !self.paused {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Compute Encoder"),
             });
@@ -935,11 +984,47 @@ impl SimulationResources {
             }
         }
 
-        result
+        // If post-processing is enabled, render the scene to the intermediate texture
+        if self.has_post_process() {
+            if let Some(ref pp) = self.post_process {
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Scene Render Encoder"),
+                });
+
+                {
+                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Scene Render to Intermediate"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: pp.get_intermediate_view(),
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color {
+                                    r: self.background_color.x as f64,
+                                    g: self.background_color.y as f64,
+                                    b: self.background_color.z as f64,
+                                    a: 1.0,
+                                }),
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+
+                    // Render the scene to the intermediate texture
+                    self.paint_scene(&mut render_pass);
+                }
+
+                command_buffers.push(encoder.finish());
+            }
+        }
+
+        command_buffers
     }
 
-    /// Issue draw commands.
-    pub fn paint(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+    /// Internal method to paint the scene (used by both direct rendering and post-process)
+    fn paint_scene(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         // Render volume first (behind particles) - uses additive blending
         if let Some(ref volume_state) = self.volume_render_state {
             render_pass.set_pipeline(&volume_state.pipeline);
@@ -974,9 +1059,93 @@ impl SimulationResources {
         }
     }
 
+    /// Issue draw commands.
+    pub fn paint(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+        // If post-processing is enabled, the scene was already rendered to the intermediate
+        // texture in prepare(). Now we just need to render the post-process pass.
+        if self.has_post_process() {
+            if let Some(ref pp) = self.post_process {
+                pp.render(render_pass);
+            }
+        } else {
+            // No post-processing - render scene directly
+            self.paint_scene(render_pass);
+        }
+    }
+
     /// Check if volume rendering is enabled.
     pub fn has_volume_render(&self) -> bool {
         self.volume_render_state.is_some()
+    }
+
+    /// Check if post-processing is enabled and active.
+    pub fn has_post_process(&self) -> bool {
+        self.post_process.is_some() && self.post_process_enabled
+    }
+
+    /// Get the intermediate texture view for post-process rendering.
+    /// When post-processing is enabled, the scene should render to this texture.
+    pub fn get_post_process_intermediate_view(&self) -> Option<&wgpu::TextureView> {
+        self.post_process.as_ref().map(|pp| pp.get_intermediate_view())
+    }
+
+    /// Render the post-process pass to the final output.
+    pub fn render_post_process(&self, render_pass: &mut wgpu::RenderPass<'static>) {
+        if let Some(ref pp) = self.post_process {
+            pp.render(render_pass);
+        }
+    }
+
+    /// Update post-process state (time, resize).
+    pub fn update_post_process(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        config: &PostProcessConfig,
+    ) {
+        if let Some(ref mut pp) = self.post_process {
+            // Resize if needed
+            pp.resize(device, self.surface_format, width, height, config);
+            // Update uniforms
+            pp.update_uniforms(queue, self.time, config.intensity);
+        } else if config.enabled && width > 0 && height > 0 {
+            // Create post-process state if newly enabled
+            self.post_process = Some(PostProcessState::new(
+                device,
+                self.surface_format,
+                width,
+                height,
+                config,
+            ));
+            self.post_process_enabled = true;
+        }
+
+        // Update enabled state
+        self.post_process_enabled = config.enabled;
+    }
+
+    /// Rebuild post-process pipeline (for shader changes).
+    pub fn rebuild_post_process_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        config: &PostProcessConfig,
+    ) {
+        if let Some(ref mut pp) = self.post_process {
+            pp.rebuild_pipeline(device, self.surface_format, config);
+        }
+    }
+
+    /// Update post-process configuration.
+    pub fn set_post_process_config(&mut self, config: PostProcessConfig) {
+        self.post_process_config = config;
+        self.post_process_enabled = self.post_process_config.enabled;
+    }
+
+    /// Get current post-process config.
+    pub fn post_process_config(&self) -> &PostProcessConfig {
+        &self.post_process_config
     }
 
     /// Set pause state.
@@ -1194,7 +1363,14 @@ impl egui_wgpu::CallbackTrait for SimulationCallback {
         let aspect = self.viewport_width / self.viewport_height.max(1.0);
 
         if let Some(sim) = resources.get_mut::<SimulationResources>() {
-            sim.prepare(device, queue, self.delta_time, aspect)
+            sim.prepare(
+                device,
+                queue,
+                self.delta_time,
+                aspect,
+                self.viewport_width as u32,
+                self.viewport_height as u32,
+            )
         } else {
             vec![]
         }
