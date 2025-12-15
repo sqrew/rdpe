@@ -1,6 +1,6 @@
 //! UI panel for post-processing effects
 
-use crate::config::{PostProcessConfig, PostProcessPreset};
+use crate::config::{PostProcessConfig, PostProcessEffect};
 use eframe::egui;
 
 pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConfig) -> bool {
@@ -9,7 +9,7 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
     ui.heading("Post-Processing");
 
     ui.label(
-        egui::RichText::new("Apply fullscreen effects after rendering")
+        egui::RichText::new("Stack multiple fullscreen effects")
             .small()
             .weak(),
     );
@@ -29,105 +29,245 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
 
     ui.separator();
 
-    // Preset selection
-    let variants = PostProcessPreset::variants();
-    let mut preset_idx = match config.preset {
-        PostProcessPreset::None => 0,
-        PostProcessPreset::Bloom => 1,
-        PostProcessPreset::ChromaticAberration => 2,
-        PostProcessPreset::Vignette => 3,
-        PostProcessPreset::CRT => 4,
-        PostProcessPreset::Custom => 5,
-    };
-
+    // Add effect menu
     ui.horizontal(|ui| {
-        ui.label("Preset:");
-        if egui::ComboBox::from_id_salt("pp_preset")
-            .selected_text(variants[preset_idx])
-            .show_index(ui, &mut preset_idx, variants.len(), |i| variants[i])
-            .changed()
-        {
-            let new_preset = match preset_idx {
-                0 => PostProcessPreset::None,
-                1 => PostProcessPreset::Bloom,
-                2 => PostProcessPreset::ChromaticAberration,
-                3 => PostProcessPreset::Vignette,
-                4 => PostProcessPreset::CRT,
-                5 => PostProcessPreset::Custom,
-                _ => PostProcessPreset::None,
-            };
-            // When changing preset, clear custom shader (use preset default)
-            if config.preset != new_preset {
-                config.preset = new_preset;
-                config.custom_shader.clear();
+        ui.label("Add Effect:");
+        ui.menu_button("+ Add...", |ui| {
+            ui.set_min_width(150.0);
+
+            ui.label(egui::RichText::new("Glow & Light").small().strong());
+            if ui.button("Bloom").clicked() {
+                config.effects.push(PostProcessEffect::default_bloom());
                 changed = true;
+                ui.close_menu();
             }
-        }
+            if ui.button("Edge Glow").clicked() {
+                config.effects.push(PostProcessEffect::default_edge_glow());
+                changed = true;
+                ui.close_menu();
+            }
+
+            ui.separator();
+            ui.label(egui::RichText::new("Color").small().strong());
+            if ui.button("Grayscale").clicked() {
+                config.effects.push(PostProcessEffect::default_grayscale());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Sepia").clicked() {
+                config.effects.push(PostProcessEffect::default_sepia());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Posterize").clicked() {
+                config.effects.push(PostProcessEffect::default_posterize());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Invert").clicked() {
+                config.effects.push(PostProcessEffect::default_invert());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Tint").clicked() {
+                config.effects.push(PostProcessEffect::default_tint());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Duotone").clicked() {
+                config.effects.push(PostProcessEffect::default_duotone());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Thermal").clicked() {
+                config.effects.push(PostProcessEffect::default_thermal());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Color Adjust").clicked() {
+                config.effects.push(PostProcessEffect::default_color_adjust());
+                changed = true;
+                ui.close_menu();
+            }
+
+            ui.separator();
+            ui.label(egui::RichText::new("Distortion").small().strong());
+            if ui.button("Chromatic Aberration").clicked() {
+                config.effects.push(PostProcessEffect::default_chromatic_aberration());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Barrel Distortion").clicked() {
+                config.effects.push(PostProcessEffect::default_barrel_distortion());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Ripple").clicked() {
+                config.effects.push(PostProcessEffect::default_ripple());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Radial Blur").clicked() {
+                config.effects.push(PostProcessEffect::default_radial_blur());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Kaleidoscope").clicked() {
+                config.effects.push(PostProcessEffect::default_kaleidoscope());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Emboss").clicked() {
+                config.effects.push(PostProcessEffect::default_emboss());
+                changed = true;
+                ui.close_menu();
+            }
+
+            ui.separator();
+            ui.label(egui::RichText::new("Film & Retro").small().strong());
+            if ui.button("CRT").clicked() {
+                config.effects.push(PostProcessEffect::default_crt());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Film Grain").clicked() {
+                config.effects.push(PostProcessEffect::default_film_grain());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Pixelate").clicked() {
+                config.effects.push(PostProcessEffect::default_pixelate());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Night Vision").clicked() {
+                config.effects.push(PostProcessEffect::default_night_vision());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Glitch").clicked() {
+                config.effects.push(PostProcessEffect::default_glitch());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Dithering").clicked() {
+                config.effects.push(PostProcessEffect::default_dithering());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Halftone").clicked() {
+                config.effects.push(PostProcessEffect::default_halftone());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Scanline Interlace").clicked() {
+                config.effects.push(PostProcessEffect::default_scanline_interlace());
+                changed = true;
+                ui.close_menu();
+            }
+
+            ui.separator();
+            ui.label(egui::RichText::new("Enhancement").small().strong());
+            if ui.button("Sharpen").clicked() {
+                config.effects.push(PostProcessEffect::default_sharpen());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Blur").clicked() {
+                config.effects.push(PostProcessEffect::default_blur());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Vignette").clicked() {
+                config.effects.push(PostProcessEffect::default_vignette());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Sobel Outline").clicked() {
+                config.effects.push(PostProcessEffect::default_sobel_outline());
+                changed = true;
+                ui.close_menu();
+            }
+
+            ui.separator();
+            if ui.button("Custom (WGSL)").clicked() {
+                config.effects.push(PostProcessEffect::default_custom());
+                changed = true;
+                ui.close_menu();
+            }
+        });
     });
 
-    // Show preset description
-    let description = match config.preset {
-        PostProcessPreset::None => "No effect - passthrough",
-        PostProcessPreset::Bloom => "Bright areas glow and bleed light",
-        PostProcessPreset::ChromaticAberration => "RGB color fringing at edges",
-        PostProcessPreset::Vignette => "Darkened edges around screen",
-        PostProcessPreset::CRT => "Retro CRT monitor with scanlines",
-        PostProcessPreset::Custom => "Write your own shader code",
-    };
-    ui.label(egui::RichText::new(description).small().weak());
-
-    ui.add_space(8.0);
-
-    // Intensity slider (only for presets that use it)
-    if config.preset != PostProcessPreset::None {
-        ui.separator();
-
-        changed |= ui
-            .add(egui::Slider::new(&mut config.intensity, 0.0..=2.0).text("Intensity"))
-            .on_hover_text("Effect strength (0 = off, 1 = normal, 2 = strong)")
-            .changed();
+    if config.effects.is_empty() {
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new("No effects added. Use the dropdown above to add effects.")
+                .weak()
+                .italics(),
+        );
+        return changed;
     }
 
-    // Custom shader editor
-    if config.preset == PostProcessPreset::Custom {
-        ui.separator();
-        ui.heading("Custom Shader");
-
-        ui.label(
-            egui::RichText::new(
-                "Write WGSL code to process pixels. Available variables:\n\
-                 - uv: vec2<f32> (0-1 screen coords)\n\
-                 - input_texture, input_sampler (scene texture)\n\
-                 - pp_time, pp_intensity, pp_resolution",
-            )
+    ui.add_space(4.0);
+    ui.label(
+        egui::RichText::new(format!("{} effect(s) in chain", config.effects.len()))
             .small()
             .weak(),
-        );
+    );
 
-        ui.add_space(4.0);
+    ui.separator();
 
-        // If custom shader is empty, show the default template
-        if config.custom_shader.is_empty() {
-            config.custom_shader = config.preset.default_shader().to_string();
-        }
+    // Effect list
+    let mut to_remove: Option<usize> = None;
+    let mut to_move_up: Option<usize> = None;
+    let mut to_move_down: Option<usize> = None;
+    let effect_count = config.effects.len();
 
-        // Code editor
-        let editor = egui::TextEdit::multiline(&mut config.custom_shader)
-            .code_editor()
-            .desired_width(f32::INFINITY)
-            .desired_rows(15);
+    for (i, effect) in config.effects.iter_mut().enumerate() {
+        ui.push_id(i, |ui| {
+            egui::CollapsingHeader::new(format!("{}. {}", i + 1, effect.name()))
+                .default_open(true)
+                .show(ui, |ui| {
+                    // Description
+                    ui.label(egui::RichText::new(effect.description()).small().weak());
 
-        if ui.add(editor).changed() {
-            changed = true;
-        }
+                    ui.add_space(4.0);
 
-        ui.add_space(4.0);
+                    // Controls row
+                    ui.horizontal(|ui| {
+                        if ui.small_button("🗑 Remove").clicked() {
+                            to_remove = Some(i);
+                        }
+                        if i > 0 && ui.small_button("⬆ Up").clicked() {
+                            to_move_up = Some(i);
+                        }
+                        if i < effect_count - 1 && ui.small_button("⬇ Down").clicked() {
+                            to_move_down = Some(i);
+                        }
+                    });
 
-        // Reset to default button
-        if ui.button("Reset to Default").clicked() {
-            config.custom_shader = PostProcessPreset::Custom.default_shader().to_string();
-            changed = true;
-        }
+                    ui.separator();
+
+                    // Effect-specific parameters
+                    changed |= render_effect_params(ui, effect);
+                });
+        });
+
+        ui.add_space(2.0);
+    }
+
+    // Handle removals and moves
+    if let Some(idx) = to_remove {
+        config.effects.remove(idx);
+        changed = true;
+    }
+    if let Some(idx) = to_move_up {
+        config.effects.swap(idx, idx - 1);
+        changed = true;
+    }
+    if let Some(idx) = to_move_down {
+        config.effects.swap(idx, idx + 1);
+        changed = true;
     }
 
     // Info about rebuild requirement
@@ -138,6 +278,246 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
                 .small()
                 .color(egui::Color32::YELLOW),
         );
+    }
+
+    changed
+}
+
+/// Render parameter controls for a specific effect
+fn render_effect_params(ui: &mut egui::Ui, effect: &mut PostProcessEffect) -> bool {
+    let mut changed = false;
+
+    match effect {
+        PostProcessEffect::Bloom { intensity, threshold, radius } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(threshold, 0.0..=1.0).text("Threshold"))
+                .on_hover_text("Brightness threshold for bloom").changed();
+            changed |= ui.add(egui::Slider::new(radius, 0.001..=0.01).text("Radius"))
+                .on_hover_text("Blur radius").changed();
+        }
+
+        PostProcessEffect::ChromaticAberration { intensity, radial } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.checkbox(radial, "Radial").on_hover_text("Aberration radiates from center").changed();
+        }
+
+        PostProcessEffect::Vignette { intensity, softness } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(softness, 0.0..=1.0).text("Softness")).changed();
+        }
+
+        PostProcessEffect::CRT { intensity, scanline_count } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(scanline_count, 100.0..=600.0).text("Scanlines")).changed();
+        }
+
+        PostProcessEffect::FilmGrain { intensity, size } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(size, 0.5..=4.0).text("Grain Size")).changed();
+        }
+
+        PostProcessEffect::Pixelate { block_size } => {
+            changed |= ui.add(egui::Slider::new(block_size, 1.0..=16.0).text("Block Size")).changed();
+        }
+
+        PostProcessEffect::Grayscale { intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+        }
+
+        PostProcessEffect::Sepia { intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+        }
+
+        PostProcessEffect::Posterize { levels } => {
+            changed |= ui.add(egui::Slider::new(levels, 2.0..=16.0).text("Color Levels")).changed();
+        }
+
+        PostProcessEffect::Sharpen { intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+        }
+
+        PostProcessEffect::Blur { radius } => {
+            changed |= ui.add(egui::Slider::new(radius, 0.5..=8.0).text("Radius")).changed();
+        }
+
+        PostProcessEffect::EdgeGlow { intensity, threshold, color } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(threshold, 0.0..=1.0).text("Threshold")).changed();
+            ui.horizontal(|ui| {
+                ui.label("Glow Color:");
+                let mut rgb = egui::Color32::from_rgb(
+                    (color[0] * 255.0) as u8,
+                    (color[1] * 255.0) as u8,
+                    (color[2] * 255.0) as u8,
+                );
+                if ui.color_edit_button_srgba(&mut rgb).changed() {
+                    color[0] = rgb.r() as f32 / 255.0;
+                    color[1] = rgb.g() as f32 / 255.0;
+                    color[2] = rgb.b() as f32 / 255.0;
+                    changed = true;
+                }
+            });
+        }
+
+        PostProcessEffect::BarrelDistortion { intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, -1.0..=1.0).text("Distortion"))
+                .on_hover_text("Positive = barrel, Negative = pincushion").changed();
+        }
+
+        PostProcessEffect::Ripple { intensity, frequency, speed } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=0.1).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(frequency, 5.0..=50.0).text("Frequency")).changed();
+            changed |= ui.add(egui::Slider::new(speed, 0.5..=10.0).text("Speed")).changed();
+        }
+
+        PostProcessEffect::Glitch { intensity, block_size } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(block_size, 0.01..=0.2).text("Block Size")).changed();
+        }
+
+        PostProcessEffect::NightVision { intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+        }
+
+        PostProcessEffect::Invert { intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+        }
+
+        PostProcessEffect::Tint { color, intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+            ui.horizontal(|ui| {
+                ui.label("Tint Color:");
+                let mut rgb = egui::Color32::from_rgb(
+                    (color[0] * 255.0) as u8,
+                    (color[1] * 255.0) as u8,
+                    (color[2] * 255.0) as u8,
+                );
+                if ui.color_edit_button_srgba(&mut rgb).changed() {
+                    color[0] = rgb.r() as f32 / 255.0;
+                    color[1] = rgb.g() as f32 / 255.0;
+                    color[2] = rgb.b() as f32 / 255.0;
+                    changed = true;
+                }
+            });
+        }
+
+        PostProcessEffect::Custom { code } => {
+            ui.label(
+                egui::RichText::new(
+                    "Write WGSL code. Use 'current_color' variable.\n\
+                     Available: uv, pp_time, pp_resolution, input_texture, input_sampler",
+                )
+                .small()
+                .weak(),
+            );
+
+            let editor = egui::TextEdit::multiline(code)
+                .code_editor()
+                .desired_width(f32::INFINITY)
+                .desired_rows(8);
+
+            if ui.add(editor).changed() {
+                changed = true;
+            }
+        }
+
+        PostProcessEffect::Dithering { intensity, scale } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(scale, 0.5..=4.0).text("Scale"))
+                .on_hover_text("Size of dither pattern").changed();
+        }
+
+        PostProcessEffect::Halftone { scale, angle } => {
+            changed |= ui.add(egui::Slider::new(scale, 2.0..=16.0).text("Dot Size")).changed();
+            changed |= ui.add(egui::Slider::new(angle, 0.0..=90.0).text("Angle"))
+                .on_hover_text("Rotation of dot pattern in degrees").changed();
+        }
+
+        PostProcessEffect::ScanlineInterlace { intensity, speed } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(speed, 0.0..=10.0).text("Speed"))
+                .on_hover_text("How fast the interlace pattern moves").changed();
+        }
+
+        PostProcessEffect::RadialBlur { intensity, center_x, center_y } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(center_x, 0.0..=1.0).text("Center X")).changed();
+            changed |= ui.add(egui::Slider::new(center_y, 0.0..=1.0).text("Center Y")).changed();
+        }
+
+        PostProcessEffect::Kaleidoscope { segments, rotation } => {
+            changed |= ui.add(egui::Slider::new(segments, 2.0..=16.0).text("Segments"))
+                .on_hover_text("Number of mirror segments").changed();
+            changed |= ui.add(egui::Slider::new(rotation, 0.0..=360.0).text("Rotation"))
+                .on_hover_text("Pattern rotation in degrees").changed();
+        }
+
+        PostProcessEffect::Emboss { intensity, angle } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=3.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(angle, 0.0..=360.0).text("Light Angle"))
+                .on_hover_text("Direction of emboss light in degrees").changed();
+        }
+
+        PostProcessEffect::Duotone { color1, color2 } => {
+            ui.horizontal(|ui| {
+                ui.label("Dark Color:");
+                let mut rgb1 = egui::Color32::from_rgb(
+                    (color1[0] * 255.0) as u8,
+                    (color1[1] * 255.0) as u8,
+                    (color1[2] * 255.0) as u8,
+                );
+                if ui.color_edit_button_srgba(&mut rgb1).changed() {
+                    color1[0] = rgb1.r() as f32 / 255.0;
+                    color1[1] = rgb1.g() as f32 / 255.0;
+                    color1[2] = rgb1.b() as f32 / 255.0;
+                    changed = true;
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Light Color:");
+                let mut rgb2 = egui::Color32::from_rgb(
+                    (color2[0] * 255.0) as u8,
+                    (color2[1] * 255.0) as u8,
+                    (color2[2] * 255.0) as u8,
+                );
+                if ui.color_edit_button_srgba(&mut rgb2).changed() {
+                    color2[0] = rgb2.r() as f32 / 255.0;
+                    color2[1] = rgb2.g() as f32 / 255.0;
+                    color2[2] = rgb2.b() as f32 / 255.0;
+                    changed = true;
+                }
+            });
+        }
+
+        PostProcessEffect::Thermal { intensity } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=1.0).text("Intensity")).changed();
+        }
+
+        PostProcessEffect::ColorAdjust { brightness, contrast, saturation } => {
+            changed |= ui.add(egui::Slider::new(brightness, -1.0..=1.0).text("Brightness")).changed();
+            changed |= ui.add(egui::Slider::new(contrast, 0.0..=3.0).text("Contrast")).changed();
+            changed |= ui.add(egui::Slider::new(saturation, 0.0..=3.0).text("Saturation")).changed();
+        }
+
+        PostProcessEffect::SobelOutline { intensity, threshold, color } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(threshold, 0.0..=1.0).text("Threshold"))
+                .on_hover_text("Edge detection threshold").changed();
+            ui.horizontal(|ui| {
+                ui.label("Outline Color:");
+                let mut rgb = egui::Color32::from_rgb(
+                    (color[0] * 255.0) as u8,
+                    (color[1] * 255.0) as u8,
+                    (color[2] * 255.0) as u8,
+                );
+                if ui.color_edit_button_srgba(&mut rgb).changed() {
+                    color[0] = rgb.r() as f32 / 255.0;
+                    color[1] = rgb.g() as f32 / 255.0;
+                    color[2] = rgb.b() as f32 / 255.0;
+                    changed = true;
+                }
+            });
+        }
     }
 
     changed

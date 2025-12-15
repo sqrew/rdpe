@@ -91,8 +91,8 @@ impl Camera {
 
             pitch_min: -1.5,
             pitch_max: 1.5,
-            distance_min: 0.5,
-            distance_max: 50.0,
+            distance_min: 0.1,
+            distance_max: 100.0,
 
             default_yaw,
             default_pitch,
@@ -141,7 +141,9 @@ impl Camera {
     /// Positive values zoom in, negative zoom out.
     pub fn zoom(&mut self, amount: f32) {
         self.distance_target -= amount * self.zoom_speed * self.distance_target;
-        self.distance_target = self.distance_target.clamp(self.distance_min, self.distance_max);
+        self.distance_target = self
+            .distance_target
+            .clamp(self.distance_min, self.distance_max);
     }
 
     /// Move the target forward/backward relative to camera view.

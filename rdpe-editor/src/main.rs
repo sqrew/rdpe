@@ -32,6 +32,7 @@ enum SidebarTab {
     Particle,
     Fields,
     Visuals,
+    PostProcess,
     Mouse,
     Custom,
 }
@@ -786,6 +787,7 @@ impl eframe::App for EditorApp {
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Particle, "Particle");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::PostProcess, "Post FX");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Mouse, "Mouse");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Custom, "Custom");
                 });
@@ -867,10 +869,8 @@ impl eframe::App for EditorApp {
 
                             // Vertex effects
                             render_effects_panel(ui, &mut self.config.vertex_effects);
-
-                            ui.separator();
-
-                            // Post-processing
+                        }
+                        SidebarTab::PostProcess => {
                             let pp_changed =
                                 render_post_process_panel(ui, &mut self.config.post_process);
                             if pp_changed {

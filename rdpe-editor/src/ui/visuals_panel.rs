@@ -273,14 +273,62 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
 
     // Wireframe
     egui::ComboBox::from_label("Wireframe")
-        .selected_text(format!("{:?}", visuals.wireframe))
+        .selected_text(visuals.wireframe.name())
         .show_ui(ui, |ui| {
             ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::None, "None");
+            ui.separator();
+            ui.label(egui::RichText::new("Platonic Solids").small().weak());
             ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Tetrahedron, "Tetrahedron");
             ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Cube, "Cube");
             ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Octahedron, "Octahedron");
             ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Icosahedron, "Icosahedron");
+            ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Dodecahedron, "Dodecahedron");
+            ui.separator();
+            ui.label(egui::RichText::new("Other Shapes").small().weak());
+            ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Diamond, "Diamond");
+            ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Pyramid, "Pyramid");
+            ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Star, "Star");
+            ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Cross, "Cross");
+            ui.selectable_value(&mut visuals.wireframe, WireframeMeshConfig::Axes, "Axes (XYZ)");
+            ui.separator();
+            ui.label(egui::RichText::new("Parametric").small().weak());
+            if ui.selectable_label(matches!(visuals.wireframe, WireframeMeshConfig::Prism { .. }), "Prism").clicked() {
+                visuals.wireframe = WireframeMeshConfig::Prism { sides: 6 };
+            }
+            if ui.selectable_label(matches!(visuals.wireframe, WireframeMeshConfig::Spiral { .. }), "Spiral").clicked() {
+                visuals.wireframe = WireframeMeshConfig::Spiral { turns: 2.0, segments: 24 };
+            }
+            if ui.selectable_label(matches!(visuals.wireframe, WireframeMeshConfig::Sphere { .. }), "Sphere").clicked() {
+                visuals.wireframe = WireframeMeshConfig::Sphere { rings: 6, segments: 12 };
+            }
         });
+
+    // Show parameters for parametric shapes
+    match &mut visuals.wireframe {
+        WireframeMeshConfig::Prism { sides } => {
+            ui.horizontal(|ui| {
+                ui.label("Sides:");
+                ui.add(egui::DragValue::new(sides).range(3..=12));
+            });
+        }
+        WireframeMeshConfig::Spiral { turns, segments } => {
+            ui.horizontal(|ui| {
+                ui.label("Turns:");
+                ui.add(egui::DragValue::new(turns).speed(0.1).range(0.5..=5.0));
+                ui.label("Segments:");
+                ui.add(egui::DragValue::new(segments).range(8..=64));
+            });
+        }
+        WireframeMeshConfig::Sphere { rings, segments } => {
+            ui.horizontal(|ui| {
+                ui.label("Rings:");
+                ui.add(egui::DragValue::new(rings).range(2..=16));
+                ui.label("Segments:");
+                ui.add(egui::DragValue::new(segments).range(4..=24));
+            });
+        }
+        _ => {}
+    }
 
     if visuals.wireframe != WireframeMeshConfig::None {
         ui.add(egui::Slider::new(&mut visuals.wireframe_thickness, 0.001..=0.02).text("Line Thickness"));

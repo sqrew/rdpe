@@ -12,7 +12,7 @@ use crate::config::PostProcessConfig;
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PostProcessUniforms {
     pub time: f32,
-    pub intensity: f32,
+    pub _pad: f32,  // Padding for alignment
     pub resolution: [f32; 2],
 }
 
@@ -63,7 +63,7 @@ impl PostProcessState {
         // Create uniform buffer
         let uniforms = PostProcessUniforms {
             time: 0.0,
-            intensity: config.intensity,
+            _pad: 0.0,
             resolution: [width as f32, height as f32],
         };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -197,10 +197,10 @@ impl PostProcessState {
     }
 
     /// Update uniforms
-    pub fn update_uniforms(&self, queue: &wgpu::Queue, time: f32, intensity: f32) {
+    pub fn update_uniforms(&self, queue: &wgpu::Queue, time: f32) {
         let uniforms = PostProcessUniforms {
             time,
-            intensity,
+            _pad: 0.0,
             resolution: [self.width as f32, self.height as f32],
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
@@ -314,7 +314,7 @@ fn create_post_process_pipeline(
 }
 
 fn generate_post_process_shader(config: &PostProcessConfig) -> String {
-    let user_code = config.shader_code();
+    let effect_code = config.generate_shader();
 
     format!(
         r#"
@@ -322,7 +322,7 @@ fn generate_post_process_shader(config: &PostProcessConfig) -> String {
 
 struct PostProcessUniforms {{
     pp_time: f32,
-    pp_intensity: f32,
+    _pad: f32,
     pp_resolution: vec2<f32>,
 }}
 
@@ -360,13 +360,12 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {{
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
     let uv = in.uv;
     let pp_time = pp_uniforms.pp_time;
-    let pp_intensity = pp_uniforms.pp_intensity;
     let pp_resolution = pp_uniforms.pp_resolution;
 
     var output_color: vec4<f32>;
 
-    // User post-process code
-    {user_code}
+    // Generated effect chain
+    {effect_code}
 
     return output_color;
 }}

@@ -26,7 +26,7 @@ pub use fields::{CustomShaderConfig, FieldConfigEntry, FieldTypeConfig};
 pub use interactions::{InteractionConfig, RuleMatrixCell, RuleMatrixPreset, ParticleTypeInfo, DEFAULT_NUM_TYPES, MAX_NUM_TYPES};
 pub use mouse::{MouseConfig, MousePower};
 pub use particle_fields::{ParticleFieldDef, ParticleFieldInfo, ParticleFieldType, ParticleLayout};
-pub use post_process::{PostProcessConfig, PostProcessPreset};
+pub use post_process::{PostProcessConfig, PostProcessEffect};
 pub use rules::{AgentStateConfig, Falloff, RuleConfig, TransitionConfig};
 pub use spawn::{ColorMode, InitialVelocity, SpawnConfig, SpawnShape};
 pub use uniforms::UniformValueConfig;

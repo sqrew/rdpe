@@ -222,7 +222,7 @@ impl ColorMappingConfig {
 }
 
 /// Wireframe mesh for 3D particle rendering
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub enum WireframeMeshConfig {
     #[default]
     None,
@@ -230,9 +230,41 @@ pub enum WireframeMeshConfig {
     Cube,
     Octahedron,
     Icosahedron,
+    Diamond,
+    Axes,
+    Star,
+    Spiral { turns: f32, segments: u32 },
+    Dodecahedron,
+    Pyramid,
+    Prism { sides: u32 },
+    Cross,
+    Sphere { rings: u32, segments: u32 },
 }
 
 impl WireframeMeshConfig {
+    pub fn variants() -> &'static [&'static str] {
+        &["None", "Tetrahedron", "Cube", "Octahedron", "Icosahedron", "Diamond", "Axes", "Star", "Spiral", "Dodecahedron", "Pyramid", "Prism", "Cross", "Sphere"]
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            WireframeMeshConfig::None => "None",
+            WireframeMeshConfig::Tetrahedron => "Tetrahedron",
+            WireframeMeshConfig::Cube => "Cube",
+            WireframeMeshConfig::Octahedron => "Octahedron",
+            WireframeMeshConfig::Icosahedron => "Icosahedron",
+            WireframeMeshConfig::Diamond => "Diamond",
+            WireframeMeshConfig::Axes => "Axes",
+            WireframeMeshConfig::Star => "Star",
+            WireframeMeshConfig::Spiral { .. } => "Spiral",
+            WireframeMeshConfig::Dodecahedron => "Dodecahedron",
+            WireframeMeshConfig::Pyramid => "Pyramid",
+            WireframeMeshConfig::Prism { .. } => "Prism",
+            WireframeMeshConfig::Cross => "Cross",
+            WireframeMeshConfig::Sphere { .. } => "Sphere",
+        }
+    }
+
     pub fn to_mesh(&self) -> Option<rdpe::WireframeMesh> {
         match self {
             WireframeMeshConfig::None => None,
@@ -240,7 +272,162 @@ impl WireframeMeshConfig {
             WireframeMeshConfig::Cube => Some(rdpe::WireframeMesh::cube()),
             WireframeMeshConfig::Octahedron => Some(rdpe::WireframeMesh::octahedron()),
             WireframeMeshConfig::Icosahedron => Some(rdpe::WireframeMesh::icosahedron()),
+            WireframeMeshConfig::Diamond => Some(rdpe::WireframeMesh::diamond()),
+            WireframeMeshConfig::Axes => Some(rdpe::WireframeMesh::axes()),
+            WireframeMeshConfig::Star => Some(rdpe::WireframeMesh::star()),
+            WireframeMeshConfig::Spiral { turns, segments } => Some(rdpe::WireframeMesh::spiral(*turns, *segments)),
+            WireframeMeshConfig::Dodecahedron => Some(Self::make_dodecahedron()),
+            WireframeMeshConfig::Pyramid => Some(Self::make_pyramid()),
+            WireframeMeshConfig::Prism { sides } => Some(Self::make_prism(*sides)),
+            WireframeMeshConfig::Cross => Some(Self::make_cross()),
+            WireframeMeshConfig::Sphere { rings, segments } => Some(Self::make_sphere(*rings, *segments)),
         }
+    }
+
+    /// Dodecahedron (12 pentagonal faces, 30 edges)
+    fn make_dodecahedron() -> rdpe::WireframeMesh {
+        let phi = (1.0 + 5.0_f32.sqrt()) / 2.0;
+        let s = 0.25;
+
+        // 20 vertices
+        let vertices = [
+            // Cube vertices
+            glam::Vec3::new(1.0, 1.0, 1.0) * s,
+            glam::Vec3::new(1.0, 1.0, -1.0) * s,
+            glam::Vec3::new(1.0, -1.0, 1.0) * s,
+            glam::Vec3::new(1.0, -1.0, -1.0) * s,
+            glam::Vec3::new(-1.0, 1.0, 1.0) * s,
+            glam::Vec3::new(-1.0, 1.0, -1.0) * s,
+            glam::Vec3::new(-1.0, -1.0, 1.0) * s,
+            glam::Vec3::new(-1.0, -1.0, -1.0) * s,
+            // Rectangle vertices
+            glam::Vec3::new(0.0, phi, 1.0/phi) * s,
+            glam::Vec3::new(0.0, phi, -1.0/phi) * s,
+            glam::Vec3::new(0.0, -phi, 1.0/phi) * s,
+            glam::Vec3::new(0.0, -phi, -1.0/phi) * s,
+            glam::Vec3::new(1.0/phi, 0.0, phi) * s,
+            glam::Vec3::new(-1.0/phi, 0.0, phi) * s,
+            glam::Vec3::new(1.0/phi, 0.0, -phi) * s,
+            glam::Vec3::new(-1.0/phi, 0.0, -phi) * s,
+            glam::Vec3::new(phi, 1.0/phi, 0.0) * s,
+            glam::Vec3::new(phi, -1.0/phi, 0.0) * s,
+            glam::Vec3::new(-phi, 1.0/phi, 0.0) * s,
+            glam::Vec3::new(-phi, -1.0/phi, 0.0) * s,
+        ];
+
+        let edges = [
+            (0, 8), (0, 12), (0, 16), (1, 9), (1, 14), (1, 16),
+            (2, 10), (2, 12), (2, 17), (3, 11), (3, 14), (3, 17),
+            (4, 8), (4, 13), (4, 18), (5, 9), (5, 15), (5, 18),
+            (6, 10), (6, 13), (6, 19), (7, 11), (7, 15), (7, 19),
+            (8, 9), (10, 11), (12, 13), (14, 15), (16, 17), (18, 19),
+        ];
+
+        rdpe::WireframeMesh::custom(
+            edges.iter().map(|(i, j)| (vertices[*i], vertices[*j])).collect()
+        )
+    }
+
+    /// Square pyramid (5 vertices, 8 edges)
+    fn make_pyramid() -> rdpe::WireframeMesh {
+        let s = 0.5;
+        let h = 0.6;
+
+        let apex = glam::Vec3::new(0.0, h, 0.0);
+        let b0 = glam::Vec3::new(-s, -h/2.0, -s);
+        let b1 = glam::Vec3::new(s, -h/2.0, -s);
+        let b2 = glam::Vec3::new(s, -h/2.0, s);
+        let b3 = glam::Vec3::new(-s, -h/2.0, s);
+
+        rdpe::WireframeMesh::custom(vec![
+            // Base
+            (b0, b1), (b1, b2), (b2, b3), (b3, b0),
+            // Apex to base
+            (apex, b0), (apex, b1), (apex, b2), (apex, b3),
+        ])
+    }
+
+    /// Prism with n sides
+    fn make_prism(sides: u32) -> rdpe::WireframeMesh {
+        let sides = sides.max(3);
+        let s = 0.4;
+        let h = 0.5;
+
+        let mut lines = Vec::new();
+        let mut top_verts = Vec::new();
+        let mut bot_verts = Vec::new();
+
+        for i in 0..sides {
+            let angle = (i as f32 / sides as f32) * std::f32::consts::TAU;
+            let x = angle.cos() * s;
+            let z = angle.sin() * s;
+            top_verts.push(glam::Vec3::new(x, h, z));
+            bot_verts.push(glam::Vec3::new(x, -h, z));
+        }
+
+        for i in 0..sides as usize {
+            let next = (i + 1) % sides as usize;
+            // Top face
+            lines.push((top_verts[i], top_verts[next]));
+            // Bottom face
+            lines.push((bot_verts[i], bot_verts[next]));
+            // Vertical edges
+            lines.push((top_verts[i], bot_verts[i]));
+        }
+
+        rdpe::WireframeMesh::custom(lines)
+    }
+
+    /// 3D cross
+    fn make_cross() -> rdpe::WireframeMesh {
+        let s = 0.5;
+        rdpe::WireframeMesh::custom(vec![
+            (glam::Vec3::new(-s, 0.0, 0.0), glam::Vec3::new(s, 0.0, 0.0)),
+            (glam::Vec3::new(0.0, -s, 0.0), glam::Vec3::new(0.0, s, 0.0)),
+            (glam::Vec3::new(0.0, 0.0, -s), glam::Vec3::new(0.0, 0.0, s)),
+        ])
+    }
+
+    /// Wireframe sphere (UV sphere)
+    fn make_sphere(rings: u32, segments: u32) -> rdpe::WireframeMesh {
+        let rings = rings.max(2);
+        let segments = segments.max(3);
+        let r = 0.5;
+
+        let mut lines = Vec::new();
+
+        // Generate vertices
+        let mut verts: Vec<Vec<glam::Vec3>> = Vec::new();
+        for i in 0..=rings {
+            let phi = (i as f32 / rings as f32) * std::f32::consts::PI;
+            let mut ring = Vec::new();
+            for j in 0..segments {
+                let theta = (j as f32 / segments as f32) * std::f32::consts::TAU;
+                ring.push(glam::Vec3::new(
+                    r * phi.sin() * theta.cos(),
+                    r * phi.cos(),
+                    r * phi.sin() * theta.sin(),
+                ));
+            }
+            verts.push(ring);
+        }
+
+        // Horizontal rings
+        for ring in &verts {
+            for j in 0..segments as usize {
+                let next = (j + 1) % segments as usize;
+                lines.push((ring[j], ring[next]));
+            }
+        }
+
+        // Vertical lines
+        for j in 0..segments as usize {
+            for i in 0..rings as usize {
+                lines.push((verts[i][j], verts[i + 1][j]));
+            }
+        }
+
+        rdpe::WireframeMesh::custom(lines)
     }
 }
 

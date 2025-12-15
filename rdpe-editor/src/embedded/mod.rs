@@ -882,7 +882,7 @@ impl SimulationResources {
             if self.post_process_enabled && viewport_width > 0 && viewport_height > 0 {
                 // Resize checks internally if dimensions changed
                 pp.resize(device, self.surface_format, viewport_width, viewport_height, &self.post_process_config);
-                pp.update_uniforms(queue, self.time, self.post_process_config.intensity);
+                pp.update_uniforms(queue, self.time);
             }
         } else if self.post_process_enabled && viewport_width > 0 && viewport_height > 0 {
             // Create post-process state if newly enabled
@@ -1109,7 +1109,7 @@ impl SimulationResources {
             // Resize if needed
             pp.resize(device, self.surface_format, width, height, config);
             // Update uniforms
-            pp.update_uniforms(queue, self.time, config.intensity);
+            pp.update_uniforms(queue, self.time);
         } else if config.enabled && width > 0 && height > 0 {
             // Create post-process state if newly enabled
             self.post_process = Some(PostProcessState::new(
