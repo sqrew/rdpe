@@ -231,6 +231,20 @@ fn generate_early_mouse_power_code(power: &MousePower) -> String {
     power.to_early_wgsl()
 }
 
+/// Generate emitter WGSL code for all configured emitters.
+fn generate_emitter_code(config: &SimConfig) -> String {
+    if config.emitters.is_empty() {
+        return "// No emitters configured".to_string();
+    }
+
+    let mut code = String::new();
+    for (i, emitter) in config.emitters.iter().enumerate() {
+        code.push_str(&emitter.to_wgsl(i));
+        code.push_str("\n\n");
+    }
+    code
+}
+
 /// Generate custom uniform fields for the Uniforms struct.
 fn generate_custom_uniform_fields(config: &SimConfig) -> String {
     if config.custom_uniforms.is_empty() {
@@ -293,6 +307,9 @@ fn generate_compute_shader_simple(config: &SimConfig, rules: &[Rule], particle_s
     // Generate mouse power code
     let mouse_power_code = generate_mouse_power_code(&config.mouse.power);
     let early_mouse_power_code = generate_early_mouse_power_code(&config.mouse.power);
+
+    // Generate emitter code
+    let emitter_code = generate_emitter_code(config);
 
     format!(r#"
 // ============================================
@@ -361,9 +378,15 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
     // ============================================
 {early_mouse_power_code}
 
+    // ============================================
+    // Emitters (can spawn into dead particle slots)
+    // ============================================
+    let num_particles = arrayLength(&particles);
+{emitter_code}
+
     // Skip dead particles for remaining logic
     if (p.alive == 0u) {{
-        particles[idx] = p;  // Write back in case early power revived it
+        particles[idx] = p;  // Write back in case emitter revived it
         return;
     }}
 
@@ -399,6 +422,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
         field_count_decl = if has_fields { format!("let field_count = {}u;", config.fields.len()) } else { String::new() },
         rules_code = indent_code(&rules_code, "    "),
         early_mouse_power_code = indent_code(&early_mouse_power_code, "    "),
+        emitter_code = indent_code(&emitter_code, "    "),
         mouse_power_code = indent_code(&mouse_power_code, "    "),
     )
 }
@@ -469,6 +493,9 @@ fn generate_compute_shader_with_neighbors(config: &SimConfig, rules: &[Rule], pa
     // Generate mouse power code
     let mouse_power_code = generate_mouse_power_code(&config.mouse.power);
     let early_mouse_power_code = generate_early_mouse_power_code(&config.mouse.power);
+
+    // Generate emitter code
+    let emitter_code = generate_emitter_code(config);
 
     format!(r#"
 // ============================================
@@ -562,9 +589,15 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
     // ============================================
 {early_mouse_power_code}
 
+    // ============================================
+    // Emitters (can spawn into dead particle slots)
+    // ============================================
+    let num_particles = arrayLength(&particles);
+{emitter_code}
+
     // Skip dead particles for remaining logic
     if (p.alive == 0u) {{
-        particles[idx] = p;  // Write back in case early power revived it
+        particles[idx] = p;  // Write back in case emitter revived it
         return;
     }}
 
@@ -677,6 +710,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {{
         post_neighbor_code = indent_code(&post_neighbor_code, "    "),
         simple_rules_code = indent_code(&simple_rules_code, "    "),
         early_mouse_power_code = indent_code(&early_mouse_power_code, "    "),
+        emitter_code = indent_code(&emitter_code, "    "),
         mouse_power_code = indent_code(&mouse_power_code, "    "),
     )
 }

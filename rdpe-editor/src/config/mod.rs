@@ -3,6 +3,7 @@
 //! These types represent simulation configurations that can be serialized
 //! to JSON and loaded by the runner.
 
+mod emitters;
 mod fields;
 mod interactions;
 mod mouse;
@@ -20,10 +21,12 @@ use std::fs;
 use std::path::Path;
 
 // Re-export all types from submodules
+pub use emitters::EmitterConfig;
 pub use fields::{CustomShaderConfig, FieldConfigEntry, FieldTypeConfig};
 pub use interactions::{InteractionConfig, RuleMatrixCell, RuleMatrixPreset, ParticleTypeInfo, DEFAULT_NUM_TYPES, MAX_NUM_TYPES};
 pub use mouse::{MouseConfig, MousePower};
 pub use particle_fields::{ParticleFieldDef, ParticleFieldInfo, ParticleFieldType, ParticleLayout};
+pub use post_process::{PostProcessConfig, PostProcessPreset};
 pub use rules::{AgentStateConfig, Falloff, RuleConfig, TransitionConfig};
 pub use spawn::{ColorMode, InitialVelocity, SpawnConfig, SpawnShape};
 pub use uniforms::UniformValueConfig;
@@ -32,7 +35,6 @@ pub use visuals::{
     VisualsConfig, WireframeMeshConfig,
 };
 pub use volume::VolumeRenderConfig;
-pub use post_process::{PostProcessConfig, PostProcessPreset};
 
 fn default_speed() -> f32 {
     1.0
@@ -107,6 +109,9 @@ pub struct SimConfig {
     /// Post-processing effects configuration.
     #[serde(default)]
     pub post_process: PostProcessConfig,
+    /// Particle emitters for runtime spawning.
+    #[serde(default)]
+    pub emitters: Vec<EmitterConfig>,
 }
 
 impl Default for SimConfig {
@@ -138,6 +143,7 @@ impl Default for SimConfig {
             mouse: MouseConfig::default(),
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         }
     }
 }

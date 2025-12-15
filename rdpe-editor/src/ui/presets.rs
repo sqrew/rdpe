@@ -61,6 +61,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -101,6 +102,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -173,6 +175,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -218,6 +221,7 @@ pub static PRESETS: &[Preset] = &[
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         }
         },
     },
@@ -302,6 +306,7 @@ field_write(0u, p.position, 0.5);
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     // === New presets from examples ===
@@ -371,6 +376,7 @@ field_write(0u, p.position, 0.5);
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -546,118 +552,78 @@ p.color *= shimmer;
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
         name: "Galaxy Formation",
-        description: "Emergent galaxy from N-body gravitational collapse of a rotating gas cloud",
+        description: "Galaxy with central gravity and N-body stellar dynamics",
         config: || SimConfig {
             name: "Galaxy Formation".into(),
-            particle_count: 800,
-            bounds: 2.5,
-            particle_size: 0.025,
+            particle_count: 2000,
+            bounds: 3.0,
+            particle_size: 0.015,
             speed: 1.0,
             spatial_cell_size: 0.3,
             spatial_resolution: 32,
             spawn: SpawnConfig {
-                shape: SpawnShape::Sphere { radius: 0.01 },
-                velocity: InitialVelocity::Zero,
-                color_mode: ColorMode::Uniform { r: 1.0, g: 1.0, b: 1.0 },
+                // Start as a disk directly
+                shape: SpawnShape::Shell { inner: 0.2, outer: 1.2 },
+                velocity: InitialVelocity::Swirl { speed: 0.5 },
+                color_mode: ColorMode::Uniform { r: 1.0, g: 0.9, b: 0.7 },
                 ..Default::default()
             },
             rules: vec![
-                // N-body gravity - every star pulls on nearby stars
+                // Central gravity - pulls everything inward
+                RuleConfig::PointGravity {
+                    point: [0.0, 0.0, 0.0],
+                    strength: 0.8,
+                    softening: 0.1,
+                },
+                // Vortex - provides continuous rotation to balance gravity
+                RuleConfig::Vortex {
+                    center: [0.0, 0.0, 0.0],
+                    axis: [0.0, 1.0, 0.0],
+                    strength: 1.2,
+                },
+                // Weak N-body for local clumping and spiral arms
                 RuleConfig::NBodyGravity {
-                    strength: 0.08,
-                    softening: 0.08,
-                    radius: 2.5,
+                    strength: 0.03,
+                    softening: 0.05,
+                    radius: 0.4,
                 },
-                // Initialize as rotating proto-galactic cloud
+                // Keep it flat and color by radius
                 RuleConfig::Custom {
                     code: r#"
-if uniforms.time < 0.02 {
-    var seed = f32(index) * 13.37 + 0.7;
+// Flatten to disk
+p.velocity.y *= 0.92;
+p.position.y *= 0.95;
 
-    // Create a flattened rotating cloud with density variations
-    // Use rejection sampling for disk-like distribution
-    let u = rand(&seed);
-    let r = sqrt(u) * 1.2;  // sqrt for uniform disk distribution
-    let theta = rand(&seed) * 6.283;
-
-    // Add some clumpiness - proto-galactic density perturbations
-    let clump_angle = floor(rand(&seed) * 5.0) * 1.257;  // 5 seed clumps
-    let clump_strength = rand(&seed) * 0.3;
-    let theta_adj = theta + sin(theta * 2.0 + clump_angle) * clump_strength;
-
-    // Vertical distribution - thicker near center (proto-bulge)
-    let z_scale = 0.15 * (1.0 - r * 0.5);
-    let z = (rand(&seed) - 0.5) * z_scale;
-
-    p.position = vec3<f32>(
-        r * cos(theta_adj),
-        z,
-        r * sin(theta_adj)
-    );
-
-    // Initial rotation - give the cloud angular momentum
-    // Velocity proportional to radius for solid-body rotation initially
-    let v_rot = r * 0.4;
-    p.velocity = vec3<f32>(
-        -sin(theta_adj) * v_rot,
-        0.0,
-        cos(theta_adj) * v_rot
-    );
-
-    // Add small random velocity dispersion (thermal motion)
-    p.velocity.x += (rand(&seed) - 0.5) * 0.1;
-    p.velocity.y += (rand(&seed) - 0.5) * 0.05;
-    p.velocity.z += (rand(&seed) - 0.5) * 0.1;
-}
-"#.into(),
-                },
-                // Dynamics and coloring
-                RuleConfig::Custom {
-                    code: r#"
-// Gentle disk flattening from gas dynamics (dissipation)
-p.velocity.y *= 0.995;
-
-// Color by velocity - shows dynamics
-let speed = length(p.velocity);
-let v_r = length(vec2<f32>(p.velocity.x, p.velocity.z));
-
-// Fast = blue-white (hot), slow = red-orange (cool)
-let temp = clamp(speed * 3.0, 0.0, 1.0);
-if temp > 0.6 {
-    let t = (temp - 0.6) / 0.4;
-    p.color = mix(vec3<f32>(0.9, 0.9, 1.0), vec3<f32>(0.7, 0.85, 1.0), t);
-} else if temp > 0.3 {
-    let t = (temp - 0.3) / 0.3;
-    p.color = mix(vec3<f32>(1.0, 0.8, 0.4), vec3<f32>(0.9, 0.9, 1.0), t);
+// Color by distance - yellow/white center to blue edge
+let r = length(vec2<f32>(p.position.x, p.position.z));
+let t = clamp(r / 1.2, 0.0, 1.0);
+if t < 0.2 {
+    // Bright core
+    p.color = vec3<f32>(1.0, 0.95, 0.85);
+    p.scale = 1.2;
+} else if t < 0.5 {
+    let s = (t - 0.2) / 0.3;
+    p.color = mix(vec3<f32>(1.0, 0.9, 0.7), vec3<f32>(0.9, 0.85, 0.95), s);
+    p.scale = 1.0 - s * 0.2;
 } else {
-    let t = temp / 0.3;
-    p.color = mix(vec3<f32>(1.0, 0.4, 0.2), vec3<f32>(1.0, 0.8, 0.4), t);
+    let s = (t - 0.5) / 0.5;
+    p.color = mix(vec3<f32>(0.9, 0.85, 0.95), vec3<f32>(0.6, 0.7, 1.0), s);
+    p.scale = 0.8 - s * 0.3;
 }
-
-// Brighter stars in denser regions (will naturally cluster)
-p.color *= 0.8 + speed * 0.5;
-
-// Size based on distance from center (inner stars appear in denser field)
-let dist = length(p.position);
-p.scale = 0.6 + smoothstep(1.5, 0.0, dist) * 0.6;
 "#.into(),
                 },
-                // Very light drag - represents dynamical friction / gas interactions
-                RuleConfig::Drag(0.08),
-                RuleConfig::SpeedLimit { min: 0.0, max: 1.5 },
+                RuleConfig::Drag(0.1),
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig {
                 blend_mode: BlendModeConfig::Additive,
                 background_color: [0.0, 0.0, 0.012],
                 trail_length: 15,
-                connections_enabled: true,
-                connections_radius: 0.15,
-                connections_color: [0.15, 0.12, 0.08],
                 ..Default::default()
             },
             custom_uniforms: HashMap::new(),
@@ -671,6 +637,7 @@ p.scale = 0.6 + smoothstep(1.5, 0.0, dist) * 0.6;
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -792,6 +759,7 @@ if p.particle_type == 0u && other.particle_type == 1u {
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -911,6 +879,7 @@ p.velocity = vec3<f32>(0.0, 0.0, 0.0);
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -998,6 +967,7 @@ p.color *= smoothstep(0.0, 0.3, height) * (1.0 - smoothstep(0.7, 1.0, height));
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1061,6 +1031,7 @@ p.scale = 0.5 + glow * 0.5;
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1133,6 +1104,7 @@ if p.position.y > 1.4 {
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1263,6 +1235,7 @@ p.scale = 0.5 + core_intensity * 1.0;
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1420,6 +1393,7 @@ if is_bell {
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1571,6 +1545,7 @@ if abs(p.position.z) > 1.0 { p.position.z *= 0.95; }
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1662,6 +1637,7 @@ p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1778,6 +1754,7 @@ p.scale = 1.0 + p.signal * 0.5;
             adjacency_radius: 0.12,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
     Preset {
@@ -1934,6 +1911,7 @@ p.color *= 0.7 + spd * 0.5;
                 adjacency_radius: 0.1,
                 interactions,
                 post_process: PostProcessConfig::default(),
+                emitters: Vec::new(),
             }
         },
     },
@@ -2056,6 +2034,7 @@ p.scale = 0.5 + temp * 0.8;
             adjacency_radius: 0.1,
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
+            emitters: Vec::new(),
         },
     },
 ];

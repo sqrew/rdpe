@@ -14,11 +14,11 @@ use std::time::Instant;
 use rdpe_editor::config::*;
 use rdpe_editor::embedded::{EmbeddedSimulation, SimulationResources, ParsedParticle};
 use rdpe_editor::ui::{
-    render_custom_panel, render_effects_panel, render_export_button, render_export_window,
-    render_fields_panel, render_interactions_panel, render_mouse_panel, render_particle_fields_panel,
-    render_post_process_panel, render_rules_panel, render_spawn_panel, render_visuals_panel,
-    render_volume_panel, AddUniformState, ExportPanelState, InteractionsPanelState, ShaderContext,
-    PRESETS,
+    render_custom_panel, render_effects_panel, render_emitters_panel, render_export_button,
+    render_export_window, render_fields_panel, render_interactions_panel, render_mouse_panel,
+    render_particle_fields_panel, render_post_process_panel, render_rules_panel, render_spawn_panel,
+    render_visuals_panel, render_volume_panel, AddUniformState, ExportPanelState,
+    InteractionsPanelState, ShaderContext, PRESETS,
 };
 
 /// Sidebar tabs for organizing the editor panels
@@ -28,6 +28,7 @@ enum SidebarTab {
     Spawn,
     Rules,
     Interactions,
+    Emitters,
     Particle,
     Fields,
     Visuals,
@@ -781,6 +782,7 @@ impl eframe::App for EditorApp {
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Spawn, "Spawn");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Rules, "Rules");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Interactions, "Types");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Emitters, "Emitters");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Particle, "Particle");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
@@ -838,6 +840,11 @@ impl eframe::App for EditorApp {
                             }
 
                             if render_interactions_panel(ui, &mut self.config.interactions, &mut self.interactions_panel_state) {
+                                self.needs_rebuild = true;
+                            }
+                        }
+                        SidebarTab::Emitters => {
+                            if render_emitters_panel(ui, &mut self.config.emitters) {
                                 self.needs_rebuild = true;
                             }
                         }

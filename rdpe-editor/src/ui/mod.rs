@@ -2,6 +2,7 @@
 
 mod custom_panel;
 mod effects_panel;
+mod emitters_panel;
 mod export_panel;
 mod fields_panel;
 mod interactions_panel;
@@ -16,6 +17,7 @@ mod presets;
 
 pub use custom_panel::{render_custom_panel, AddUniformState};
 pub use effects_panel::render_effects_panel;
+pub use emitters_panel::render_emitters_panel;
 pub use export_panel::{render_export_window, render_export_button, ExportPanelState};
 pub use fields_panel::render_fields_panel;
 pub use interactions_panel::{render_interactions_panel, InteractionsPanelState};
