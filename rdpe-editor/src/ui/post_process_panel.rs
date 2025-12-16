@@ -89,6 +89,21 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
                 changed = true;
                 ui.close_menu();
             }
+            if ui.button("Hue Shift").clicked() {
+                config.effects.push(PostProcessEffect::default_hue_shift());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Channel Mixer").clicked() {
+                config.effects.push(PostProcessEffect::default_channel_mixer());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Exposure").clicked() {
+                config.effects.push(PostProcessEffect::default_exposure());
+                changed = true;
+                ui.close_menu();
+            }
 
             ui.separator();
             ui.label(egui::RichText::new("Distortion").small().strong());
@@ -165,6 +180,11 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
                 changed = true;
                 ui.close_menu();
             }
+            if ui.button("VHS").clicked() {
+                config.effects.push(PostProcessEffect::default_vhs());
+                changed = true;
+                ui.close_menu();
+            }
 
             ui.separator();
             ui.label(egui::RichText::new("Enhancement").small().strong());
@@ -185,6 +205,11 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
             }
             if ui.button("Sobel Outline").clicked() {
                 config.effects.push(PostProcessEffect::default_sobel_outline());
+                changed = true;
+                ui.close_menu();
+            }
+            if ui.button("Letterbox").clicked() {
+                config.effects.push(PostProcessEffect::default_letterbox());
                 changed = true;
                 ui.close_menu();
             }
@@ -517,6 +542,62 @@ fn render_effect_params(ui: &mut egui::Ui, effect: &mut PostProcessEffect) -> bo
                     changed = true;
                 }
             });
+        }
+
+        PostProcessEffect::HueShift { shift } => {
+            changed |= ui.add(egui::Slider::new(shift, -1.0..=1.0).text("Hue Shift"))
+                .on_hover_text("-1 to 1 rotates through the full color wheel").changed();
+        }
+
+        PostProcessEffect::ChannelMixer { red_source, green_source, blue_source } => {
+            ui.label("Red channel from:");
+            ui.horizontal(|ui| {
+                changed |= ui.add(egui::DragValue::new(&mut red_source[0]).speed(0.01).prefix("R:")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut red_source[1]).speed(0.01).prefix("G:")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut red_source[2]).speed(0.01).prefix("B:")).changed();
+            });
+            ui.label("Green channel from:");
+            ui.horizontal(|ui| {
+                changed |= ui.add(egui::DragValue::new(&mut green_source[0]).speed(0.01).prefix("R:")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut green_source[1]).speed(0.01).prefix("G:")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut green_source[2]).speed(0.01).prefix("B:")).changed();
+            });
+            ui.label("Blue channel from:");
+            ui.horizontal(|ui| {
+                changed |= ui.add(egui::DragValue::new(&mut blue_source[0]).speed(0.01).prefix("R:")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut blue_source[1]).speed(0.01).prefix("G:")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut blue_source[2]).speed(0.01).prefix("B:")).changed();
+            });
+        }
+
+        PostProcessEffect::Exposure { exposure } => {
+            changed |= ui.add(egui::Slider::new(exposure, -3.0..=3.0).text("Exposure"))
+                .on_hover_text("Stops of exposure adjustment").changed();
+        }
+
+        PostProcessEffect::Letterbox { aspect_ratio, bar_color } => {
+            changed |= ui.add(egui::Slider::new(aspect_ratio, 1.0..=3.0).text("Aspect Ratio"))
+                .on_hover_text("2.35 = Cinemascope, 1.85 = Widescreen, 1.33 = 4:3").changed();
+            ui.horizontal(|ui| {
+                ui.label("Bar Color:");
+                let mut rgb = egui::Color32::from_rgb(
+                    (bar_color[0] * 255.0) as u8,
+                    (bar_color[1] * 255.0) as u8,
+                    (bar_color[2] * 255.0) as u8,
+                );
+                if ui.color_edit_button_srgba(&mut rgb).changed() {
+                    bar_color[0] = rgb.r() as f32 / 255.0;
+                    bar_color[1] = rgb.g() as f32 / 255.0;
+                    bar_color[2] = rgb.b() as f32 / 255.0;
+                    changed = true;
+                }
+            });
+        }
+
+        PostProcessEffect::VHS { intensity, tracking_noise } => {
+            changed |= ui.add(egui::Slider::new(intensity, 0.0..=2.0).text("Intensity")).changed();
+            changed |= ui.add(egui::Slider::new(tracking_noise, 0.0..=2.0).text("Tracking Noise"))
+                .on_hover_text("Horizontal tracking errors").changed();
         }
     }
 

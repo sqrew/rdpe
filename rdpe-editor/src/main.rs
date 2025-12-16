@@ -170,6 +170,8 @@ struct EditorApp {
     rebuild_timer: Option<f32>,
     /// Editable copy of selected particle (for live editing)
     editing_particle: Option<(u32, ParsedParticle)>,
+    /// Fullscreen mode - hides all UI panels
+    fullscreen_mode: bool,
 }
 
 impl EditorApp {
@@ -204,6 +206,7 @@ impl EditorApp {
             selected_tab: SidebarTab::default(),
             rebuild_timer: None,
             editing_particle: None,
+            fullscreen_mode: false,
         }
     }
 }
@@ -365,6 +368,16 @@ impl eframe::App for EditorApp {
         let wgpu_render_state = frame.wgpu_render_state();
         let delta_time = ctx.input(|i| i.stable_dt);
 
+        // Fullscreen mode toggle (F11 to toggle, Escape to exit)
+        ctx.input(|i| {
+            if i.key_pressed(egui::Key::F11) {
+                self.fullscreen_mode = !self.fullscreen_mode;
+            }
+            if i.key_pressed(egui::Key::Escape) && self.fullscreen_mode {
+                self.fullscreen_mode = false;
+            }
+        });
+
         // Auto-rebuild: detect config changes from previous frame and start/reset debounce timer
         // Compare against previous_config (not applied_config) so we only reset timer on actual changes
         let config_changed = {
@@ -453,10 +466,13 @@ impl eframe::App for EditorApp {
             }
         }
 
-        // Export window (floating)
-        render_export_window(ctx, &mut self.export_panel_state, &self.config, delta_time);
+        // Export window (floating) - only show when not fullscreen
+        if !self.fullscreen_mode {
+            render_export_window(ctx, &mut self.export_panel_state, &self.config, delta_time);
+        }
 
-        // Menu bar
+        // Menu bar - only show when not fullscreen
+        if !self.fullscreen_mode {
         egui::TopBottomPanel::top("menu").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
@@ -561,8 +577,10 @@ impl eframe::App for EditorApp {
                 });
             });
         });
+        } // end if !fullscreen_mode for menu bar
 
-        // Status bar
+        // Status bar - only show when not fullscreen
+        if !self.fullscreen_mode {
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 // Status message with timeout
@@ -589,6 +607,7 @@ impl eframe::App for EditorApp {
                 });
             });
         });
+        } // end if !fullscreen_mode for status bar
 
         // Particle Inspector panel (shows when a particle is selected)
         // Get currently selected particle info from GPU
@@ -625,6 +644,8 @@ impl eframe::App for EditorApp {
         }
 
         let mut should_clear_selection = false;
+        // Only show particle inspector when not in fullscreen mode
+        if !self.fullscreen_mode {
         if let Some((idx, ref mut particle)) = self.editing_particle {
             let mut particle_changed = false;
             let mut clear_clicked = false;
@@ -762,11 +783,13 @@ impl eframe::App for EditorApp {
                 should_clear_selection = true;
             }
         }
+        } // end if !fullscreen_mode for particle inspector
         if should_clear_selection {
             self.editing_particle = None;
         }
 
-        // Right panel: Settings with tabs
+        // Right panel: Settings with tabs - only show when not fullscreen
+        if !self.fullscreen_mode {
         egui::SidePanel::right("settings")
             .min_width(350.0)
             .default_width(400.0)
@@ -917,6 +940,7 @@ impl eframe::App for EditorApp {
                     }
                 });
             });
+        } // end if !fullscreen_mode for right panel
 
         // Central panel: Simulation viewport
         egui::CentralPanel::default()
@@ -933,6 +957,19 @@ impl eframe::App for EditorApp {
                     ui.centered_and_justified(|ui| {
                         ui.label("wgpu not available - simulation requires GPU");
                     });
+                }
+
+                // Fullscreen mode hint (fades away after a few seconds)
+                if self.fullscreen_mode {
+                    egui::Area::new(egui::Id::new("fullscreen_hint"))
+                        .anchor(egui::Align2::CENTER_BOTTOM, [0.0, -20.0])
+                        .show(ui.ctx(), |ui| {
+                            ui.label(
+                                egui::RichText::new("Press F11 or Escape to exit fullscreen")
+                                    .color(egui::Color32::from_rgba_unmultiplied(255, 255, 255, 180))
+                                    .small()
+                            );
+                        });
                 }
 
                 // Show shader error overlay if there's an error

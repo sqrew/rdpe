@@ -156,6 +156,30 @@ pub enum PostProcessEffect {
         threshold: f32,
         color: [f32; 3],
     },
+    /// Hue shift - rotate colors around the color wheel
+    HueShift {
+        shift: f32,
+    },
+    /// Channel mixer - swap/blend RGB channels
+    ChannelMixer {
+        red_source: [f32; 3],
+        green_source: [f32; 3],
+        blue_source: [f32; 3],
+    },
+    /// Exposure - exponential brightness curve
+    Exposure {
+        exposure: f32,
+    },
+    /// Letterbox - cinematic black bars
+    Letterbox {
+        aspect_ratio: f32,
+        bar_color: [f32; 3],
+    },
+    /// VHS / Bad TV effect
+    VHS {
+        intensity: f32,
+        tracking_noise: f32,
+    },
 }
 
 impl PostProcessEffect {
@@ -191,6 +215,11 @@ impl PostProcessEffect {
             PostProcessEffect::Thermal { .. } => "Thermal",
             PostProcessEffect::ColorAdjust { .. } => "Color Adjust",
             PostProcessEffect::SobelOutline { .. } => "Sobel Outline",
+            PostProcessEffect::HueShift { .. } => "Hue Shift",
+            PostProcessEffect::ChannelMixer { .. } => "Channel Mixer",
+            PostProcessEffect::Exposure { .. } => "Exposure",
+            PostProcessEffect::Letterbox { .. } => "Letterbox",
+            PostProcessEffect::VHS { .. } => "VHS",
         }
     }
 
@@ -226,6 +255,11 @@ impl PostProcessEffect {
             PostProcessEffect::Thermal { .. } => "False color heat map",
             PostProcessEffect::ColorAdjust { .. } => "Brightness/contrast/saturation",
             PostProcessEffect::SobelOutline { .. } => "Hard edge detection outline",
+            PostProcessEffect::HueShift { .. } => "Rotate colors around color wheel",
+            PostProcessEffect::ChannelMixer { .. } => "Swap and blend RGB channels",
+            PostProcessEffect::Exposure { .. } => "Exponential brightness curve",
+            PostProcessEffect::Letterbox { .. } => "Cinematic black bars",
+            PostProcessEffect::VHS { .. } => "Retro VHS tape artifacts (place early)",
         }
     }
 
@@ -317,6 +351,25 @@ impl PostProcessEffect {
     pub fn default_sobel_outline() -> Self {
         PostProcessEffect::SobelOutline { intensity: 1.0, threshold: 0.1, color: [1.0, 1.0, 1.0] }
     }
+    pub fn default_hue_shift() -> Self {
+        PostProcessEffect::HueShift { shift: 0.0 }
+    }
+    pub fn default_channel_mixer() -> Self {
+        PostProcessEffect::ChannelMixer {
+            red_source: [1.0, 0.0, 0.0],
+            green_source: [0.0, 1.0, 0.0],
+            blue_source: [0.0, 0.0, 1.0],
+        }
+    }
+    pub fn default_exposure() -> Self {
+        PostProcessEffect::Exposure { exposure: 0.0 }
+    }
+    pub fn default_letterbox() -> Self {
+        PostProcessEffect::Letterbox { aspect_ratio: 2.35, bar_color: [0.0, 0.0, 0.0] }
+    }
+    pub fn default_vhs() -> Self {
+        PostProcessEffect::VHS { intensity: 0.5, tracking_noise: 0.3 }
+    }
 
     /// Available effect types for the UI
     pub fn available_types() -> &'static [&'static str] {
@@ -326,7 +379,8 @@ impl PostProcessEffect {
             "Edge Glow", "Barrel Distortion", "Ripple", "Glitch", "Night Vision",
             "Invert", "Tint", "Custom", "Dithering", "Halftone", "Scanline Interlace",
             "Radial Blur", "Kaleidoscope", "Emboss", "Duotone", "Thermal",
-            "Color Adjust", "Sobel Outline"
+            "Color Adjust", "Sobel Outline", "Hue Shift", "Channel Mixer",
+            "Exposure", "Letterbox", "VHS"
         ]
     }
 
@@ -362,6 +416,11 @@ impl PostProcessEffect {
             "Thermal" => Self::default_thermal(),
             "Color Adjust" => Self::default_color_adjust(),
             "Sobel Outline" => Self::default_sobel_outline(),
+            "Hue Shift" => Self::default_hue_shift(),
+            "Channel Mixer" => Self::default_channel_mixer(),
+            "Exposure" => Self::default_exposure(),
+            "Letterbox" => Self::default_letterbox(),
+            "VHS" => Self::default_vhs(),
             _ => Self::default_bloom(),
         }
     }
@@ -776,6 +835,122 @@ impl PostProcessEffect {
             current_color = vec4<f32>(mix(current_color.rgb, outline_color, edge * {}), current_color.a);
         }}
     }}"#, wgsl_float(color[0]), wgsl_float(color[1]), wgsl_float(color[2]), wgsl_float(*threshold), wgsl_float(*intensity)
+            ),
+
+            PostProcessEffect::HueShift { shift } => format!(
+                r#"    // Hue Shift
+    {{
+        // RGB to HSV
+        let c_max = max(max(current_color.r, current_color.g), current_color.b);
+        let c_min = min(min(current_color.r, current_color.g), current_color.b);
+        let delta = c_max - c_min;
+        var hue = 0.0;
+        if delta > 0.0 {{
+            if c_max == current_color.r {{
+                hue = ((current_color.g - current_color.b) / delta) % 6.0;
+            }} else if c_max == current_color.g {{
+                hue = (current_color.b - current_color.r) / delta + 2.0;
+            }} else {{
+                hue = (current_color.r - current_color.g) / delta + 4.0;
+            }}
+        }}
+        hue = (hue / 6.0 + {}) % 1.0;
+        if hue < 0.0 {{ hue = hue + 1.0; }}
+        let sat = select(0.0, delta / c_max, c_max > 0.0);
+        let val = c_max;
+        // HSV to RGB
+        let h6 = hue * 6.0;
+        let i = floor(h6);
+        let f = h6 - i;
+        let p = val * (1.0 - sat);
+        let q = val * (1.0 - sat * f);
+        let t = val * (1.0 - sat * (1.0 - f));
+        var rgb: vec3<f32>;
+        let ii = i32(i) % 6;
+        if ii == 0 {{ rgb = vec3<f32>(val, t, p); }}
+        else if ii == 1 {{ rgb = vec3<f32>(q, val, p); }}
+        else if ii == 2 {{ rgb = vec3<f32>(p, val, t); }}
+        else if ii == 3 {{ rgb = vec3<f32>(p, q, val); }}
+        else if ii == 4 {{ rgb = vec3<f32>(t, p, val); }}
+        else {{ rgb = vec3<f32>(val, p, q); }}
+        current_color = vec4<f32>(rgb, current_color.a);
+    }}"#, wgsl_float(*shift)
+            ),
+
+            PostProcessEffect::ChannelMixer { red_source, green_source, blue_source } => format!(
+                r#"    // Channel Mixer
+    {{
+        let src = current_color.rgb;
+        let new_r = dot(src, vec3<f32>({}, {}, {}));
+        let new_g = dot(src, vec3<f32>({}, {}, {}));
+        let new_b = dot(src, vec3<f32>({}, {}, {}));
+        current_color = vec4<f32>(new_r, new_g, new_b, current_color.a);
+    }}"#,
+                wgsl_float(red_source[0]), wgsl_float(red_source[1]), wgsl_float(red_source[2]),
+                wgsl_float(green_source[0]), wgsl_float(green_source[1]), wgsl_float(green_source[2]),
+                wgsl_float(blue_source[0]), wgsl_float(blue_source[1]), wgsl_float(blue_source[2])
+            ),
+
+            PostProcessEffect::Exposure { exposure } => format!(
+                r#"    // Exposure
+    {{
+        let exp_factor = pow(2.0, {});
+        current_color = vec4<f32>(current_color.rgb * exp_factor, current_color.a);
+    }}"#, wgsl_float(*exposure)
+            ),
+
+            PostProcessEffect::Letterbox { aspect_ratio, bar_color } => format!(
+                r#"    // Letterbox
+    {{
+        let screen_aspect = pp_resolution.x / pp_resolution.y;
+        let target_aspect = {};
+        let bar_col = vec3<f32>({}, {}, {});
+        if screen_aspect > target_aspect {{
+            // Vertical bars (pillarbox)
+            let visible_width = target_aspect / screen_aspect;
+            let bar_width = (1.0 - visible_width) * 0.5;
+            if uv.x < bar_width || uv.x > (1.0 - bar_width) {{
+                current_color = vec4<f32>(bar_col, 1.0);
+            }}
+        }} else {{
+            // Horizontal bars (letterbox)
+            let visible_height = screen_aspect / target_aspect;
+            let bar_height = (1.0 - visible_height) * 0.5;
+            if uv.y < bar_height || uv.y > (1.0 - bar_height) {{
+                current_color = vec4<f32>(bar_col, 1.0);
+            }}
+        }}
+    }}"#, wgsl_float(*aspect_ratio), wgsl_float(bar_color[0]), wgsl_float(bar_color[1]), wgsl_float(bar_color[2])
+            ),
+
+            PostProcessEffect::VHS { intensity, tracking_noise } => format!(
+                r#"    // VHS Effect
+    {{
+        var vhs_uv = uv;
+        // Tracking wobble
+        let wobble = sin(uv.y * 50.0 + pp_time * 2.0) * 0.002 * {};
+        let tracking = sin(pp_time * 0.5) * sin(uv.y * 3.0 + pp_time) * 0.005 * {};
+        vhs_uv.x = vhs_uv.x + wobble + tracking;
+        // Horizontal noise bands
+        let noise_line = floor(uv.y * pp_resolution.y * 0.5);
+        let line_noise = fract(sin(noise_line * 43758.5453 + pp_time * 10.0) * 12345.6789);
+        if line_noise > (1.0 - {} * 0.1) {{
+            vhs_uv.x = vhs_uv.x + (line_noise - 0.5) * 0.1 * {};
+        }}
+        // Sample with offset
+        let vhs_color = textureSample(input_texture, input_sampler, vhs_uv);
+        // Color bleed / fringing
+        let bleed = {} * 0.003;
+        let r = textureSample(input_texture, input_sampler, vhs_uv + vec2<f32>(bleed, 0.0)).r;
+        let b = textureSample(input_texture, input_sampler, vhs_uv - vec2<f32>(bleed, 0.0)).b;
+        // Slight desaturation and contrast reduction
+        var final_color = vec3<f32>(r, vhs_color.g, b);
+        let luma = dot(final_color, vec3<f32>(0.299, 0.587, 0.114));
+        final_color = mix(final_color, vec3<f32>(luma), {} * 0.3);
+        final_color = mix(vec3<f32>(0.5), final_color, 1.0 - {} * 0.2);
+        current_color = vec4<f32>(final_color, current_color.a);
+    }}"#, wgsl_float(*intensity), wgsl_float(*tracking_noise), wgsl_float(*tracking_noise),
+                 wgsl_float(*tracking_noise), wgsl_float(*intensity), wgsl_float(*intensity), wgsl_float(*intensity)
             ),
         }
     }
