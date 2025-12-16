@@ -19,6 +19,10 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
             ui.selectable_value(&mut visuals.blend_mode, BlendModeConfig::Alpha, "Alpha");
             ui.selectable_value(&mut visuals.blend_mode, BlendModeConfig::Additive, "Additive");
             ui.selectable_value(&mut visuals.blend_mode, BlendModeConfig::Multiply, "Multiply");
+            ui.selectable_value(&mut visuals.blend_mode, BlendModeConfig::Screen, "Screen");
+            ui.selectable_value(&mut visuals.blend_mode, BlendModeConfig::Overlay, "Overlay");
+            ui.selectable_value(&mut visuals.blend_mode, BlendModeConfig::SoftLight, "Soft Light");
+            ui.selectable_value(&mut visuals.blend_mode, BlendModeConfig::Subtractive, "Subtractive");
         });
 
     // Particle Shape

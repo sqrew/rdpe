@@ -131,7 +131,7 @@ impl Default for SimConfig {
             rules: vec![
                 RuleConfig::Gravity(2.0),
                 RuleConfig::Drag(0.5),
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),

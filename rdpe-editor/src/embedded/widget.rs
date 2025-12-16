@@ -211,7 +211,7 @@ impl EmbeddedSimulation {
                 } else {
                     None // Particle count or stride changed, can't preserve
                 };
-                let camera = Some((sim.camera_distance, sim.camera_yaw, sim.camera_pitch));
+                let camera = Some((sim.camera_distance, sim.camera_yaw, sim.camera_pitch, sim.camera_center));
                 (particles, camera)
             } else {
                 (None, None)
@@ -274,11 +274,12 @@ impl EmbeddedSimulation {
             .insert(resources);
 
         // Restore camera state if we had one
-        if let Some((distance, yaw, pitch)) = old_camera {
+        if let Some((distance, yaw, pitch, center)) = old_camera {
             if let Some(sim) = wgpu_render_state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
                 sim.camera_distance = distance;
                 sim.camera_yaw = yaw;
                 sim.camera_pitch = pitch;
+                sim.camera_center = center;
             }
         }
 
@@ -317,7 +318,7 @@ impl EmbeddedSimulation {
         let old_camera = {
             let resources = wgpu_render_state.renderer.read();
             resources.callback_resources.get::<SimulationResources>()
-                .map(|sim| (sim.camera_distance, sim.camera_yaw, sim.camera_pitch))
+                .map(|sim| (sim.camera_distance, sim.camera_yaw, sim.camera_pitch, sim.camera_center))
         };
 
         // Always generate fresh particles
@@ -370,11 +371,12 @@ impl EmbeddedSimulation {
             .insert(resources);
 
         // Restore camera state if we had one
-        if let Some((distance, yaw, pitch)) = old_camera {
+        if let Some((distance, yaw, pitch, center)) = old_camera {
             if let Some(sim) = wgpu_render_state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
                 sim.camera_distance = distance;
                 sim.camera_yaw = yaw;
                 sim.camera_pitch = pitch;
+                sim.camera_center = center;
             }
         }
 
@@ -421,6 +423,34 @@ impl EmbeddedSimulation {
                     sim.rotate_camera(-delta.x * 0.01, -delta.y * 0.01);
                 }
 
+                // WASD camera movement (only when viewport is focused/hovered)
+                if response.hovered() {
+                    let (w, a, s, d, q, e, r) = ui.input(|i| {
+                        (
+                            i.key_down(egui::Key::W),
+                            i.key_down(egui::Key::A),
+                            i.key_down(egui::Key::S),
+                            i.key_down(egui::Key::D),
+                            i.key_down(egui::Key::Q),
+                            i.key_down(egui::Key::E),
+                            i.key_pressed(egui::Key::R),
+                        )
+                    });
+
+                    // Calculate movement from key states
+                    let forward = (w as i32 - s as i32) as f32;
+                    let right = (d as i32 - a as i32) as f32;
+                    let up = (e as i32 - q as i32) as f32; // E=up, Q=down
+
+                    if forward != 0.0 || right != 0.0 || up != 0.0 {
+                        sim.move_camera(forward, right, up);
+                    }
+
+                    if r {
+                        sim.reset_camera();
+                    }
+                }
+
                 // Track mouse state for mouse powers (Shift + primary button)
                 let shift_held = ui.input(|i| i.modifiers.shift);
                 let primary_down = ui.input(|i| i.pointer.primary_down());
@@ -432,12 +462,12 @@ impl EmbeddedSimulation {
 
                     // Compute view-projection matrix fresh to match current viewport
                     let aspect_ratio = rect.width() / rect.height().max(1.0);
-                    let eye = Vec3::new(
+                    let eye = sim.camera_center + Vec3::new(
                         sim.camera_distance * sim.camera_yaw.cos() * sim.camera_pitch.cos(),
                         sim.camera_distance * sim.camera_pitch.sin(),
                         sim.camera_distance * sim.camera_yaw.sin() * sim.camera_pitch.cos(),
                     );
-                    let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
+                    let view = Mat4::look_at_rh(eye, sim.camera_center, Vec3::Y);
                     let proj = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 0.1, 100.0);
                     let view_proj = proj * view;
                     let inv_vp = view_proj.inverse();

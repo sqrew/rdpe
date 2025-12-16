@@ -18,7 +18,7 @@ fn bench_rule_to_wgsl(c: &mut Criterion) {
     });
 
     group.bench_function("bounce_walls", |b| {
-        let rule = Rule::BounceWalls;
+        let rule = Rule::BounceWalls { restitution: 1.0 };
         b.iter(|| black_box(rule.to_wgsl(1.0)))
     });
 
@@ -97,7 +97,7 @@ fn bench_many_rules(c: &mut Criterion) {
         Rule::Turbulence { scale: 2.0, strength: 1.5 },
         Rule::Vortex { center: Vec3::ZERO, axis: Vec3::Y, strength: 1.0 },
         Rule::SpeedLimit { min: 0.0, max: 3.0 },
-        Rule::BounceWalls,
+        Rule::BounceWalls { restitution: 1.0 },
     ];
 
     for count in [1, 3, 6] {

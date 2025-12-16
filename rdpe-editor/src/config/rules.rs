@@ -82,7 +82,7 @@ pub enum RuleConfig {
     Acceleration { direction: [f32; 3] },
 
     // === Boundaries ===
-    BounceWalls,
+    BounceWalls { restitution: f32 },
     WrapWalls,
 
     // === Point Forces ===
@@ -277,7 +277,7 @@ impl RuleConfig {
             RuleConfig::Drag(_) => "Drag",
             RuleConfig::Acceleration { .. } => "Acceleration",
             // Boundaries
-            RuleConfig::BounceWalls => "Bounce Walls",
+            RuleConfig::BounceWalls { .. } => "Bounce Walls",
             RuleConfig::WrapWalls => "Wrap Walls",
             // Point Forces
             RuleConfig::AttractTo { .. } => "Attract To",
@@ -415,7 +415,7 @@ impl RuleConfig {
     pub fn category(&self) -> &'static str {
         match self {
             RuleConfig::Gravity(_) | RuleConfig::Drag(_) | RuleConfig::Acceleration { .. } => "Forces",
-            RuleConfig::BounceWalls | RuleConfig::WrapWalls => "Boundaries",
+            RuleConfig::BounceWalls { .. } | RuleConfig::WrapWalls => "Boundaries",
             RuleConfig::AttractTo { .. } | RuleConfig::RepelFrom { .. } | RuleConfig::PointGravity { .. } |
             RuleConfig::Orbit { .. } | RuleConfig::Spring { .. } | RuleConfig::Radial { .. } |
             RuleConfig::Vortex { .. } | RuleConfig::Pulse { .. } => "Point Forces",
@@ -507,7 +507,7 @@ impl RuleConfig {
             RuleConfig::Gravity(g) => Rule::Gravity(*g),
             RuleConfig::Drag(d) => Rule::Drag(*d),
             RuleConfig::Acceleration { direction } => Rule::Acceleration(Vec3::from_array(*direction)),
-            RuleConfig::BounceWalls => Rule::BounceWalls,
+            RuleConfig::BounceWalls { restitution } => Rule::BounceWalls { restitution: *restitution },
             RuleConfig::WrapWalls => Rule::WrapWalls,
             RuleConfig::AttractTo { point, strength } => Rule::AttractTo {
                 point: Vec3::from_array(*point),

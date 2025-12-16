@@ -25,7 +25,7 @@
 //!             velocity: Vec3::ZERO,
 //!         })
 //!         .with_rule(Rule::Gravity(9.8))
-//!         .with_rule(Rule::BounceWalls)
+//!         .with_rule(Rule::BounceWalls { restitution: 1.0 })
 //!         .run();
 //! }
 //! ```
@@ -52,7 +52,7 @@
 //! .with_rule(Rule::Separate { ... })    // Neighbor interactions
 //! .with_rule(Rule::SpeedLimit { ... })  // Constrain velocity
 //! .with_rule(Rule::Drag(1.0))           // Apply friction
-//! .with_rule(Rule::BounceWalls)         // Boundary conditions
+//! .with_rule(Rule::BounceWalls { restitution: 1.0 })         // Boundary conditions
 //! ```
 //!
 //! ### Typed Interactions

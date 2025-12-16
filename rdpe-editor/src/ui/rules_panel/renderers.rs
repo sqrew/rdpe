@@ -25,7 +25,13 @@ pub(super) fn render_rule_params(ui: &mut Ui, rule: &mut RuleConfig) -> bool {
         }
 
         // === Boundaries ===
-        RuleConfig::BounceWalls | RuleConfig::WrapWalls => {
+        RuleConfig::BounceWalls { restitution } => {
+            changed |= ui
+                .add(egui::Slider::new(restitution, 0.0..=2.0).text("Restitution"))
+                .changed();
+            ui.label("0 = full stop, 1 = perfect bounce, >1 = adds energy");
+        }
+        RuleConfig::WrapWalls => {
             ui.label("No parameters");
         }
 

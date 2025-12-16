@@ -257,7 +257,7 @@ fn main() {
         // Keep sources contained
         .with_rule(Rule::Drag(2.0))
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 0.5 })
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .with_visuals(|v| {
             v.blend_mode(BlendMode::Additive);
             v.background(Vec3::new(0.01, 0.01, 0.02));

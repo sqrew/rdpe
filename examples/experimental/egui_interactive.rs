@@ -193,7 +193,7 @@ fn main() {
             p.position += p.velocity * uniforms.delta_time * speed_mult;
         "#.into()))
 
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .run().expect("Simulation failed");
 }
 

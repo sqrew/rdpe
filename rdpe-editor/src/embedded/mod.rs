@@ -173,6 +173,7 @@ pub struct SimulationResources {
     camera_distance: f32,
     camera_yaw: f32,
     camera_pitch: f32,
+    camera_center: Vec3,
     pub auto_orbit: bool,
     pub auto_orbit_speed: f32,
 
@@ -802,6 +803,7 @@ impl SimulationResources {
             camera_distance: 3.0,
             camera_yaw: 0.0,
             camera_pitch: 0.3,
+            camera_center: Vec3::ZERO,
             auto_orbit: false,
             auto_orbit_speed: 0.3,
             last_inv_view_proj: Mat4::IDENTITY,
@@ -853,12 +855,12 @@ impl SimulationResources {
         }
 
         // Calculate view-projection matrix
-        let eye = Vec3::new(
+        let eye = self.camera_center + Vec3::new(
             self.camera_distance * self.camera_yaw.cos() * self.camera_pitch.cos(),
             self.camera_distance * self.camera_pitch.sin(),
             self.camera_distance * self.camera_yaw.sin() * self.camera_pitch.cos(),
         );
-        let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y);
+        let view = Mat4::look_at_rh(eye, self.camera_center, Vec3::Y);
         let proj = Mat4::perspective_rh(45.0_f32.to_radians(), aspect_ratio, 0.1, 100.0);
         let view_proj = proj * view;
 
@@ -1201,6 +1203,42 @@ impl SimulationResources {
     /// Zoom camera.
     pub fn zoom_camera(&mut self, delta: f32) {
         self.camera_distance = (self.camera_distance - delta).clamp(1.0, 20.0);
+    }
+
+    /// Move the camera orbit center based on current camera orientation.
+    ///
+    /// Movement is relative to the camera's view direction:
+    /// - `forward`: Move in the direction the camera is facing (in XZ plane)
+    /// - `right`: Move perpendicular to forward (strafe)
+    /// - `up`: Move along the Y axis
+    pub fn move_camera(&mut self, forward: f32, right: f32, up: f32) {
+        // Calculate forward direction in XZ plane based on yaw
+        let forward_dir = Vec3::new(
+            self.camera_yaw.cos(),
+            0.0,
+            self.camera_yaw.sin(),
+        );
+        // Right is perpendicular to forward in XZ plane
+        let right_dir = Vec3::new(
+            -self.camera_yaw.sin(),
+            0.0,
+            self.camera_yaw.cos(),
+        );
+        let up_dir = Vec3::Y;
+
+        // Apply movement (scale for comfortable speed)
+        let speed = 0.05;
+        self.camera_center += forward_dir * forward * speed;
+        self.camera_center += right_dir * right * speed;
+        self.camera_center += up_dir * up * speed;
+    }
+
+    /// Reset camera to default position (origin, default distance/angles).
+    pub fn reset_camera(&mut self) {
+        self.camera_center = Vec3::ZERO;
+        self.camera_distance = 3.0;
+        self.camera_yaw = 0.0;
+        self.camera_pitch = 0.3;
     }
 
     /// Request picking at viewport coordinates.

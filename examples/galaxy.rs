@@ -149,7 +149,7 @@ fn main() {
             v.background(Vec3::new(0.0, 0.0, 0.02)); // Deep space
             v.blend_mode(BlendMode::Additive);
         })
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .with_rule_inspector()
         .with_particle_inspector()
         .run().expect("Simulation failed");

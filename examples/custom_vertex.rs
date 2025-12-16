@@ -118,6 +118,6 @@ fn main() {
         ))
         .with_rule(Rule::Drag(0.3))
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 1.0 })
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .run().expect("Simulation failed");
 }

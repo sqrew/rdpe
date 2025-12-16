@@ -196,7 +196,7 @@ impl AgentState {
 ///     .with_rule(Rule::Separate { radius: 0.1, strength: 2.0 })
 ///     .with_rule(Rule::SpeedLimit { min: 0.0, max: 5.0 })
 ///     .with_rule(Rule::Drag(1.0))
-///     .with_rule(Rule::BounceWalls)
+///     .with_rule(Rule::BounceWalls { restitution: 1.0 })
 ///     .run();
 /// ```
 #[derive(Clone, Debug)]
@@ -223,13 +223,21 @@ pub enum Rule {
     /// The bounds are set with `.with_bounds(size)` which creates a cube
     /// from `-size` to `+size` on all axes.
     ///
+    /// # Arguments
+    ///
+    /// * `restitution` - Bounce coefficient (0.0 = full stop, 1.0 = perfect bounce).
+    ///   Values > 1.0 add energy on each bounce.
+    ///
     /// # Example
     ///
     /// ```ignore
     /// .with_bounds(1.0)           // Cube from -1 to +1
-    /// .with_rule(Rule::BounceWalls)
+    /// .with_rule(Rule::BounceWalls { restitution: 0.8 })  // Loses 20% speed on bounce
     /// ```
-    BounceWalls,
+    BounceWalls {
+        /// Coefficient of restitution (0.0-1.0 typical, >1.0 adds energy)
+        restitution: f32,
+    },
 
     /// Wrap particles around bounding box walls (toroidal topology).
     ///
@@ -4677,30 +4685,31 @@ impl Rule {
                 g
             ),
 
-            Rule::BounceWalls => format!(
-                r#"    // Bounce off walls
+            Rule::BounceWalls { restitution } => format!(
+                r#"    // Bounce off walls (restitution: {restitution})
     if p.position.x < -{bounds} {{
         p.position.x = -{bounds};
-        p.velocity.x = abs(p.velocity.x);
+        p.velocity.x = abs(p.velocity.x) * {restitution};
     }} else if p.position.x > {bounds} {{
         p.position.x = {bounds};
-        p.velocity.x = -abs(p.velocity.x);
+        p.velocity.x = -abs(p.velocity.x) * {restitution};
     }}
     if p.position.y < -{bounds} {{
         p.position.y = -{bounds};
-        p.velocity.y = abs(p.velocity.y);
+        p.velocity.y = abs(p.velocity.y) * {restitution};
     }} else if p.position.y > {bounds} {{
         p.position.y = {bounds};
-        p.velocity.y = -abs(p.velocity.y);
+        p.velocity.y = -abs(p.velocity.y) * {restitution};
     }}
     if p.position.z < -{bounds} {{
         p.position.z = -{bounds};
-        p.velocity.z = abs(p.velocity.z);
+        p.velocity.z = abs(p.velocity.z) * {restitution};
     }} else if p.position.z > {bounds} {{
         p.position.z = {bounds};
-        p.velocity.z = -abs(p.velocity.z);
+        p.velocity.z = -abs(p.velocity.z) * {restitution};
     }}"#,
-                bounds = bounds
+                bounds = bounds,
+                restitution = restitution
             ),
 
             Rule::WrapWalls => {
@@ -6620,7 +6629,7 @@ impl Rule {
     pub fn display_name(&self) -> &'static str {
         match self {
             Rule::Gravity(_) => "Gravity",
-            Rule::BounceWalls => "Bounce Walls",
+            Rule::BounceWalls { .. } => "Bounce Walls",
             Rule::WrapWalls => "Wrap Walls",
             Rule::Drag(_) => "Drag",
             Rule::Acceleration(_) => "Acceleration",
@@ -7586,14 +7595,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     #[test]
     fn test_bounce_walls_wgsl() {
-        let rule = Rule::BounceWalls;
+        let rule = Rule::BounceWalls { restitution: 0.8 };
         let wgsl = rule.to_wgsl(1.0);
 
         assert!(wgsl.contains("Bounce"));
+        assert!(wgsl.contains("restitution: 0.8"));
         assert!(wgsl.contains("position.x"));
         assert!(wgsl.contains("position.y"));
         assert!(wgsl.contains("position.z"));
         assert!(wgsl.contains("abs(p.velocity"));
+        assert!(wgsl.contains("* 0.8")); // restitution applied
 
         let shader = wrap_in_shader(&wgsl);
         validate_wgsl(&shader).expect("BounceWalls WGSL should be valid");
@@ -7841,7 +7852,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
         let solo_rules = [
             Rule::Gravity(9.8),
             Rule::Drag(1.0),
-            Rule::BounceWalls,
+            Rule::BounceWalls { restitution: 1.0 },
             Rule::WrapWalls,
         ];
 
@@ -7858,7 +7869,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 
     #[test]
     fn test_bounds_substitution() {
-        let rule = Rule::BounceWalls;
+        let rule = Rule::BounceWalls { restitution: 1.0 };
 
         // Test with bounds = 1.0
         let wgsl_1 = rule.to_wgsl(1.0);

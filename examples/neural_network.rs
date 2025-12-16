@@ -422,7 +422,7 @@ fn main() {
         })
         .with_rule(Rule::Drag(5.0))
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 0.05 })
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .with_visuals(|v| {
             v.blend_mode(BlendMode::Additive);
             v.background(Vec3::new(0.02, 0.02, 0.03));

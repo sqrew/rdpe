@@ -126,7 +126,7 @@ impl RuleConfig {
         match self {
             RuleConfig::Gravity(g) => Rule::Gravity(*g),
             RuleConfig::Drag(d) => Rule::Drag(*d),
-            RuleConfig::BounceWalls => Rule::BounceWalls,
+            RuleConfig::BounceWalls => Rule::BounceWalls { restitution: 1.0 },
             RuleConfig::WrapWalls => Rule::WrapWalls,
             RuleConfig::Separate { radius, strength } => Rule::Separate {
                 radius: *radius,

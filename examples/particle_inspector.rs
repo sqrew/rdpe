@@ -120,7 +120,7 @@ fn main() {
             "#
             .into(),
         ))
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         // Visual setup
         .with_visuals(|v| {
             v.wireframe(WireframeMesh::cube(), 0.001);

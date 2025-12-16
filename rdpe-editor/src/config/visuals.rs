@@ -10,11 +10,15 @@ pub enum BlendModeConfig {
     Alpha,
     Additive,
     Multiply,
+    Screen,
+    Overlay,
+    SoftLight,
+    Subtractive,
 }
 
 impl BlendModeConfig {
     pub fn variants() -> &'static [&'static str] {
-        &["Alpha", "Additive", "Multiply"]
+        &["Alpha", "Additive", "Multiply", "Screen", "Overlay", "SoftLight", "Subtractive"]
     }
 
     pub fn to_blend_mode(&self) -> rdpe::BlendMode {
@@ -22,6 +26,10 @@ impl BlendModeConfig {
             BlendModeConfig::Alpha => rdpe::BlendMode::Alpha,
             BlendModeConfig::Additive => rdpe::BlendMode::Additive,
             BlendModeConfig::Multiply => rdpe::BlendMode::Multiply,
+            BlendModeConfig::Screen => rdpe::BlendMode::Screen,
+            BlendModeConfig::Overlay => rdpe::BlendMode::Overlay,
+            BlendModeConfig::SoftLight => rdpe::BlendMode::SoftLight,
+            BlendModeConfig::Subtractive => rdpe::BlendMode::Subtractive,
         }
     }
 
@@ -46,6 +54,42 @@ impl BlendModeConfig {
                     src_factor: wgpu::BlendFactor::Dst,
                     dst_factor: wgpu::BlendFactor::Zero,
                     operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            },
+            BlendModeConfig::Screen => wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+            },
+            BlendModeConfig::Overlay => wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::Dst,
+                    dst_factor: wgpu::BlendFactor::Src,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            },
+            BlendModeConfig::SoftLight => wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::Dst,
+                    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent::OVER,
+            },
+            BlendModeConfig::Subtractive => wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::ReverseSubtract,
                 },
                 alpha: wgpu::BlendComponent::OVER,
             },

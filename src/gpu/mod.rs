@@ -85,6 +85,47 @@ fn blend_mode_to_state(mode: BlendMode) -> wgpu::BlendState {
             },
             alpha: wgpu::BlendComponent::OVER,
         },
+        // Screen: 1 - (1-src)*(1-dst) ≈ src + dst*(1-src)
+        BlendMode::Screen => wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::OneMinusSrc,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+        },
+        // Overlay: approximated as enhanced multiply/screen combination
+        // Uses src*dst + dst*src for a contrast-boosting effect
+        BlendMode::Overlay => wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::Dst,
+                dst_factor: wgpu::BlendFactor::Src,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent::OVER,
+        },
+        // SoftLight: gentle contrast adjustment, approximated as blend toward dst
+        BlendMode::SoftLight => wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::Dst,
+                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent::OVER,
+        },
+        // Subtractive: dst - src (clamped to 0)
+        BlendMode::Subtractive => wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::ReverseSubtract,
+            },
+            alpha: wgpu::BlendComponent::OVER,
+        },
     }
 }
 
@@ -644,8 +685,8 @@ impl GpuState {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
-                // Disable depth writes for additive blending so particles can blend through each other
-                depth_write_enabled: !matches!(blend_mode, BlendMode::Additive),
+                // Disable depth writes for additive-like blending so particles can blend through each other
+                depth_write_enabled: !matches!(blend_mode, BlendMode::Additive | BlendMode::Screen),
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
@@ -1201,7 +1242,7 @@ impl GpuState {
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
-                depth_write_enabled: !matches!(blend_mode, BlendMode::Additive),
+                depth_write_enabled: !matches!(blend_mode, BlendMode::Additive | BlendMode::Screen),
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),

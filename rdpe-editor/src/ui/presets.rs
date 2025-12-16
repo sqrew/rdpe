@@ -46,7 +46,7 @@ pub static PRESETS: &[Preset] = &[
                     strength: 2.0,
                 },
                 RuleConfig::SpeedLimit { min: 0.1, max: 0.5 },
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
@@ -87,7 +87,7 @@ pub static PRESETS: &[Preset] = &[
             rules: vec![
                 RuleConfig::Gravity(3.0),
                 RuleConfig::Drag(0.3),
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
@@ -137,7 +137,7 @@ pub static PRESETS: &[Preset] = &[
                     radius: 2.0,
                     strength: 1.0,
                 },
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
                 // Write fluid density to field for volume visualization
                 RuleConfig::Custom {
                     code: "field_write(0u, p.position, 1.0);".into(),
@@ -199,7 +199,7 @@ pub static PRESETS: &[Preset] = &[
             rules: vec![
                 RuleConfig::AttractTo { point: [0.0, 0.0, 0.0], strength: 0.3 },
                 RuleConfig::Drag(0.2),
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig::default(),
@@ -355,7 +355,7 @@ field_write(0u, p.position, 0.5);
                 },
                 RuleConfig::Drag(1.5),
                 RuleConfig::SpeedLimit { min: 0.0, max: 1.5 },
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig {
@@ -1012,7 +1012,7 @@ p.scale = 0.5 + glow * 0.5;
 "#
                     .into(),
                 },
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig {
@@ -1084,7 +1084,7 @@ if p.position.y > 1.4 {
                 },
                 RuleConfig::Drag(1.0),
                 RuleConfig::SpeedLimit { min: 0.0, max: 5.0 },
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
             ],
             vertex_effects: Vec::new(),
             visuals: VisualsConfig {
@@ -1161,7 +1161,7 @@ if p.position.y > 1.4 {
                     min: 0.05,
                     max: 1.2,
                 },
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
                 // Deposit energy to field and color particles
                 RuleConfig::Custom {
                     code: r#"
@@ -1675,7 +1675,7 @@ p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
                 // Damping to settle
                 RuleConfig::Drag(3.0),
                 RuleConfig::SpeedLimit { min: 0.0, max: 0.3 },
-                RuleConfig::BounceWalls,
+                RuleConfig::BounceWalls { restitution: 1.0 },
                 // Initialize signal for a few "seed" particles
                 RuleConfig::Custom {
                     code: r#"
@@ -1871,7 +1871,7 @@ p.scale = 1.0 + p.signal * 0.5;
                         min: 0.05,
                         max: 0.8,
                     },
-                    RuleConfig::BounceWalls,
+                    RuleConfig::BounceWalls { restitution: 1.0 },
                     // Color by type
                     RuleConfig::Custom {
                         code: r#"

@@ -172,7 +172,7 @@ fn main() {
         // Physics
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.5 })
         .with_rule(Rule::Drag(2.0))
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         // Visuals - use Rainbow palette mapped by index
         // Boids (first 90%) get blue-ish, predators (last 10%) get red-ish
         .with_visuals(|v| {

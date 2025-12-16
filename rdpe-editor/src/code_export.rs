@@ -216,7 +216,7 @@ fn rule_code(rule: &RuleConfig) -> String {
         }
 
         // Boundaries
-        RuleConfig::BounceWalls => "Rule::BounceWalls".to_string(),
+        RuleConfig::BounceWalls { restitution } => format!("Rule::BounceWalls {{ restitution: {:.2} }}", restitution),
         RuleConfig::WrapWalls => "Rule::WrapWalls".to_string(),
 
         // Point Forces
@@ -736,9 +736,13 @@ fn uniform_value_code(value: &UniformValueConfig) -> String {
 
 fn blend_mode_code(mode: &BlendModeConfig) -> String {
     match mode {
-        BlendModeConfig::Additive => "BlendMode::Additive",
         BlendModeConfig::Alpha => "BlendMode::Alpha",
+        BlendModeConfig::Additive => "BlendMode::Additive",
         BlendModeConfig::Multiply => "BlendMode::Multiply",
+        BlendModeConfig::Screen => "BlendMode::Screen",
+        BlendModeConfig::Overlay => "BlendMode::Overlay",
+        BlendModeConfig::SoftLight => "BlendMode::SoftLight",
+        BlendModeConfig::Subtractive => "BlendMode::Subtractive",
     }.to_string()
 }
 

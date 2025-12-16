@@ -105,7 +105,7 @@ fn main() {
             "#
             .into(),
         ))
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .with_visuals(|v| {
             v.background(Vec3::new(0.02, 0.02, 0.05)); // Dark background
         })

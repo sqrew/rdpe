@@ -17,7 +17,7 @@ pub static RULE_TEMPLATES: &[(&str, &[(&str, fn() -> RuleConfig)])] = &[
     (
         "Boundaries",
         &[
-            ("Bounce Walls", || RuleConfig::BounceWalls),
+            ("Bounce Walls", || RuleConfig::BounceWalls { restitution: 1.0 }),
             ("Wrap Walls", || RuleConfig::WrapWalls),
         ],
     ),

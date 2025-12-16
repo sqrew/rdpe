@@ -207,7 +207,7 @@ fn rule_config_to_rule(rule: &RuleConfig) -> Rule {
     match rule {
         RuleConfig::Gravity(g) => Rule::Gravity(*g),
         RuleConfig::Drag(d) => Rule::Drag(*d),
-        RuleConfig::BounceWalls => Rule::BounceWalls,
+        RuleConfig::BounceWalls => Rule::BounceWalls { restitution: 1.0 },
         RuleConfig::WrapWalls => Rule::WrapWalls,
         RuleConfig::Separate { radius, strength } => Rule::Separate {
             radius: *radius,

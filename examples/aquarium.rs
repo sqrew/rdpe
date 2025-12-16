@@ -311,6 +311,6 @@ fn main() {
         })
 
         // Walls
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .run().expect("Simulation failed");
 }

@@ -130,7 +130,7 @@ fn main() {
             }
         })
         .with_rule(Rule::Drag(1.0))
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .run().expect("Simulation failed");
 }
 

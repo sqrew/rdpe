@@ -51,6 +51,6 @@ fn main() {
         // Keep velocities reasonable
         .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.0 })
         // Bounce off walls
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .run().expect("Simulation failed");
 }

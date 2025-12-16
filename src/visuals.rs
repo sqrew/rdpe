@@ -234,6 +234,33 @@ pub enum BlendMode {
     /// Colors are multiplied, darkening the result. Useful for shadows,
     /// smoke, or atmospheric effects.
     Multiply,
+
+    /// Screen blending.
+    ///
+    /// Inverts, multiplies, then inverts again: `1 - (1-src)*(1-dst)`.
+    /// Brightens the image without burning out to white as quickly as additive.
+    /// Great for light effects, glows, and lens flares.
+    Screen,
+
+    /// Overlay blending.
+    ///
+    /// Combines multiply and screen: multiplies dark areas, screens light areas.
+    /// Increases contrast while preserving highlights and shadows.
+    /// Useful for dramatic lighting effects.
+    Overlay,
+
+    /// Soft light blending.
+    ///
+    /// Gentler version of overlay. Darkens or lightens depending on source color.
+    /// Creates subtle, natural-looking lighting adjustments.
+    SoftLight,
+
+    /// Subtractive blending.
+    ///
+    /// Subtracts source from destination: `dst - src`.
+    /// Creates cutting/masking effects, useful for negative space
+    /// and creating holes in existing colors.
+    Subtractive,
 }
 
 /// Particle shape for rendering.

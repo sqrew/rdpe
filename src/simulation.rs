@@ -31,7 +31,7 @@
 //!         velocity: Vec3::ZERO,
 //!     })
 //!     .with_rule(Rule::Gravity(9.8))
-//!     .with_rule(Rule::BounceWalls)
+//!     .with_rule(Rule::BounceWalls { restitution: 1.0 })
 //!     .run();
 //! ```
 //!
@@ -123,7 +123,7 @@ type UiCallback = Box<dyn FnMut(&egui::Context) + Send + 'static>;
 ///     .with_rule(Rule::Cohere { radius: 0.2, strength: 0.5 })
 ///     .with_rule(Rule::Align { radius: 0.1, strength: 1.0 })
 ///     .with_rule(Rule::SpeedLimit { min: 0.1, max: 1.5 })
-///     .with_rule(Rule::BounceWalls)
+///     .with_rule(Rule::BounceWalls { restitution: 1.0 })
 ///     .run();
 /// ```
 pub struct Simulation<P: ParticleTrait> {
@@ -419,7 +419,7 @@ impl<P: ParticleTrait + 'static> Simulation<P> {
     /// Simulation::<Ball>::new()
     ///     .with_rule(Rule::Gravity(9.8))
     ///     .with_rule(Rule::Drag(0.5))
-    ///     .with_rule(Rule::BounceWalls)
+    ///     .with_rule(Rule::BounceWalls { restitution: 1.0 })
     ///     // ...
     /// ```
     ///
@@ -2042,7 +2042,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
     ///     .with_bounds(1.0)
     ///     .with_spawner(|_| Ball::default())
     ///     .with_rule(Rule::Gravity(9.8))
-    ///     .with_rule(Rule::BounceWalls)
+    ///     .with_rule(Rule::BounceWalls { restitution: 1.0 })
     ///     .run()
     ///     .expect("Simulation failed");  // Blocks here until window closed
     ///
@@ -3037,7 +3037,7 @@ mod tests {
                 velocity: Vec3::ZERO,
             })
             .with_rule(Rule::Gravity(9.8))
-            .with_rule(Rule::BounceWalls)
+            .with_rule(Rule::BounceWalls { restitution: 1.0 })
             .with_rule(Rule::Drag(0.5))
             .with_field("trail", FieldConfig::new(32))
             .with_inbox();
@@ -3058,12 +3058,12 @@ mod tests {
         let sim = Simulation::<TestParticle>::new()
             .with_rule(Rule::Gravity(9.8))
             .with_rule(Rule::Drag(1.0))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         // Rules should be in the order they were added
         assert!(matches!(sim.rules[0], Rule::Gravity(_)));
         assert!(matches!(sim.rules[1], Rule::Drag(_)));
-        assert!(matches!(sim.rules[2], Rule::BounceWalls));
+        assert!(matches!(sim.rules[2], Rule::BounceWalls { .. }));
     }
 
     #[test]
@@ -3143,7 +3143,7 @@ mod tests {
             .with_bounds(1.0)
             .with_rule(Rule::Gravity(9.8))
             .with_rule(Rule::Drag(0.5))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Simple physics shader should be valid");
@@ -3208,7 +3208,7 @@ mod tests {
                 strength: 0.1,
                 speed: 1.0,
             })
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Turbulence/oscillate shader should be valid");
@@ -3234,7 +3234,7 @@ mod tests {
                 strength: 2.0,
             })
             .with_rule(Rule::Drag(2.0))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Boids shader should be valid");
@@ -3252,7 +3252,7 @@ mod tests {
                 restitution: 0.8,
             })
             .with_rule(Rule::Gravity(2.0))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Collision shader should be valid");
@@ -3288,7 +3288,7 @@ mod tests {
                 damping: 0.1,
             })
             .with_rule(Rule::Gravity(1.0))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Spring shader should be valid");
@@ -3304,7 +3304,7 @@ mod tests {
             .with_rule(Rule::Lifetime(5.0))
             .with_rule(Rule::Gravity(9.8))
             .with_rule(Rule::Drag(1.0))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Age lifecycle shader should be valid");
@@ -3356,7 +3356,7 @@ mod tests {
             .with_bounds(1.0)
             .with_inbox()
             .with_rule(Rule::Gravity(9.8))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Inbox shader should be valid");
@@ -3404,7 +3404,7 @@ fn my_force(pos: vec3<f32>) -> vec3<f32> {
 }
 "#)
             .with_rule(Rule::Custom("p.velocity += my_force(p.position);".to_string()))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Custom function shader should be valid");
@@ -3419,7 +3419,7 @@ fn my_force(pos: vec3<f32>) -> vec3<f32> {
             .with_uniform::<f32>("force_strength", 1.0)
             .with_uniform::<f32>("decay_rate", 0.1)
             .with_rule(Rule::Custom("p.velocity *= (1.0 - uniforms.decay_rate);".to_string()))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Custom uniform shader should be valid");
@@ -3449,7 +3449,7 @@ fn my_force(pos: vec3<f32>) -> vec3<f32> {
                 }),
             })
             .with_rule(Rule::Drag(1.0))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Typed rules shader should be valid");
@@ -3476,7 +3476,7 @@ fn my_force(pos: vec3<f32>) -> vec3<f32> {
             })
             .with_rule(Rule::SpeedLimit { min: 0.0, max: 2.0 })
             .with_rule(Rule::Drag(1.5))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Chase/evade shader should be valid");
@@ -3512,7 +3512,7 @@ fn custom_decay(v: vec3<f32>) -> vec3<f32> {
             })
             .with_rule(Rule::Custom("p.velocity = custom_decay(p.velocity);".to_string()))
             .with_rule(Rule::SpeedLimit { min: 0.05, max: 1.5 })
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Complex combined shader should be valid");
@@ -3531,7 +3531,7 @@ fn custom_decay(v: vec3<f32>) -> vec3<f32> {
                 same_repel: true,
             })
             .with_rule(Rule::Drag(0.5))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Magnetism shader should be valid");
@@ -3554,7 +3554,7 @@ fn custom_decay(v: vec3<f32>) -> vec3<f32> {
                 target_density: 8.0,
             })
             .with_rule(Rule::Gravity(2.0))
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("Fluid shader should be valid");
@@ -3591,7 +3591,7 @@ fn custom_decay(v: vec3<f32>) -> vec3<f32> {
                 radius: 1.0,
                 falloff: crate::rules::Falloff::Inverse,
             })
-            .with_rule(Rule::BounceWalls);
+            .with_rule(Rule::BounceWalls { restitution: 1.0 });
 
         let shader = sim.generate_compute_shader();
         validate_wgsl(&shader).expect("All falloff types shader should be valid");
