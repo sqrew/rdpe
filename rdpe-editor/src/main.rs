@@ -37,6 +37,53 @@ enum SidebarTab {
     Custom,
 }
 
+/// Which side the settings panel is on
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum PanelSide {
+    Left,
+    #[default]
+    Right,
+}
+
+/// Editor appearance settings (not persisted)
+#[derive(Clone)]
+struct EditorSettings {
+    /// Which side the panel is on
+    panel_side: PanelSide,
+    /// Accent color hue (0.0-1.0)
+    accent_hue: f32,
+    /// Background color hue (0.0-1.0)
+    background_hue: f32,
+    /// Background tint strength (0.0 = no tint, 1.0 = full tint)
+    background_tint: f32,
+    /// Dark mode (true) or light mode (false)
+    dark_mode: bool,
+    /// UI scale factor (1.0 = default)
+    ui_scale: f32,
+    /// Panel opacity (0.0 = transparent, 1.0 = opaque)
+    panel_opacity: f32,
+    /// Brightness adjustment (0.5 = darker, 1.0 = default, 1.5 = brighter)
+    brightness: f32,
+    /// Whether the options popup is open
+    show_options: bool,
+}
+
+impl Default for EditorSettings {
+    fn default() -> Self {
+        Self {
+            panel_side: PanelSide::Right,
+            accent_hue: 0.6, // Default blue-ish
+            background_hue: 0.6,
+            background_tint: 0.0, // No tint by default
+            dark_mode: true,
+            ui_scale: 1.0,
+            panel_opacity: 1.0, // Fully opaque by default
+            brightness: 1.0,
+            show_options: false,
+        }
+    }
+}
+
 // ============================================================================
 // Native entry point
 // ============================================================================
@@ -172,6 +219,8 @@ struct EditorApp {
     editing_particle: Option<(u32, ParsedParticle)>,
     /// Fullscreen mode - hides all UI panels
     fullscreen_mode: bool,
+    /// Editor appearance settings
+    editor_settings: EditorSettings,
 }
 
 impl EditorApp {
@@ -207,6 +256,7 @@ impl EditorApp {
             rebuild_timer: None,
             editing_particle: None,
             fullscreen_mode: false,
+            editor_settings: EditorSettings::default(),
         }
     }
 }
@@ -368,6 +418,88 @@ impl eframe::App for EditorApp {
         let wgpu_render_state = frame.wgpu_render_state();
         let delta_time = ctx.input(|i| i.stable_dt);
 
+        // Apply UI scale
+        ctx.set_pixels_per_point(self.editor_settings.ui_scale);
+
+        // Apply theme settings to egui visuals
+        {
+            let settings = &self.editor_settings;
+
+            // Start with base dark or light theme
+            let mut visuals = if settings.dark_mode {
+                egui::Visuals::dark()
+            } else {
+                egui::Visuals::light()
+            };
+
+            // Apply background tint and/or brightness
+            let brightness = settings.brightness;
+            let base_value = if settings.dark_mode { 0.12 } else { 0.97 };
+            let adjusted_base = (base_value * brightness).clamp(0.05, 0.98);
+
+            if settings.background_tint > 0.0 {
+                let tinted_sat = 0.25 * settings.background_tint;
+
+                // Create tinted background colors with brightness
+                let bg_color = egui::Color32::from(egui::ecolor::Hsva::new(
+                    settings.background_hue, tinted_sat, adjusted_base, 1.0
+                ));
+                let bg_darker = egui::Color32::from(egui::ecolor::Hsva::new(
+                    settings.background_hue, tinted_sat, (adjusted_base * 0.85).clamp(0.02, 0.95), 1.0
+                ));
+                let bg_lighter = egui::Color32::from(egui::ecolor::Hsva::new(
+                    settings.background_hue, tinted_sat * 0.7, (adjusted_base * 1.15).clamp(0.05, 0.98), 1.0
+                ));
+
+                // Apply to various background elements
+                visuals.panel_fill = bg_color;
+                visuals.window_fill = bg_color;
+                visuals.extreme_bg_color = bg_darker;
+                visuals.faint_bg_color = bg_lighter;
+                visuals.widgets.noninteractive.bg_fill = bg_darker;
+                visuals.widgets.inactive.bg_fill = bg_darker;
+            } else if (brightness - 1.0).abs() > 0.01 {
+                // No tint but brightness is adjusted - apply brightness to default colors
+                let adjust_color = |color: egui::Color32| -> egui::Color32 {
+                    let hsva = egui::ecolor::Hsva::from(color);
+                    let new_value = (hsva.v * brightness).clamp(0.02, 0.98);
+                    egui::Color32::from(egui::ecolor::Hsva::new(hsva.h, hsva.s, new_value, hsva.a))
+                };
+
+                visuals.panel_fill = adjust_color(visuals.panel_fill);
+                visuals.window_fill = adjust_color(visuals.window_fill);
+                visuals.extreme_bg_color = adjust_color(visuals.extreme_bg_color);
+                visuals.faint_bg_color = adjust_color(visuals.faint_bg_color);
+                visuals.widgets.noninteractive.bg_fill = adjust_color(visuals.widgets.noninteractive.bg_fill);
+                visuals.widgets.inactive.bg_fill = adjust_color(visuals.widgets.inactive.bg_fill);
+            }
+
+            // Apply panel opacity
+            if settings.panel_opacity < 1.0 {
+                let alpha = (settings.panel_opacity * 255.0) as u8;
+                let [r, g, b, _] = visuals.panel_fill.to_array();
+                visuals.panel_fill = egui::Color32::from_rgba_unmultiplied(r, g, b, alpha);
+                let [r, g, b, _] = visuals.window_fill.to_array();
+                visuals.window_fill = egui::Color32::from_rgba_unmultiplied(r, g, b, alpha);
+            }
+
+            // Apply accent color
+            let accent = egui::ecolor::Hsva::new(settings.accent_hue, 0.7, 0.8, 1.0);
+            let accent_color = egui::Color32::from(accent);
+            let accent_dim = egui::Color32::from(egui::ecolor::Hsva::new(
+                settings.accent_hue, 0.5, if settings.dark_mode { 0.5 } else { 0.6 }, 1.0
+            ));
+
+            visuals.selection.bg_fill = accent_color;
+            visuals.selection.stroke.color = accent_color;
+            visuals.widgets.hovered.bg_stroke.color = accent_color;
+            visuals.widgets.active.bg_stroke.color = accent_color;
+            visuals.hyperlink_color = accent_color;
+            visuals.widgets.noninteractive.fg_stroke.color = accent_dim;
+
+            ctx.set_visuals(visuals);
+        }
+
         // Fullscreen mode toggle (F11 to toggle, Escape to exit)
         ctx.input(|i| {
             if i.key_pressed(egui::Key::F11) {
@@ -515,6 +647,12 @@ impl eframe::App for EditorApp {
                     }
                 });
 
+                // Options button with popup
+                let options_btn = ui.button("⚙ Options");
+                if options_btn.clicked() {
+                    self.editor_settings.show_options = !self.editor_settings.show_options;
+                }
+
                 // Spacer
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Reset button (full reset with fresh particles)
@@ -577,6 +715,97 @@ impl eframe::App for EditorApp {
                 });
             });
         });
+
+        // Options popup window
+        if self.editor_settings.show_options {
+            egui::Window::new("Editor Options")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.heading("Appearance");
+                    ui.add_space(8.0);
+
+                    // Dark/Light mode toggle
+                    ui.horizontal(|ui| {
+                        ui.label("Theme:");
+                        ui.selectable_value(&mut self.editor_settings.dark_mode, true, "Dark");
+                        ui.selectable_value(&mut self.editor_settings.dark_mode, false, "Light");
+                    });
+
+                    ui.add_space(8.0);
+
+                    // Panel side toggle
+                    ui.horizontal(|ui| {
+                        ui.label("Panel Side:");
+                        ui.selectable_value(&mut self.editor_settings.panel_side, PanelSide::Left, "Left");
+                        ui.selectable_value(&mut self.editor_settings.panel_side, PanelSide::Right, "Right");
+                    });
+
+                    ui.add_space(8.0);
+
+                    // UI Scale (drag value to avoid feedback loop with slider)
+                    ui.horizontal(|ui| {
+                        ui.label("UI Scale:");
+                        ui.add(egui::DragValue::new(&mut self.editor_settings.ui_scale)
+                            .range(0.5..=2.0)
+                            .speed(0.01)
+                            .max_decimals(2));
+                    });
+
+                    ui.add_space(8.0);
+
+                    // Panel opacity slider
+                    ui.add(egui::Slider::new(&mut self.editor_settings.panel_opacity, 0.3..=1.0)
+                        .text("Panel Opacity"));
+
+                    ui.add_space(4.0);
+
+                    // Brightness slider
+                    ui.add(egui::Slider::new(&mut self.editor_settings.brightness, 0.5..=1.5)
+                        .text("Brightness"));
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    // Accent color
+                    ui.label("Accent Color:");
+                    let accent_hue = &mut self.editor_settings.accent_hue;
+                    let accent_preview = egui::ecolor::Hsva::new(*accent_hue, 0.7, 0.8, 1.0);
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(200.0, 16.0), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 4.0, accent_preview);
+                    ui.add(egui::Slider::new(accent_hue, 0.0..=1.0).text("Hue").show_value(false));
+
+                    ui.add_space(8.0);
+
+                    // Background tint
+                    ui.label("Background Tint:");
+                    let bg_hue = &mut self.editor_settings.background_hue;
+                    let bg_tint = &mut self.editor_settings.background_tint;
+
+                    // Preview with current tint strength applied
+                    let base_value = if self.editor_settings.dark_mode { 0.15 } else { 0.95 };
+                    let tinted_sat = 0.3 * *bg_tint;
+                    let bg_preview = egui::ecolor::Hsva::new(*bg_hue, tinted_sat, base_value, 1.0);
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(200.0, 16.0), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 4.0, bg_preview);
+
+                    ui.add(egui::Slider::new(bg_hue, 0.0..=1.0).text("Hue").show_value(false));
+                    ui.add(egui::Slider::new(bg_tint, 0.0..=1.0).text("Strength").show_value(false));
+
+                    ui.add_space(12.0);
+
+                    // Close button
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Close").clicked() {
+                                self.editor_settings.show_options = false;
+                            }
+                        });
+                    });
+                });
+        }
         } // end if !fullscreen_mode for menu bar
 
         // Status bar - only show when not fullscreen
@@ -788,9 +1017,13 @@ impl eframe::App for EditorApp {
             self.editing_particle = None;
         }
 
-        // Right panel: Settings with tabs - only show when not fullscreen
+        // Settings panel (left or right based on settings) - only show when not fullscreen
         if !self.fullscreen_mode {
-        egui::SidePanel::right("settings")
+        let settings_panel = match self.editor_settings.panel_side {
+            PanelSide::Left => egui::SidePanel::left("settings"),
+            PanelSide::Right => egui::SidePanel::right("settings"),
+        };
+        settings_panel
             .min_width(350.0)
             .default_width(400.0)
             .show(ctx, |ui| {
