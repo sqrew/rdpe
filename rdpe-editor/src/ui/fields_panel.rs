@@ -1,9 +1,9 @@
 //! Fields configuration panel
 
-use crate::config::{FieldConfigEntry, FieldTypeConfig};
+use crate::config::{FieldConfigEntry, FieldTypeConfig, GlyphsConfig, GlyphModeConfig, GlyphColorModeConfig};
 use egui::Ui;
 
-pub fn render_fields_panel(ui: &mut Ui, fields: &mut Vec<FieldConfigEntry>) -> bool {
+pub fn render_fields_panel(ui: &mut Ui, fields: &mut Vec<FieldConfigEntry>, glyphs: &mut GlyphsConfig) -> bool {
     let mut changed = false;
 
     ui.heading("3D Fields");
@@ -48,6 +48,59 @@ pub fn render_fields_panel(ui: &mut Ui, fields: &mut Vec<FieldConfigEntry>) -> b
     if let Some(idx) = remove_idx {
         fields.remove(idx);
         changed = true;
+    }
+
+    ui.add_space(8.0);
+    ui.separator();
+
+    // Vector Glyphs section
+    ui.heading("Vector Glyphs");
+    ui.label(
+        egui::RichText::new("Visualize vector fields with arrow glyphs")
+            .small()
+            .weak(),
+    );
+
+    egui::ComboBox::from_label("Glyph Mode")
+        .selected_text(glyphs.mode.name())
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut glyphs.mode, GlyphModeConfig::None, "None");
+            ui.selectable_value(&mut glyphs.mode, GlyphModeConfig::ParticleVelocity, "Particle Velocity");
+            if !fields.is_empty() {
+                ui.separator();
+                ui.label(egui::RichText::new("Vector Fields").small().weak());
+                for (i, field) in fields.iter().enumerate() {
+                    if ui.selectable_label(
+                        matches!(glyphs.mode, GlyphModeConfig::VectorField { field_index } if field_index == i),
+                        format!("{} ({})", field.name, i)
+                    ).clicked() {
+                        glyphs.mode = GlyphModeConfig::VectorField { field_index: i };
+                    }
+                }
+            }
+        });
+
+    if glyphs.mode != GlyphModeConfig::None {
+        ui.add(egui::Slider::new(&mut glyphs.grid_resolution, 2..=16).text("Grid Resolution"));
+        ui.add(egui::Slider::new(&mut glyphs.scale, 0.01..=0.5).text("Scale"));
+
+        ui.horizontal(|ui| {
+            egui::ComboBox::from_id_salt("glyph_color_mode")
+                .selected_text(glyphs.color_mode.name())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut glyphs.color_mode, GlyphColorModeConfig::Uniform, "Uniform");
+                    ui.selectable_value(&mut glyphs.color_mode, GlyphColorModeConfig::ByMagnitude, "By Magnitude");
+                    ui.selectable_value(&mut glyphs.color_mode, GlyphColorModeConfig::ByDirection, "By Direction");
+                });
+            ui.label("Color Mode");
+        });
+
+        if glyphs.color_mode == GlyphColorModeConfig::Uniform {
+            ui.horizontal(|ui| {
+                ui.label("Color:");
+                ui.color_edit_button_rgb(&mut glyphs.color);
+            });
+        }
     }
 
     changed

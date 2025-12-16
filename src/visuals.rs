@@ -1369,6 +1369,63 @@ impl VertexEffect {
     }
 }
 
+/// What data source to visualize with vector glyphs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlyphMode {
+    /// Glyphs disabled (default).
+    #[default]
+    None,
+    /// Show vector field values at grid sample points.
+    VectorField {
+        /// Which field index to visualize.
+        field_index: usize,
+    },
+    /// Show particle velocities as arrows.
+    ParticleVelocity,
+}
+
+/// How to color the glyphs.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum GlyphColorMode {
+    /// Single uniform color.
+    #[default]
+    Uniform,
+    /// Color based on vector magnitude.
+    ByMagnitude,
+    /// Color based on vector direction (XYZ → RGB).
+    ByDirection,
+}
+
+/// Configuration for vector field glyphs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GlyphConfig {
+    /// What to visualize.
+    pub mode: GlyphMode,
+    /// Grid resolution for field sampling (glyphs per axis).
+    pub grid_resolution: u32,
+    /// Scale factor for glyph length.
+    pub scale: f32,
+    /// How to color the glyphs.
+    pub color_mode: GlyphColorMode,
+    /// Base color (used when color_mode is Uniform).
+    pub color: Vec3,
+    /// Line thickness for glyphs.
+    pub thickness: f32,
+}
+
+impl Default for GlyphConfig {
+    fn default() -> Self {
+        Self {
+            mode: GlyphMode::None,
+            grid_resolution: 8,
+            scale: 0.1,
+            color_mode: GlyphColorMode::Uniform,
+            color: Vec3::new(0.0, 1.0, 0.5),
+            thickness: 0.002,
+        }
+    }
+}
+
 /// Combine multiple vertex effects into a single WGSL vertex shader body.
 pub fn combine_vertex_effects(effects: &[VertexEffect], color_expr: &str) -> String {
     if effects.is_empty() {

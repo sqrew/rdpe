@@ -55,14 +55,14 @@ impl SingleFieldGpu {
         let read_buffer_a = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Field {} Read Buffer A", index)),
             size: (buffer_elements * 4) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
         let read_buffer_b = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&format!("Field {} Read Buffer B", index)),
             size: (buffer_elements * 4) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
 
@@ -97,6 +97,103 @@ impl SingleFieldGpu {
     /// Swap read buffers after blur
     pub fn swap_buffers(&mut self) {
         self.read_is_b = !self.read_is_b;
+    }
+
+    /// Read back field data from GPU to CPU.
+    ///
+    /// Returns the field data as a Vec of f32 values.
+    /// For scalar fields: one value per cell.
+    /// For vector fields: three values (x, y, z) per cell.
+    ///
+    /// This is a blocking operation and should be used sparingly.
+    pub fn read_field_data(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Vec<f32> {
+        let total_cells = self.config.total_cells() as usize;
+        let components = self.config.field_type.components() as usize;
+        let buffer_elements = total_cells * components;
+        let buffer_size = (buffer_elements * 4) as u64;
+
+        // Create staging buffer for readback
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Field Readback Staging"),
+            size: buffer_size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Copy from current read buffer to staging
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Field Readback Encoder"),
+        });
+        encoder.copy_buffer_to_buffer(
+            self.current_read_buffer(),
+            0,
+            &staging_buffer,
+            0,
+            buffer_size,
+        );
+        queue.submit(std::iter::once(encoder.finish()));
+
+        // Map and read the staging buffer
+        let buffer_slice = staging_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            sender.send(result).unwrap();
+        });
+        device.poll(wgpu::Maintain::Wait);
+        receiver.recv().unwrap().unwrap();
+
+        let data = buffer_slice.get_mapped_range();
+        let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
+        drop(data);
+        staging_buffer.unmap();
+
+        result
+    }
+
+    /// Sample the field at a world position.
+    ///
+    /// `data` should be the result of `read_field_data()`.
+    /// Returns the interpolated value at the given position.
+    pub fn sample_at(&self, data: &[f32], pos: glam::Vec3) -> glam::Vec3 {
+        let res = self.config.resolution as f32;
+        let extent = self.config.world_extent;
+        let components = self.config.field_type.components() as usize;
+
+        // Convert world position to grid coordinates
+        let normalized = (pos + glam::Vec3::splat(extent)) / (2.0 * extent);
+        let grid_pos = normalized * res;
+
+        // Clamp to valid range
+        let x = grid_pos.x.clamp(0.0, res - 1.001);
+        let y = grid_pos.y.clamp(0.0, res - 1.001);
+        let z = grid_pos.z.clamp(0.0, res - 1.001);
+
+        // Get integer indices
+        let ix = x as usize;
+        let iy = y as usize;
+        let iz = z as usize;
+
+        let res_u = self.config.resolution as usize;
+
+        // Helper to get value at grid index
+        let get_value = |gx: usize, gy: usize, gz: usize| -> glam::Vec3 {
+            let idx = (gz * res_u * res_u + gy * res_u + gx) * components;
+            if components == 3 && idx + 2 < data.len() {
+                glam::Vec3::new(data[idx], data[idx + 1], data[idx + 2])
+            } else if components == 1 && idx < data.len() {
+                // Scalar field - return as (value, 0, 0)
+                glam::Vec3::new(data[idx], 0.0, 0.0)
+            } else {
+                glam::Vec3::ZERO
+            }
+        };
+
+        // Simple nearest-neighbor sampling (could be improved to trilinear)
+        get_value(ix, iy, iz)
     }
 }
 

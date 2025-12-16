@@ -475,6 +475,94 @@ impl WireframeMeshConfig {
     }
 }
 
+/// What data source to visualize with vector glyphs
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum GlyphModeConfig {
+    #[default]
+    None,
+    VectorField { field_index: usize },
+    ParticleVelocity,
+}
+
+impl GlyphModeConfig {
+    pub fn name(&self) -> &'static str {
+        match self {
+            GlyphModeConfig::None => "None",
+            GlyphModeConfig::VectorField { .. } => "Vector Field",
+            GlyphModeConfig::ParticleVelocity => "Particle Velocity",
+        }
+    }
+}
+
+/// How to color the glyphs
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum GlyphColorModeConfig {
+    #[default]
+    Uniform,
+    ByMagnitude,
+    ByDirection,
+}
+
+impl GlyphColorModeConfig {
+    pub fn name(&self) -> &'static str {
+        match self {
+            GlyphColorModeConfig::Uniform => "Uniform",
+            GlyphColorModeConfig::ByMagnitude => "By Magnitude",
+            GlyphColorModeConfig::ByDirection => "By Direction",
+        }
+    }
+}
+
+/// Configuration for vector glyphs
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct GlyphsConfig {
+    pub mode: GlyphModeConfig,
+    pub grid_resolution: u32,
+    pub scale: f32,
+    pub color_mode: GlyphColorModeConfig,
+    pub color: [f32; 3],
+}
+
+impl Default for GlyphsConfig {
+    fn default() -> Self {
+        Self {
+            mode: GlyphModeConfig::None,
+            grid_resolution: 8,
+            scale: 0.1,
+            color_mode: GlyphColorModeConfig::Uniform,
+            color: [0.0, 1.0, 0.5],
+        }
+    }
+}
+
+impl GlyphsConfig {
+    /// Convert to the core library's GlyphConfig type.
+    pub fn to_glyph_config(&self) -> rdpe::GlyphConfig {
+        let mode = match self.mode {
+            GlyphModeConfig::None => rdpe::GlyphMode::None,
+            GlyphModeConfig::VectorField { field_index } => {
+                rdpe::GlyphMode::VectorField { field_index }
+            }
+            GlyphModeConfig::ParticleVelocity => rdpe::GlyphMode::ParticleVelocity,
+        };
+
+        let color_mode = match self.color_mode {
+            GlyphColorModeConfig::Uniform => rdpe::GlyphColorMode::Uniform,
+            GlyphColorModeConfig::ByMagnitude => rdpe::GlyphColorMode::ByMagnitude,
+            GlyphColorModeConfig::ByDirection => rdpe::GlyphColorMode::ByDirection,
+        };
+
+        rdpe::GlyphConfig {
+            mode,
+            grid_resolution: self.grid_resolution,
+            scale: self.scale,
+            color_mode,
+            color: rdpe::Vec3::new(self.color[0], self.color[1], self.color[2]),
+            thickness: 1.0, // Default thickness
+        }
+    }
+}
+
 /// Visual configuration for particle rendering
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct VisualsConfig {
@@ -495,6 +583,8 @@ pub struct VisualsConfig {
     pub wireframe: WireframeMeshConfig,
     #[serde(default = "default_wireframe_thickness")]
     pub wireframe_thickness: f32,
+    #[serde(default)]
+    pub glyphs: GlyphsConfig,
 }
 
 impl Default for VisualsConfig {
@@ -514,6 +604,7 @@ impl Default for VisualsConfig {
             spatial_grid_opacity: 0.0,
             wireframe: WireframeMeshConfig::None,
             wireframe_thickness: 0.003,
+            glyphs: GlyphsConfig::default(),
         }
     }
 }

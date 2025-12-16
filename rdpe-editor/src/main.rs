@@ -40,8 +40,8 @@ enum SidebarTab {
 /// Which side the settings panel is on
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 enum PanelSide {
-    Left,
     #[default]
+    Left,
     Right,
 }
 
@@ -71,7 +71,7 @@ struct EditorSettings {
 impl Default for EditorSettings {
     fn default() -> Self {
         Self {
-            panel_side: PanelSide::Right,
+            panel_side: PanelSide::Left,
             accent_hue: 0.6, // Default blue-ish
             background_hue: 0.6,
             background_tint: 0.0, // No tint by default
@@ -205,6 +205,8 @@ struct EditorApp {
     last_background_color: [f32; 3],
     /// Track previous grid opacity for live updates
     last_grid_opacity: f32,
+    /// Track previous glyph config for live updates
+    last_glyph_config: GlyphsConfig,
     /// State for the add uniform UI
     add_uniform_state: AddUniformState,
     /// State for the export panel
@@ -235,6 +237,7 @@ impl EditorApp {
 
         let last_background_color = config.visuals.background_color;
         let last_grid_opacity = config.visuals.spatial_grid_opacity;
+        let last_glyph_config = config.visuals.glyphs.clone();
         let applied_config = config.clone();
         let previous_config = config.clone();
 
@@ -249,6 +252,7 @@ impl EditorApp {
             needs_reset: false,
             last_background_color,
             last_grid_opacity,
+            last_glyph_config,
             add_uniform_state: AddUniformState::default(),
             export_panel_state: ExportPanelState::default(),
             interactions_panel_state: InteractionsPanelState::default(),
@@ -391,6 +395,9 @@ impl EditorApp {
             self.applied_config = self.config.clone();
             self.show_status("Simulation rebuilt");
         }
+
+        // Reset tracking state so configs get re-applied to new SimulationResources
+        self.last_glyph_config = GlyphsConfig::default();
     }
 
     fn reset_simulation(&mut self, wgpu_render_state: &egui_wgpu::RenderState) {
@@ -406,6 +413,9 @@ impl EditorApp {
             self.applied_config = self.config.clone();
             self.show_status("Simulation reset");
         }
+
+        // Reset tracking state so configs get re-applied to new SimulationResources
+        self.last_glyph_config = GlyphsConfig::default();
     }
 }
 
@@ -589,6 +599,17 @@ impl eframe::App for EditorApp {
                 }
             }
             self.last_grid_opacity = self.config.visuals.spatial_grid_opacity;
+        }
+
+        // Live update: glyph config (hot-swappable)
+        // The actual glyph data updates happen in SimulationResources::prepare()
+        if self.config.visuals.glyphs != self.last_glyph_config {
+            if let Some(state) = wgpu_render_state {
+                if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
+                    sim.set_glyph_config(self.config.visuals.glyphs.to_glyph_config());
+                }
+            }
+            self.last_glyph_config = self.config.visuals.glyphs.clone();
         }
 
         // Live update: custom uniform values (hot-swappable)
@@ -1110,7 +1131,7 @@ impl eframe::App for EditorApp {
                             render_particle_fields_panel(ui, &mut self.config);
                         }
                         SidebarTab::Fields => {
-                            render_fields_panel(ui, &mut self.config.fields);
+                            render_fields_panel(ui, &mut self.config.fields, &mut self.config.visuals.glyphs);
 
                             ui.separator();
 

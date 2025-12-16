@@ -31,8 +31,8 @@ pub use rules::{AgentStateConfig, Falloff, RuleConfig, TransitionConfig};
 pub use spawn::{ColorMode, InitialVelocity, SpawnConfig, SpawnShape};
 pub use uniforms::UniformValueConfig;
 pub use visuals::{
-    BlendModeConfig, ColorMappingConfig, PaletteConfig, ParticleShapeConfig, VertexEffectConfig,
-    VisualsConfig, WireframeMeshConfig,
+    BlendModeConfig, ColorMappingConfig, GlyphColorModeConfig, GlyphModeConfig, GlyphsConfig,
+    PaletteConfig, ParticleShapeConfig, VertexEffectConfig, VisualsConfig, WireframeMeshConfig,
 };
 pub use volume::VolumeRenderConfig;
 

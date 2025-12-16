@@ -25,7 +25,7 @@ use post_process::PostProcessState;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use rdpe::{
-    FieldSystemGpu, SpatialConfig, SpatialGpu, VolumeRenderState,
+    FieldSystemGpu, GlyphConfig, GlyphRenderer, SpatialConfig, SpatialGpu, VolumeRenderState,
     create_particle_field_bind_group_layout,
 };
 use std::collections::HashMap;
@@ -212,6 +212,15 @@ pub struct SimulationResources {
     // Trail visualization
     trails: Option<TrailVisualization>,
 
+    // Vector glyph visualization
+    glyph_renderer: Option<GlyphRenderer>,
+    /// Cached field data for glyph sampling (updated periodically)
+    glyph_field_cache: Option<Vec<f32>>,
+    /// Which field index the cache is for
+    glyph_field_index: Option<usize>,
+    /// Frame counter for periodic glyph updates
+    glyph_update_counter: u32,
+
     // Mouse interaction
     mouse_state: MouseState,
     mouse_config: MouseConfig,
@@ -396,6 +405,14 @@ impl SimulationResources {
         } else {
             None
         };
+
+        // Create glyph renderer for vector field visualization
+        let glyph_renderer = Some(GlyphRenderer::new(
+            device,
+            &uniform_buffer,
+            target_format,
+            10000, // max glyphs
+        ));
 
         // Create field system if fields are defined
         let (field_system, field_bind_group_layout) = if !field_registry.is_empty() {
@@ -825,6 +842,10 @@ impl SimulationResources {
             connections,
             wireframe,
             trails,
+            glyph_renderer,
+            glyph_field_cache: None,
+            glyph_field_index: None,
+            glyph_update_counter: 0,
             mouse_state: MouseState::default(),
             mouse_config,
             post_process,
@@ -986,6 +1007,13 @@ impl SimulationResources {
             }
         }
 
+        // Update vector glyphs (periodically to avoid per-frame GPU readback cost)
+        self.glyph_update_counter += 1;
+        if self.glyph_update_counter >= 10 {
+            self.glyph_update_counter = 0;
+            self.update_glyphs_internal(device, queue);
+        }
+
         // If post-processing is enabled, render the scene to the intermediate texture
         if self.has_post_process() {
             if let Some(ref pp) = self.post_process {
@@ -1058,6 +1086,11 @@ impl SimulationResources {
         // Render connections (after particles so they overlay)
         if let Some(ref connections) = self.connections {
             connections.render(render_pass);
+        }
+
+        // Render vector glyphs (on top of everything)
+        if let Some(ref glyphs) = self.glyph_renderer {
+            glyphs.render(render_pass);
         }
     }
 
@@ -1174,6 +1207,84 @@ impl SimulationResources {
     pub fn set_grid_opacity(&mut self, queue: &wgpu::Queue, opacity: f32) {
         if let Some(ref mut grid) = self.grid_viz {
             grid.set_opacity(queue, opacity);
+        }
+    }
+
+    /// Set glyph renderer configuration.
+    pub fn set_glyph_config(&mut self, config: GlyphConfig) {
+        if let Some(ref mut glyphs) = self.glyph_renderer {
+            glyphs.set_config(config);
+        }
+    }
+
+    /// Update glyphs from field data.
+    ///
+    /// `bounds` is the simulation bounds (for sampling the field at grid points).
+    /// `sample_field` is called with (x, y, z) and should return the vector at that point.
+    pub fn update_glyphs_from_field(
+        &mut self,
+        queue: &wgpu::Queue,
+        bounds: f32,
+        sample_field: impl Fn(Vec3) -> Vec3,
+    ) {
+        if let Some(ref mut glyphs) = self.glyph_renderer {
+            glyphs.update_from_field(queue, bounds, sample_field);
+        }
+    }
+
+    /// Update glyphs from particle velocity data.
+    pub fn update_glyphs_from_particles(
+        &mut self,
+        queue: &wgpu::Queue,
+        positions: &[Vec3],
+        velocities: &[Vec3],
+        sample_rate: u32,
+    ) {
+        if let Some(ref mut glyphs) = self.glyph_renderer {
+            glyphs.update_from_particles(queue, positions, velocities, sample_rate);
+        }
+    }
+
+    /// Internal method to update glyphs based on current configuration.
+    fn update_glyphs_internal(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let glyph_renderer = match self.glyph_renderer.as_mut() {
+            Some(r) => r,
+            None => return,
+        };
+
+        let config = glyph_renderer.config().clone();
+
+        match config.mode {
+            rdpe::GlyphMode::None => {
+                // Nothing to do
+            }
+            rdpe::GlyphMode::VectorField { field_index } => {
+                // Get field data from the field system
+                if let Some(ref field_system) = self.field_system {
+                    if field_index < field_system.fields.len() {
+                        let field = &field_system.fields[field_index];
+                        let bounds = field.config.world_extent;
+
+                        // Always refresh field data for continuous updates
+                        // (the update rate is already limited by glyph_update_counter)
+                        let data = field.read_field_data(device, queue);
+                        self.glyph_field_cache = Some(data);
+                        self.glyph_field_index = Some(field_index);
+
+                        // Update glyphs using the field data
+                        if let Some(ref data) = self.glyph_field_cache {
+                            let field_ref = &field_system.fields[field_index];
+                            glyph_renderer.update_from_field(queue, bounds, |pos| {
+                                field_ref.sample_at(data, pos)
+                            });
+                        }
+                    }
+                }
+            }
+            rdpe::GlyphMode::ParticleVelocity => {
+                // Particle velocity mode would need particle readback
+                // For now, skip (could be implemented later)
+            }
         }
     }
 

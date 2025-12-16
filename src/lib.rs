@@ -124,6 +124,7 @@ pub use emitter::Emitter;
 pub use error::{GpuError, SimulationError, TextureError};
 pub use field::{FieldConfig, FieldRegistry, FieldType};
 pub use glam::{Vec2, Vec3, Vec4};
+pub use gpu::GlyphRenderer;
 pub use gpu::VolumeConfig;
 pub use gpu::VolumeRenderState;
 pub use gpu::{FieldSystemGpu, create_particle_field_bind_group_layout};
@@ -136,7 +137,7 @@ pub use spawn::SpawnContext;
 pub use sub_emitter::{SpawnTrigger, SubEmitter};
 pub use textures::{AddressMode, FilterMode, TextureConfig, TextureRegistry};
 pub use uniforms::{CustomUniforms, UniformValue, UpdateContext};
-pub use visuals::{BlendMode, ColorMapping, ConfigDiff, HotSwapChange, Palette, ParticleShape, VertexEffect, VisualConfig, WireframeMesh};
+pub use visuals::{BlendMode, ColorMapping, ConfigDiff, GlyphColorMode, GlyphConfig, GlyphMode, HotSwapChange, Palette, ParticleShape, VertexEffect, VisualConfig, WireframeMesh};
 pub use gpu::{AdjacencyGpu, SpatialGpu, SpatialGridViz};
 pub use spatial::{AdjacencyConfig, SpatialConfig};
 

@@ -2,8 +2,8 @@
 
 use eframe::egui;
 use crate::config::{
-    BlendModeConfig, ColorMappingConfig, ColorMode, PaletteConfig, ParticleShapeConfig,
-    SimConfig, WireframeMeshConfig,
+    BlendModeConfig, ColorMappingConfig, ColorMode,
+    PaletteConfig, ParticleShapeConfig, SimConfig, WireframeMeshConfig,
 };
 
 pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
