@@ -48,6 +48,37 @@ struct BaseUniforms {
 
 const BASE_UNIFORMS_SIZE: usize = std::mem::size_of::<BaseUniforms>();
 
+/// Statistics for a single particle field (scalar or vector).
+#[derive(Clone, Debug, Default)]
+pub struct FieldStats {
+    pub name: String,
+    pub components: u32,  // 1 for scalar, 3 for vec3
+    pub min: Vec3,        // For scalars, only .x is used
+    pub max: Vec3,
+    pub avg: Vec3,
+}
+
+/// Computed statistics for the simulation.
+#[derive(Clone, Debug, Default)]
+pub struct SimulationStats {
+    // General particle info
+    pub total_particles: u32,
+    pub alive_particles: u32,
+
+    // Spatial metrics
+    pub center_of_mass: Vec3,
+    pub bounding_min: Vec3,
+    pub bounding_max: Vec3,
+
+    // Velocity metrics
+    pub avg_velocity: Vec3,
+    pub avg_speed: f32,
+    pub max_speed: f32,
+
+    // Per-field statistics
+    pub field_stats: Vec<FieldStats>,
+}
+
 /// Mouse uniforms passed to shaders for mouse interaction.
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -220,6 +251,14 @@ pub struct SimulationResources {
     glyph_field_index: Option<usize>,
     /// Frame counter for periodic glyph updates
     glyph_update_counter: u32,
+
+    // Statistics
+    /// Cached simulation statistics
+    stats: SimulationStats,
+    /// Frame counter for periodic stats updates
+    stats_update_counter: u32,
+    /// Particle layout info for parsing readback data
+    particle_layout: ParticleLayout,
 
     // Mouse interaction
     mouse_state: MouseState,
@@ -846,6 +885,9 @@ impl SimulationResources {
             glyph_field_cache: None,
             glyph_field_index: None,
             glyph_update_counter: 0,
+            stats: SimulationStats::default(),
+            stats_update_counter: 0,
+            particle_layout: layout.clone(),
             mouse_state: MouseState::default(),
             mouse_config,
             post_process,
@@ -1012,6 +1054,13 @@ impl SimulationResources {
         if self.glyph_update_counter >= 10 {
             self.glyph_update_counter = 0;
             self.update_glyphs_internal(device, queue);
+        }
+
+        // Update statistics (less frequently than glyphs since it reads all particles)
+        self.stats_update_counter += 1;
+        if self.stats_update_counter >= 30 {
+            self.stats_update_counter = 0;
+            self.update_stats_internal(device, queue);
         }
 
         // If post-processing is enabled, render the scene to the intermediate texture
@@ -1286,6 +1335,179 @@ impl SimulationResources {
                 // For now, skip (could be implemented later)
             }
         }
+    }
+
+    /// Read particle data from GPU.
+    fn read_particle_data(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<u8> {
+        let buffer_size = self.particle_buffer.size();
+
+        // Create staging buffer for readback
+        let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Particle Readback Staging"),
+            size: buffer_size,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Copy from particle buffer to staging
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Particle Readback Encoder"),
+        });
+        encoder.copy_buffer_to_buffer(&self.particle_buffer, 0, &staging_buffer, 0, buffer_size);
+        queue.submit(std::iter::once(encoder.finish()));
+
+        // Map and read the staging buffer
+        let buffer_slice = staging_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            sender.send(result).unwrap();
+        });
+        device.poll(wgpu::Maintain::Wait);
+        receiver.recv().unwrap().unwrap();
+
+        let data = buffer_slice.get_mapped_range();
+        let result = data.to_vec();
+        drop(data);
+        staging_buffer.unmap();
+
+        result
+    }
+
+    /// Internal method to update simulation statistics.
+    fn update_stats_internal(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let data = self.read_particle_data(device, queue);
+        let layout = &self.particle_layout;
+        let stride = layout.stride as usize;
+
+        let mut stats = SimulationStats {
+            total_particles: self.num_particles,
+            ..Default::default()
+        };
+
+        let mut alive_count = 0u32;
+        let mut pos_sum = Vec3::ZERO;
+        let mut vel_sum = Vec3::ZERO;
+        let mut speed_sum = 0.0f32;
+        let mut max_speed = 0.0f32;
+        let mut pos_min = Vec3::splat(f32::MAX);
+        let mut pos_max = Vec3::splat(f32::MIN);
+
+        // Initialize per-field stats
+        let mut field_stats: Vec<(Vec3, Vec3, Vec3)> = Vec::new(); // (min, max, sum)
+        for info in &layout.fields {
+            let components = (info.field_type.byte_size() / 4) as u32;
+            field_stats.push((
+                Vec3::splat(f32::MAX),
+                Vec3::splat(f32::MIN),
+                Vec3::ZERO,
+            ));
+            stats.field_stats.push(FieldStats {
+                name: info.name.clone(),
+                components,
+                ..Default::default()
+            });
+        }
+
+        // Process each particle
+        for i in 0..self.num_particles as usize {
+            let base = i * stride;
+            if base + stride > data.len() {
+                break;
+            }
+
+            // Check if alive (alive is at a known offset in base fields)
+            let alive_offset = layout.alive_offset as usize;
+            let alive = if base + alive_offset + 4 <= data.len() {
+                u32::from_le_bytes([
+                    data[base + alive_offset],
+                    data[base + alive_offset + 1],
+                    data[base + alive_offset + 2],
+                    data[base + alive_offset + 3],
+                ])
+            } else {
+                0
+            };
+
+            if alive == 0 {
+                continue;
+            }
+            alive_count += 1;
+
+            // Read position (offset 0)
+            let pos = Vec3::new(
+                f32::from_le_bytes([data[base], data[base + 1], data[base + 2], data[base + 3]]),
+                f32::from_le_bytes([data[base + 4], data[base + 5], data[base + 6], data[base + 7]]),
+                f32::from_le_bytes([data[base + 8], data[base + 9], data[base + 10], data[base + 11]]),
+            );
+
+            // Read velocity (offset 16, after position + padding)
+            let vel_offset = 16;
+            let vel = Vec3::new(
+                f32::from_le_bytes([data[base + vel_offset], data[base + vel_offset + 1], data[base + vel_offset + 2], data[base + vel_offset + 3]]),
+                f32::from_le_bytes([data[base + vel_offset + 4], data[base + vel_offset + 5], data[base + vel_offset + 6], data[base + vel_offset + 7]]),
+                f32::from_le_bytes([data[base + vel_offset + 8], data[base + vel_offset + 9], data[base + vel_offset + 10], data[base + vel_offset + 11]]),
+            );
+
+            let speed = vel.length();
+
+            pos_sum += pos;
+            vel_sum += vel;
+            speed_sum += speed;
+            max_speed = max_speed.max(speed);
+            pos_min = pos_min.min(pos);
+            pos_max = pos_max.max(pos);
+
+            // Process each field for per-field stats
+            for (field_idx, info) in layout.fields.iter().enumerate() {
+                let offset = base + info.offset;
+                let components = info.field_type.byte_size() / 4;
+                let value = if components >= 3 && offset + 12 <= data.len() {
+                    Vec3::new(
+                        f32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]),
+                        f32::from_le_bytes([data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7]]),
+                        f32::from_le_bytes([data[offset + 8], data[offset + 9], data[offset + 10], data[offset + 11]]),
+                    )
+                } else if components == 1 && offset + 4 <= data.len() {
+                    Vec3::new(
+                        f32::from_le_bytes([data[offset], data[offset + 1], data[offset + 2], data[offset + 3]]),
+                        0.0,
+                        0.0,
+                    )
+                } else {
+                    Vec3::ZERO
+                };
+
+                let (min, max, sum) = &mut field_stats[field_idx];
+                *min = min.min(value);
+                *max = max.max(value);
+                *sum += value;
+            }
+        }
+
+        // Compute averages
+        if alive_count > 0 {
+            let count = alive_count as f32;
+            stats.alive_particles = alive_count;
+            stats.center_of_mass = pos_sum / count;
+            stats.bounding_min = pos_min;
+            stats.bounding_max = pos_max;
+            stats.avg_velocity = vel_sum / count;
+            stats.avg_speed = speed_sum / count;
+            stats.max_speed = max_speed;
+
+            for (field_idx, (min, max, sum)) in field_stats.into_iter().enumerate() {
+                stats.field_stats[field_idx].min = min;
+                stats.field_stats[field_idx].max = max;
+                stats.field_stats[field_idx].avg = sum / count;
+            }
+        }
+
+        self.stats = stats;
+    }
+
+    /// Get current simulation statistics.
+    pub fn stats(&self) -> &SimulationStats {
+        &self.stats
     }
 
     /// Update mouse state (ray and button).

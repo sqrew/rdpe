@@ -17,7 +17,7 @@ use rdpe_editor::ui::{
     render_custom_panel, render_effects_panel, render_emitters_panel, render_export_button,
     render_export_window, render_fields_panel, render_interactions_panel, render_mouse_panel,
     render_particle_fields_panel, render_post_process_panel, render_rules_panel, render_spawn_panel,
-    render_visuals_panel, render_volume_panel, AddUniformState, ExportPanelState,
+    render_stats_panel, render_visuals_panel, render_volume_panel, AddUniformState, ExportPanelState,
     InteractionsPanelState, ShaderContext, PRESETS,
 };
 
@@ -35,6 +35,7 @@ enum SidebarTab {
     PostProcess,
     Mouse,
     Custom,
+    Stats,
 }
 
 /// Which side the settings panel is on
@@ -1067,6 +1068,7 @@ impl eframe::App for EditorApp {
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::PostProcess, "Post FX");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Mouse, "Mouse");
                     ui.selectable_value(&mut self.selected_tab, SidebarTab::Custom, "Custom");
+                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Stats, "Stats");
                 });
                 ui.separator();
 
@@ -1190,6 +1192,14 @@ impl eframe::App for EditorApp {
                             ui.horizontal(|ui| {
                                 render_export_button(ui, &mut self.export_panel_state, &self.config);
                             });
+                        }
+                        SidebarTab::Stats => {
+                            // Get stats from simulation resources
+                            if let Some(state) = wgpu_render_state {
+                                if let Some(sim) = state.renderer.read().callback_resources.get::<rdpe_editor::embedded::SimulationResources>() {
+                                    render_stats_panel(ui, sim.stats());
+                                }
+                            }
                         }
                     }
                 });
