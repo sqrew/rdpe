@@ -2413,4 +2413,427 @@ p.scale = 0.8 + v_norm * 0.5;
             }
         },
     },
+    Preset {
+        name: "Black Hole",
+        description: "Accretion disk spiraling into a black hole with relativistic jets",
+        config: || {
+            use crate::config::PostProcessEffect;
+
+            SimConfig {
+                name: "Black Hole".into(),
+                particle_count: 25000,
+                bounds: 2.0,
+                particle_size: 0.012,
+                speed: 1.0,
+                spatial_cell_size: 0.1,
+                spatial_resolution: 32,
+                spawn: SpawnConfig {
+                    // Spawn in a thick disk around the center
+                    shape: SpawnShape::Ring {
+                        radius: 0.8,
+                        thickness: 0.5,
+                    },
+                    // Initial tangential velocity for orbital motion
+                    velocity: InitialVelocity::RandomDirection { speed: 0.6 },
+                    color_mode: ColorMode::Uniform {
+                        r: 1.0,
+                        g: 0.6,
+                        b: 0.2,
+                    },
+                    ..Default::default()
+                },
+                particle_fields: vec![
+                    ParticleFieldDef {
+                        name: "heat".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                    ParticleFieldDef {
+                        name: "in_jet".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                ],
+                rules: vec![
+                    // Initialize with tangential velocity for orbit
+                    RuleConfig::Custom {
+                        code: r#"
+// Set up initial orbital velocity on spawn
+if length(p.velocity) < 0.1 || p.heat < 0.01 {
+    let to_center = -p.position;
+    let dist = length(to_center);
+
+    // Tangent vector (perpendicular to radial, in xz plane)
+    let tangent = normalize(vec3<f32>(-to_center.z, 0.0, to_center.x));
+
+    // Orbital speed - faster closer to center (Keplerian-ish)
+    let orbital_speed = 1.2 / sqrt(max(dist, 0.1));
+    p.velocity = tangent * orbital_speed;
+
+    // Flatten to disk with some thickness
+    p.position.y *= 0.15;
+    p.velocity.y *= 0.1;
+
+    // Initialize heat based on distance
+    p.heat = clamp(1.0 - dist, 0.1, 1.0);
+    p.in_jet = 0.0;
+}
+"#
+                        .into(),
+                    },
+                    // Massive central gravity
+                    RuleConfig::Custom {
+                        code: r#"
+let to_center = -p.position;
+let dist = length(to_center);
+let dir = to_center / max(dist, 0.001);
+
+// Strong gravity with 1/r^2 falloff
+let gravity_strength = 2.5 / max(dist * dist, 0.01);
+p.velocity += dir * gravity_strength * uniforms.delta_time;
+
+// Increase heat as particle falls inward
+p.heat = clamp(0.3 / max(dist, 0.05), 0.0, 1.5);
+
+// Event horizon - particles that get too close
+if dist < 0.08 {
+    // 20% chance to become a jet particle
+    let hash = u32(p.position.x * 10000.0) ^ u32(p.position.z * 10000.0) ^ u32(uniforms.time * 100.0);
+    let rand = f32(hash & 0xFFu) / 255.0;
+
+    if rand < 0.2 {
+        // Launch into jet!
+        p.in_jet = 1.0;
+        let jet_dir = select(-1.0, 1.0, rand > 0.1);
+        p.position = vec3<f32>(
+            (rand - 0.1) * 0.06,
+            jet_dir * 0.1,
+            (f32((hash >> 8u) & 0xFFu) / 255.0 - 0.5) * 0.06
+        );
+        p.velocity = vec3<f32>(0.0, jet_dir * 4.0, 0.0);
+        p.heat = 1.5;
+    } else {
+        // Respawn in outer disk
+        let angle = rand * 6.28318;
+        let r = 0.6 + rand * 0.4;
+        p.position = vec3<f32>(cos(angle) * r, (rand - 0.5) * 0.1, sin(angle) * r);
+        p.velocity = vec3<f32>(0.0);
+        p.heat = 0.1;
+    }
+}
+"#
+                        .into(),
+                    },
+                    // Jet particle dynamics
+                    RuleConfig::Custom {
+                        code: r#"
+if p.in_jet > 0.5 {
+    // Jets spread slightly and decelerate
+    let spread = 0.3 * uniforms.delta_time;
+    p.velocity.x += (p.position.x) * spread;
+    p.velocity.z += (p.position.z) * spread;
+    p.velocity.y *= 0.995;  // Slight deceleration
+
+    // Cool down
+    p.heat *= 0.99;
+
+    // Return to disk when jet particle slows/cools
+    if abs(p.velocity.y) < 0.5 || abs(p.position.y) > 1.8 {
+        p.in_jet = 0.0;
+        let hash = u32(p.position.x * 1000.0 + uniforms.time * 500.0);
+        let rand = f32(hash & 0xFFu) / 255.0;
+        let angle = rand * 6.28318;
+        let r = 0.5 + rand * 0.5;
+        p.position = vec3<f32>(cos(angle) * r, 0.0, sin(angle) * r);
+        p.velocity = vec3<f32>(0.0);
+    }
+}
+"#
+                        .into(),
+                    },
+                    // Slight drag to help disk formation
+                    RuleConfig::Drag(0.3),
+                    // Color by heat
+                    RuleConfig::Custom {
+                        code: r#"
+// Hot = white/blue, warm = orange, cool = red/dark
+let h = clamp(p.heat, 0.0, 1.5);
+
+var col: vec3<f32>;
+if h < 0.3 {
+    // Cool outer disk: dark red
+    let t = h / 0.3;
+    col = mix(vec3<f32>(0.15, 0.02, 0.0), vec3<f32>(0.6, 0.1, 0.0), t);
+} else if h < 0.7 {
+    // Warm middle: red -> orange -> yellow
+    let t = (h - 0.3) / 0.4;
+    col = mix(vec3<f32>(0.6, 0.1, 0.0), vec3<f32>(1.0, 0.7, 0.1), t);
+} else if h < 1.0 {
+    // Hot inner: yellow -> white
+    let t = (h - 0.7) / 0.3;
+    col = mix(vec3<f32>(1.0, 0.7, 0.1), vec3<f32>(1.0, 1.0, 0.9), t);
+} else {
+    // Jets: white -> blue
+    let t = min((h - 1.0) / 0.5, 1.0);
+    col = mix(vec3<f32>(1.0, 1.0, 0.9), vec3<f32>(0.6, 0.8, 1.0), t);
+}
+
+// Boost brightness for jet particles
+if p.in_jet > 0.5 {
+    col = mix(col, vec3<f32>(0.7, 0.85, 1.0), 0.5);
+}
+
+p.color = col;
+p.scale = 0.6 + h * 0.5;
+"#
+                        .into(),
+                    },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Additive,
+                    background_color: [0.0, 0.0, 0.02],
+                    shape: ParticleShapeConfig::Circle,
+                    trail_length: 8,
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: Vec::new(),
+                volume_render: VolumeRenderConfig::default(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: false,
+                adjacency_max_neighbors: 32,
+                adjacency_radius: 0.1,
+                interactions: InteractionConfig::default(),
+                post_process: PostProcessConfig {
+                    enabled: true,
+                    effects: vec![
+                        PostProcessEffect::Bloom {
+                            intensity: 1.2,
+                            threshold: 0.2,
+                            radius: 0.008,
+                        },
+                        PostProcessEffect::ChromaticAberration {
+                            intensity: 0.003,
+                            radial: true,
+                        },
+                    ],
+                },
+                emitters: Vec::new(),
+            }
+        },
+    },
+    Preset {
+        name: "Murmuration",
+        description: "Starling-like flocking with dramatic swooping formations",
+        config: || {
+            SimConfig {
+                name: "Murmuration".into(),
+                particle_count: 15000,
+                bounds: 3.0,
+                particle_size: 0.008,
+                speed: 1.0,
+                spatial_cell_size: 0.2,
+                spatial_resolution: 32,
+                spawn: SpawnConfig {
+                    shape: SpawnShape::Sphere { radius: 0.6 },
+                    velocity: InitialVelocity::RandomDirection { speed: 0.8 },
+                    color_mode: ColorMode::Uniform {
+                        r: 0.08,
+                        g: 0.06,
+                        b: 0.05,
+                    },
+                    ..Default::default()
+                },
+                particle_fields: vec![
+                    ParticleFieldDef {
+                        name: "wander_offset".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                ],
+                rules: vec![
+                    // Initialize wander offset for variety
+                    RuleConfig::Custom {
+                        code: r#"
+if p.wander_offset < 0.01 {
+    let hash = index * 1103515245u + 12345u;
+    p.wander_offset = f32(hash & 0xFFFFu) / 65535.0 * 6.28318;
+}
+"#
+                        .into(),
+                    },
+                    // Core flocking behavior
+                    RuleConfig::Separate {
+                        radius: 0.08,
+                        strength: 3.0,
+                    },
+                    RuleConfig::Cohere {
+                        radius: 0.4,
+                        strength: 1.2,
+                    },
+                    RuleConfig::Align {
+                        radius: 0.25,
+                        strength: 2.5,
+                    },
+                    // Moving attractor creates the swooping motion
+                    RuleConfig::Custom {
+                        code: r#"
+// Multiple moving attractor points that orbit and bob
+let t = uniforms.time * 0.4;
+
+// Primary attractor - large slow orbit
+let a1 = vec3<f32>(
+    sin(t) * 1.2,
+    sin(t * 1.3) * 0.4,
+    cos(t) * 1.2
+);
+
+// Secondary attractor - faster, offset orbit
+let a2 = vec3<f32>(
+    cos(t * 1.7 + 2.0) * 0.9,
+    cos(t * 0.9) * 0.5,
+    sin(t * 1.7 + 2.0) * 0.9
+);
+
+// Tertiary attractor - vertical figure-8
+let a3 = vec3<f32>(
+    sin(t * 0.8) * 0.6,
+    sin(t * 1.6) * 0.8,
+    cos(t * 0.8) * 0.6
+);
+
+// Find nearest attractor
+let d1 = length(p.position - a1);
+let d2 = length(p.position - a2);
+let d3 = length(p.position - a3);
+
+var goal = a1;
+var dist = d1;
+if d2 < dist {
+    goal = a2;
+    dist = d2;
+}
+if d3 < dist {
+    goal = a3;
+    dist = d3;
+}
+
+// Gentle attraction to nearest goal
+let to_goal = normalize(goal - p.position);
+let attract_strength = 0.8;
+p.velocity += to_goal * attract_strength * uniforms.delta_time;
+
+// Add slight wander for organic feel
+let wander_t = uniforms.time * 2.0 + p.wander_offset;
+let wander = vec3<f32>(
+    sin(wander_t * 1.1) * 0.15,
+    sin(wander_t * 1.3 + 1.0) * 0.1,
+    sin(wander_t * 0.9 + 2.0) * 0.15
+);
+p.velocity += wander * uniforms.delta_time;
+"#
+                        .into(),
+                    },
+                    // Speed limits for natural motion
+                    RuleConfig::SpeedLimit { min: 0.5, max: 1.8 },
+                    // Gentle drag
+                    RuleConfig::Drag(0.5),
+                    // Soft boundary - steer away from edges
+                    RuleConfig::Custom {
+                        code: r#"
+let edge = 2.5;
+let margin = 0.8;
+let turn_strength = 2.0;
+
+if p.position.x > edge - margin {
+    p.velocity.x -= turn_strength * uniforms.delta_time;
+}
+if p.position.x < -edge + margin {
+    p.velocity.x += turn_strength * uniforms.delta_time;
+}
+if p.position.y > edge - margin {
+    p.velocity.y -= turn_strength * uniforms.delta_time;
+}
+if p.position.y < -edge + margin {
+    p.velocity.y += turn_strength * uniforms.delta_time;
+}
+if p.position.z > edge - margin {
+    p.velocity.z -= turn_strength * uniforms.delta_time;
+}
+if p.position.z < -edge + margin {
+    p.velocity.z += turn_strength * uniforms.delta_time;
+}
+"#
+                        .into(),
+                    },
+                    // Leader particles follow attractors directly
+                    RuleConfig::Custom {
+                        code: r#"
+// First 3 particles are leaders - one for each attractor
+let t = uniforms.time * 0.4;
+
+if index == 0u {
+    // Leader 1 follows primary attractor
+    let a1 = vec3<f32>(sin(t) * 1.2, sin(t * 1.3) * 0.4, cos(t) * 1.2);
+    p.velocity = (a1 - p.position) * 3.0;
+}
+if index == 1u {
+    // Leader 2 follows secondary attractor
+    let a2 = vec3<f32>(cos(t * 1.7 + 2.0) * 0.9, cos(t * 0.9) * 0.5, sin(t * 1.7 + 2.0) * 0.9);
+    p.velocity = (a2 - p.position) * 3.0;
+}
+if index == 2u {
+    // Leader 3 follows tertiary attractor
+    let a3 = vec3<f32>(sin(t * 0.8) * 0.6, sin(t * 1.6) * 0.8, cos(t * 0.8) * 0.6);
+    p.velocity = (a3 - p.position) * 3.0;
+}
+"#
+                        .into(),
+                    },
+                    // Subtle color variation based on local density/speed
+                    RuleConfig::Custom {
+                        code: r#"
+// Leaders are larger and colored differently
+if index < 3u {
+    p.color = vec3<f32>(0.95, 0.6, 0.2);  // Warm orange
+    p.scale = 3.0;
+} else {
+    let speed = length(p.velocity);
+    let speed_factor = clamp((speed - 0.5) / 1.3, 0.0, 1.0);
+
+    // Dark birds with subtle variation
+    // Faster = slightly lighter (catching light)
+    let base = vec3<f32>(0.06, 0.05, 0.04);
+    let highlight = vec3<f32>(0.25, 0.22, 0.2);
+    p.color = mix(base, highlight, speed_factor * 0.4);
+
+    // Slight scale variation
+    p.scale = 0.8 + speed_factor * 0.3;
+}
+"#
+                        .into(),
+                    },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Alpha,
+                    // Dusk sky gradient background
+                    background_color: [0.4, 0.25, 0.2],
+                    shape: ParticleShapeConfig::Circle,
+                    trail_length: 3,
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: Vec::new(),
+                volume_render: VolumeRenderConfig::default(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: false,
+                adjacency_max_neighbors: 32,
+                adjacency_radius: 0.4,
+                interactions: InteractionConfig::default(),
+                post_process: PostProcessConfig::default(),
+                emitters: Vec::new(),
+            }
+        },
+    },
 ];
