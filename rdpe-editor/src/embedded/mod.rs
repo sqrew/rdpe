@@ -199,6 +199,8 @@ pub struct SimulationResources {
     // State
     time: f32,
     paused: bool,
+    time_scale: f32,
+    step_one_frame: bool,
 
     // Camera (simple orbit camera)
     camera_distance: f32,
@@ -856,6 +858,8 @@ impl SimulationResources {
             custom_uniforms,
             time: 0.0,
             paused: false,
+            time_scale: 1.0,
+            step_one_frame: false,
             camera_distance: 3.0,
             camera_yaw: 0.0,
             camera_pitch: 0.3,
@@ -907,9 +911,21 @@ impl SimulationResources {
         viewport_width: u32,
         viewport_height: u32,
     ) -> Vec<wgpu::CommandBuffer> {
+        // Handle frame stepping: if step_one_frame is set and we're paused,
+        // temporarily unpause for one frame
+        let should_run = if self.step_one_frame && self.paused {
+            self.step_one_frame = false;
+            true
+        } else {
+            !self.paused
+        };
+
+        // Apply time scale to delta time
+        let scaled_dt = delta_time * self.time_scale;
+
         // Update time
-        if !self.paused {
-            self.time += delta_time;
+        if should_run {
+            self.time += scaled_dt;
         }
 
         // Auto-orbit camera (runs even when paused for nice viewing)
@@ -935,7 +951,7 @@ impl SimulationResources {
         let uniform_data = build_uniform_data(
             view_proj,
             self.time,
-            delta_time,
+            scaled_dt,
             &self.mouse_state,
             &self.mouse_config,
             &self.custom_uniforms,
@@ -960,8 +976,8 @@ impl SimulationResources {
             ));
         }
 
-        // Run compute pass if not paused
-        let mut command_buffers = if !self.paused {
+        // Run compute pass if simulation should run
+        let mut command_buffers = if should_run {
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Compute Encoder"),
             });
@@ -1240,6 +1256,21 @@ impl SimulationResources {
     /// Is the simulation paused?
     pub fn is_paused(&self) -> bool {
         self.paused
+    }
+
+    /// Set the time scale (1.0 = normal, 0.5 = half speed, 2.0 = double speed).
+    pub fn set_time_scale(&mut self, scale: f32) {
+        self.time_scale = scale.clamp(0.0, 5.0);
+    }
+
+    /// Get the current time scale.
+    pub fn time_scale(&self) -> f32 {
+        self.time_scale
+    }
+
+    /// Request to step one frame forward (only effective when paused).
+    pub fn step_frame(&mut self) {
+        self.step_one_frame = true;
     }
 
     /// Set background color.

@@ -70,7 +70,7 @@ This trades some accuracy for a significant performance boost (2x or more in pat
 ```rust
 Rule::Gravity(9.8)      // Single operation
 Rule::Drag(1.0)         // Single multiply
-Rule::BounceWalls       // Few conditionals
+Rule::BounceWalls { restitution: 1.0 }  // Few conditionals
 ```
 
 ### Neighbor Rules (Slower)

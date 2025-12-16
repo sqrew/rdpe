@@ -61,8 +61,13 @@ Particles reflect off the bounding box:
 
 ```rust
 .with_bounds(1.0)           // Cube from -1 to +1
-.with_rule(Rule::BounceWalls)
+.with_rule(Rule::BounceWalls { restitution: 1.0 })
 ```
+
+The `restitution` parameter controls energy preservation on bounce:
+- `1.0` = perfect bounce (no energy loss)
+- `0.5` = loses half velocity on bounce
+- `0.0` = stops dead at wall
 
 ### WrapWalls
 
@@ -1463,7 +1468,7 @@ Rules execute in the order added. A typical order:
 .with_rule(Rule::Cohere { ... })
 .with_rule(Rule::SpeedLimit { ... })     // 4. Clamp velocity
 .with_rule(Rule::Drag(1.0))              // 5. Apply drag
-.with_rule(Rule::BounceWalls)            // 6. Boundary conditions
+.with_rule(Rule::BounceWalls { restitution: 1.0 })  // 6. Boundary conditions
 ```
 
 Velocity integration (`position += velocity * dt`) happens automatically after all rules.

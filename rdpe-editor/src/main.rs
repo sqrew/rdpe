@@ -690,12 +690,12 @@ impl eframe::App for EditorApp {
 
                     // Pause/Play and Camera controls
                     if let Some(state) = wgpu_render_state {
-                        let (is_paused, auto_orbit, orbit_speed) = {
+                        let (is_paused, time_scale, auto_orbit, orbit_speed) = {
                             let resources = state.renderer.read();
                             resources.callback_resources
                                 .get::<rdpe_editor::embedded::SimulationResources>()
-                                .map(|s| (s.is_paused(), s.auto_orbit, s.auto_orbit_speed))
-                                .unwrap_or((false, false, 0.3))
+                                .map(|s| (s.is_paused(), s.time_scale(), s.auto_orbit, s.auto_orbit_speed))
+                                .unwrap_or((false, 1.0, false, 0.3))
                         };
 
                         let btn_text = if is_paused { "▶ Play" } else { "⏸ Pause" };
@@ -705,6 +705,29 @@ impl eframe::App for EditorApp {
                                 .get_mut::<rdpe_editor::embedded::SimulationResources>()
                             {
                                 sim.set_paused(!is_paused);
+                            }
+                        }
+
+                        // Step button (only when paused)
+                        if is_paused {
+                            if ui.button("⏭ Step").on_hover_text("Advance one frame").clicked() {
+                                if let Some(sim) = state.renderer.write()
+                                    .callback_resources
+                                    .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                                {
+                                    sim.step_frame();
+                                }
+                            }
+                        }
+
+                        // Time scale slider
+                        let mut scale = time_scale;
+                        if ui.add(egui::Slider::new(&mut scale, 0.1..=3.0).text("Speed").max_decimals(2)).changed() {
+                            if let Some(sim) = state.renderer.write()
+                                .callback_resources
+                                .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                            {
+                                sim.set_time_scale(scale);
                             }
                         }
 

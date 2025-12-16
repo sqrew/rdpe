@@ -4,12 +4,66 @@
 [![Documentation](https://docs.rs/rdpe/badge.svg)](https://docs.rs/rdpe)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**GPU-accelerated particle simulations with a declarative API.**
+**GPU-accelerated particle simulations with a visual editor.**
 
-Describe behaviors with composable rules. RDPE generates optimized compute shaders.
+Design particle systems visually, or build them in code. RDPE generates optimized compute shaders either way.
 
-<!-- TODO: Replace with actual gif -->
-<!-- ![RDPE Demo](assets/demo.gif) -->
+## Visual Editor
+
+The fastest way to create simulations:
+
+```bash
+cargo run --release --package rdpe-editor
+```
+
+<!-- TODO: Replace with editor screenshot -->
+<!-- ![RDPE Editor](assets/editor.png) -->
+
+### What You Get
+
+- **Live Preview** — Real-time GPU-accelerated viewport with orbit camera
+- **100+ Rules** — Physics, flocking, forces, lifecycle, and custom WGSL
+- **21 Presets** — Pre-built simulations to learn from and remix
+- **35 Post-Processing Effects** — Bloom, CRT, glitch, thermal, kaleidoscope, and more
+- **18 Mouse Powers** — Attract, repel, vortex, paint, black hole, spawn, and more
+- **3D Fields** — Spatial fields with volume rendering and vector glyphs
+- **Multi-Type Systems** — Particle types with interaction matrices
+- **Live Statistics** — Real-time metrics on particle behavior
+- **Code Export** — Generate standalone Rust code when you're ready
+
+### Editor Tabs
+
+| Tab | What It Does |
+|-----|--------------|
+| **Spawn** | Particle count, bounds, spawn shape, velocity, type weights |
+| **Rules** | Add and configure simulation rules |
+| **Types** | Interaction matrix for multi-type systems |
+| **Emitters** | Continuous particle sources |
+| **Particle** | Custom per-particle fields |
+| **Fields** | 3D spatial fields and volume rendering |
+| **Visuals** | Shapes, colors, palettes, trails, connections, wireframes |
+| **Post FX** | Stackable post-processing effects |
+| **Mouse** | Interactive mouse powers |
+| **Custom** | Custom uniforms, shaders, code export |
+| **Stats** | Live simulation statistics |
+
+### Controls
+
+| Input | Action |
+|-------|--------|
+| Left-drag | Orbit camera |
+| Scroll | Zoom |
+| Middle-drag | Pan camera |
+| F11 | Toggle fullscreen |
+| Menu bar | Pause, step, speed, reset |
+
+Save your work as JSON, load presets, or export to Rust code.
+
+---
+
+## Code API
+
+For full programmatic control, use the Rust API directly:
 
 ```rust
 use rdpe::prelude::*;
@@ -37,33 +91,19 @@ fn main() {
         .with_rule(Rule::Cohere { radius: 0.15, strength: 0.5 })
         .with_rule(Rule::Align { radius: 0.1, strength: 1.0 })
         .with_rule(Rule::SpeedLimit { min: 0.3, max: 1.5 })
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .run();
 }
 ```
 
-Good for creative coding, generative art, simulations, visualizations, and experimentation.
-
-## Why RDPE?
-
-Most particle systems are either too low-level (raw compute shaders) or too rigid (fixed behaviors). RDPE sits in between:
-
-- **Declarative** — Say "separate, cohere, align" not "implement boids in WGSL"
-- **Composable** — Stack rules, mix built-ins with custom WGSL
-- **Fast** — GPU-resident simulation with O(N) neighbor queries via radix-sorted spatial hashing
-- **Flexible** — Custom particle fields, typed interactions, spatial fields, runtime uniforms
-- **Portable** — Runs everywhere WGPU does: desktop, Raspberry Pi, even browsers via WebGPU
-
-## Installation
-
-Add to your `Cargo.toml`:
+### Installation
 
 ```toml
 [dependencies]
 rdpe = "0.1"
 ```
 
-With GUI support:
+With GUI support (for runtime controls):
 
 ```toml
 [dependencies]
@@ -74,42 +114,9 @@ rdpe = { version = "0.1", features = ["egui"] }
 
 - Rust 1.70+
 - GPU with Vulkan, Metal, or DX12 support
-- Windows, macOS, Linux (including Raspberry Pi and ARM devices)
+- Windows, macOS, Linux (including Raspberry Pi)
 
-## Quick Start
-
-```bash
-cargo run --example boids
-cargo run --example aquarium
-cargo run --example slime_mold --features egui
-cargo run --example neon_assault
-```
-
-### Controls
-
-| Input      | Action       |
-|------------|--------------|
-| Left-drag  | Orbit camera |
-| Right-drag | Pan camera   |
-| Scroll     | Zoom         |
-
-## Visual Editor
-
-RDPE includes a visual editor for designing simulations without writing code:
-
-```bash
-cargo run --package rdpe-editor
-```
-
-<!-- TODO: Replace with editor screenshot -->
-<!-- ![RDPE Editor](assets/editor.png) -->
-
-- **Live Preview** — Real-time GPU-accelerated viewport
-- **100+ Rules** — All rules accessible through dropdown menus
-- **Visual Configuration** — Particle shapes, colors, blend modes, trails
-- **Custom WGSL** — Write custom shader code with live validation
-- **Code Export** — Generate standalone Rust code from your configuration
-- **18 Presets** — Pre-built simulations to start from
+---
 
 ## Features
 
@@ -131,42 +138,15 @@ cargo run --package rdpe-editor
 
 **Logic/Control** — `Custom`, `NeighborCustom`, `Maybe`, `Trigger`, `Periodic`, `State`, `Agent`, `Switch`, `Threshold`, `Gate`
 
-**Events** — `OnSpawn`, `OnDeath`, `OnCondition`, `OnInterval`, `OnCollision`
+### Custom WGSL
 
-### Custom Rules
-
-Drop into WGSL when built-ins aren't enough:
+Drop into shader code when built-ins aren't enough:
 
 ```rust
 .with_rule(Rule::Custom(r#"
     p.velocity.y += sin(uniforms.time + p.position.x * 5.0) * 0.1;
     p.color = hsv_to_rgb(p.age * 0.1, 0.8, 1.0);
 "#.into()))
-```
-
-### Spatial Hashing
-
-O(N) neighbor queries via Morton-encoded radix sort:
-
-```rust
-.with_spatial_config(0.1, 32)  // cell_size, grid_resolution
-.with_max_neighbors(48)        // cap for dense clusters
-```
-
-### Typed Particles
-
-Different behaviors per particle type:
-
-```rust
-#[derive(ParticleType)]
-enum Species { Fish, Shark }
-
-.with_rule(Rule::Chase {
-    self_type: Species::Shark.into(),
-    target_type: Species::Fish.into(),
-    radius: 0.3,
-    strength: 0.5,
-})
 ```
 
 ### Spatial Fields
@@ -184,53 +164,29 @@ enum Species { Fish, Shark }
 "#.into()))
 ```
 
-### Sub-Emitters
-
-Particles that spawn particles:
-
-```rust
-.with_sub_emitter(SubEmitter::on_death()
-    .with_count(8)
-    .with_spread(0.5)
-    .with_inherit_velocity(0.3))
-```
-
 ### Visual Effects
 
-- **Post-processing** — Bloom, chromatic aberration, CRT, custom shaders
+- **Post-processing** — 35 effects: bloom, chromatic aberration, CRT, VHS, glitch, thermal, and more
 - **Trails** — Motion blur / light trails
 - **Connections** — Lines between nearby particles
-- **Wireframe meshes** — Render particles as 3D wireframe shapes
+- **Wireframe meshes** — Platonic solids, prisms, spirals
 - **Volume rendering** — 3D field visualization with raymarching
-- **Palettes** — 12 built-in color schemes
+- **Palettes** — 12 built-in color schemes plus custom gradients
 
-### Runtime Controls
-
-```rust
-.with_uniform("strength", 1.0)
-.with_ui(|ctx| {
-    egui::Window::new("Controls").show(ctx, |ui| {
-        // sliders, buttons, etc.
-    });
-})
-.with_update(|ctx| {
-    ctx.set("strength", new_value);
-    if ctx.input.key_pressed(KeyCode::Space) { /* ... */ }
-})
-```
+---
 
 ## Examples
 
 45+ examples included:
 
-| Category         | Examples                                                        |
-|------------------|-----------------------------------------------------------------|
-| **Core**         | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
-| **Simulation**   | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field`   |
-| **Forces**       | `galaxy`, `gravity_visualizer`, `shockwave`, `glow`             |
-| **Visual**       | `custom_shader`, `post_process`, `wireframe`, `volume_render`   |
-| **Advanced**     | `multi_particle`, `multi_field`, `inbox`, `agent_demo`          |
-| **Experimental** | 20+ creative examples in `examples/experimental/`               |
+| Category | Examples |
+|----------|----------|
+| **Core** | `boids`, `aquarium`, `infection`, `molecular_soup`, `chemistry` |
+| **Simulation** | `slime_mold_field`, `erosion`, `crystal_growth`, `wave_field` |
+| **Forces** | `galaxy`, `gravity_visualizer`, `shockwave`, `glow` |
+| **Visual** | `custom_shader`, `post_process`, `wireframe`, `volume_render` |
+| **Advanced** | `multi_particle`, `multi_field`, `inbox`, `agent_demo` |
+| **Experimental** | 20+ creative examples in `examples/experimental/` |
 
 ```bash
 cargo run --example boids
@@ -238,70 +194,57 @@ cargo run --example slime_mold_field --features egui
 cargo run --example galaxy
 ```
 
+---
+
 ## Performance
 
 All simulation runs on GPU compute shaders with no CPU-GPU sync during updates.
 
-| Scenario            | Particles | Notes                      |
-|---------------------|-----------|----------------------------|
-| No neighbors        | 500k+     | Compute-bound only         |
-| Full boids          | 50k+      | Neighbor-bound             |
-| With spatial fields | 100k+     | Field resolution dependent |
+| Scenario | Particles | Notes |
+|----------|-----------|-------|
+| No neighbors | 500k+ | Compute-bound only |
+| Full boids | 50k+ | Neighbor-bound |
+| With spatial fields | 100k+ | Field resolution dependent |
 
 ### Tuning Tips
 
 - **`cell_size`** — Should be >= your largest interaction radius
 - **`grid_resolution`** — Power-of-2 (16, 32, 64, 128); larger grids cost more
 - **`max_neighbors`** — Cap at 32-64 to prevent O(N²) in dense clusters
-- **Field resolution** — Scales as N³; use lower res with more blur for same effect
+- **Field resolution** — Scales as N³; use lower res with more blur
 - **Rule order** — Put cheap rules first; neighbor rules cost more
+
+---
 
 ## Architecture
 
 RDPE is GPU-first: all simulation state lives on the GPU with no CPU-GPU sync during frame updates. Rules compile into a single compute shader to minimize dispatch overhead.
 
-| Component           | Purpose                                                 |
-|---------------------|---------------------------------------------------------|
-| **Simulation**      | Builder pattern orchestrator; generates WGSL from rules |
-| **Rules**           | 100+ composable behaviors compiled into compute shader  |
-| **Spatial Hashing** | Radix sort + Morton codes for O(N) neighbor discovery   |
-| **Fields**          | 3D grids with atomic writes, blur, decay                |
-| **Derive Macros**   | Auto-generate GPU structs with proper alignment         |
+| Component | Purpose |
+|-----------|---------|
+| **Editor** | Visual design tool with live preview and code export |
+| **Simulation** | Builder pattern orchestrator; generates WGSL from rules |
+| **Rules** | 100+ composable behaviors compiled into compute shader |
+| **Spatial Hashing** | Radix sort + Morton codes for O(N) neighbor discovery |
+| **Fields** | 3D grids with atomic writes, blur, decay |
+| **Derive Macros** | Auto-generate GPU structs with proper alignment |
 
-## API
+---
 
-### Particle Definition
+## Why RDPE?
 
-```rust
-#[derive(Particle, Clone)]
-struct MyParticle {
-    position: Vec3,     // Required
-    velocity: Vec3,     // Required
-    #[color]
-    color: Vec3,        // Optional - particle tint
-    particle_type: u32, // Optional - for typed interactions
-    energy: f32,        // Custom fields accessible in WGSL
-}
-```
+Most particle systems are either too low-level (raw compute shaders) or too rigid (fixed behaviors). RDPE sits in between:
 
-### Simulation Builder
+- **Visual** — Design in the editor, export to code when needed
+- **Declarative** — Say "separate, cohere, align" not "implement boids in WGSL"
+- **Composable** — Stack rules, mix built-ins with custom WGSL
+- **Fast** — GPU-resident simulation with O(N) neighbor queries via spatial hashing
+- **Flexible** — Custom particle fields, typed interactions, spatial fields
+- **Portable** — Runs everywhere WGPU does: desktop, Raspberry Pi, browsers via WebGPU
 
-```rust
-Simulation::<P>::new()
-    .with_particle_count(n)
-    .with_bounds(size)
-    .with_spawner(|ctx| -> P { ... })
-    .with_spatial_config(cell_size, grid_resolution)
-    .with_field(name, config)
-    .with_rule(rule)
-    .with_uniform(name, value)
-    .with_visuals(|v| { ... })
-    .with_ui(|ctx| { ... })      // requires egui feature
-    .with_update(|ctx| { ... })
-    .run();
-```
+Good for creative coding, generative art, simulations, visualizations, and experimentation.
 
-See the [API documentation](https://docs.rs/rdpe) for full details.
+---
 
 ## License
 

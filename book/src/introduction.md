@@ -33,7 +33,7 @@ fn main() {
             velocity: random_velocity(),
         })
         .with_rule(Rule::Gravity(9.8))
-        .with_rule(Rule::BounceWalls)
+        .with_rule(Rule::BounceWalls { restitution: 1.0 })
         .run();
 }
 ```
