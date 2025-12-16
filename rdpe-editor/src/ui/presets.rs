@@ -179,53 +179,6 @@ pub static PRESETS: &[Preset] = &[
         },
     },
     Preset {
-        name: "Custom Shader Demo",
-        description: "Demonstrates custom uniforms and shader code",
-        config: || {
-            SimConfig {
-            name: "Custom Shader Demo".into(),
-            particle_count: 10000,
-            bounds: 1.5,
-            particle_size: 0.015,
-            speed: 1.0,
-            spatial_cell_size: 0.1,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Shell { inner: 0.3, outer: 1.0 },
-                velocity: InitialVelocity::Swirl { speed: 0.3 },
-                color_mode: ColorMode::Uniform { r: 1.0, g: 1.0, b: 1.0 },
-                ..Default::default()
-            },
-            rules: vec![
-                RuleConfig::AttractTo { point: [0.0, 0.0, 0.0], strength: 0.3 },
-                RuleConfig::Drag(0.2),
-                RuleConfig::BounceWalls { restitution: 1.0 },
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig::default(),
-            custom_uniforms: HashMap::from([
-                ("pulse_speed".to_string(), UniformValueConfig::F32(3.0)),
-                ("pulse_amount".to_string(), UniformValueConfig::F32(0.4)),
-                ("tint".to_string(), UniformValueConfig::Vec3([1.0, 0.6, 0.2])),
-            ]),
-            custom_shaders: CustomShaderConfig {
-                vertex_code: "// Pulsing size effect\nsize_mult *= 1.0 + uniforms.pulse_amount * sin(uniforms.time * uniforms.pulse_speed);".to_string(),
-                fragment_code: "// Apply tint color\nfrag_color *= uniforms.tint;".to_string(),
-            },
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-            particle_fields: Vec::new(),
-            mouse: MouseConfig::default(),
-            adjacency_enabled: false,
-            adjacency_max_neighbors: 32,
-            adjacency_radius: 0.1,
-            interactions: InteractionConfig::default(),
-            post_process: PostProcessConfig::default(),
-            emitters: Vec::new(),
-        }
-        },
-    },
-    Preset {
         name: "Pheromone Trails",
         description: "Particles follow and deposit pheromone trails like ants",
         config: || SimConfig {
@@ -397,7 +350,11 @@ field_write(0u, p.position, 0.5);
             spawn: SpawnConfig {
                 shape: SpawnShape::Sphere { radius: 0.01 },
                 velocity: InitialVelocity::Zero,
-                color_mode: ColorMode::Uniform { r: 1.0, g: 1.0, b: 1.0 },
+                color_mode: ColorMode::Uniform {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                },
                 ..Default::default()
             },
             rules: vec![
@@ -488,7 +445,8 @@ if r_xz > 0.01 {
 // Keep disk flat
 p.velocity.y *= 0.92;
 p.position.y *= 0.97;
-"#.into(),
+"#
+                    .into(),
                 },
                 // Color stars by population
                 RuleConfig::Custom {
@@ -531,7 +489,8 @@ if star_type < 0.5 {
 // Subtle brightness variation
 let shimmer = 0.85 + sin(f32(index) * 3.7 + uniforms.time * 0.5) * 0.15;
 p.color *= shimmer;
-"#.into(),
+"#
+                    .into(),
                 },
                 RuleConfig::Drag(0.02),
             ],
@@ -568,9 +527,16 @@ p.color *= shimmer;
             spatial_resolution: 32,
             spawn: SpawnConfig {
                 // Start as a disk directly
-                shape: SpawnShape::Shell { inner: 0.2, outer: 1.2 },
+                shape: SpawnShape::Shell {
+                    inner: 0.2,
+                    outer: 1.2,
+                },
                 velocity: InitialVelocity::Swirl { speed: 0.5 },
-                color_mode: ColorMode::Uniform { r: 1.0, g: 0.9, b: 0.7 },
+                color_mode: ColorMode::Uniform {
+                    r: 1.0,
+                    g: 0.9,
+                    b: 0.7,
+                },
                 ..Default::default()
             },
             rules: vec![
@@ -615,7 +581,8 @@ if t < 0.2 {
     p.color = mix(vec3<f32>(0.9, 0.85, 0.95), vec3<f32>(0.6, 0.7, 1.0), s);
     p.scale = 0.8 - s * 0.3;
 }
-"#.into(),
+"#
+                    .into(),
                 },
                 RuleConfig::Drag(0.1),
             ],
@@ -1549,98 +1516,6 @@ if abs(p.position.z) > 1.0 { p.position.z *= 0.95; }
         },
     },
     Preset {
-        name: "Snowfall",
-        description: "Gentle snow drifting down with wind gusts",
-        config: || SimConfig {
-            name: "Snowfall".into(),
-            particle_count: 4000,
-            bounds: 2.0,
-            particle_size: 0.02,
-            speed: 1.0,
-            spatial_cell_size: 0.1,
-            spatial_resolution: 32,
-            spawn: SpawnConfig {
-                shape: SpawnShape::Cube { size: 2.5 },
-                velocity: InitialVelocity::Zero,
-                color_mode: ColorMode::Uniform {
-                    r: 1.0,
-                    g: 1.0,
-                    b: 1.0,
-                },
-                ..Default::default()
-            },
-            rules: vec![
-                // Gentle gravity
-                RuleConfig::Gravity(0.3),
-                // Air resistance
-                RuleConfig::Drag(2.0),
-                // Drifting wind and tumbling
-                RuleConfig::Custom {
-                    code: r#"
-// Gentle swaying wind that varies over time
-let wind_time = uniforms.time * 0.3;
-let wind_x = sin(wind_time) * 0.15 + sin(wind_time * 2.3) * 0.05;
-let wind_z = cos(wind_time * 0.7) * 0.1;
-p.velocity.x += wind_x;
-p.velocity.z += wind_z;
-
-// Individual snowflake tumble based on index
-var seed = f32(index) * 5.5 + uniforms.time * 2.0;
-let tumble_x = sin(uniforms.time * 3.0 + f32(index) * 0.1) * 0.08;
-let tumble_z = cos(uniforms.time * 2.5 + f32(index) * 0.15) * 0.08;
-p.velocity.x += tumble_x;
-p.velocity.z += tumble_z;
-
-// Respawn at top when hitting bottom
-if p.position.y < -1.2 {
-    p.position.y = 1.5;
-    // Randomize X and Z position
-    p.position.x = (rand(&seed) - 0.5) * 2.5;
-    seed += 1.0;
-    p.position.z = (rand(&seed) - 0.5) * 2.5;
-    p.velocity = vec3<f32>(0.0, 0.0, 0.0);
-}
-
-// Wrap horizontally for endless snowfield feel
-if p.position.x > 1.5 { p.position.x = -1.5; }
-if p.position.x < -1.5 { p.position.x = 1.5; }
-if p.position.z > 1.5 { p.position.z = -1.5; }
-if p.position.z < -1.5 { p.position.z = 1.5; }
-
-// Vary snowflake sizes
-let size_var = 0.5 + (sin(f32(index) * 1.7) * 0.5 + 0.5) * 0.8;
-p.scale = size_var;
-
-// Slight color variation - some snowflakes slightly blue/gray
-let color_var = 0.9 + (sin(f32(index) * 2.3) * 0.5 + 0.5) * 0.1;
-let blue_tint = (sin(f32(index) * 3.1) * 0.5 + 0.5) * 0.05;
-p.color = vec3<f32>(color_var, color_var, color_var + blue_tint);
-"#
-                    .into(),
-                },
-            ],
-            vertex_effects: Vec::new(),
-            visuals: VisualsConfig {
-                blend_mode: BlendModeConfig::Alpha,
-                background_color: [0.08, 0.1, 0.15],
-                shape: ParticleShapeConfig::Circle,
-                ..Default::default()
-            },
-            custom_uniforms: HashMap::new(),
-            custom_shaders: CustomShaderConfig::default(),
-            fields: Vec::new(),
-            volume_render: VolumeRenderConfig::default(),
-            particle_fields: Vec::new(),
-            mouse: MouseConfig::default(),
-            adjacency_enabled: false,
-            adjacency_max_neighbors: 32,
-            adjacency_radius: 0.1,
-            interactions: InteractionConfig::default(),
-            post_process: PostProcessConfig::default(),
-            emitters: Vec::new(),
-        },
-    },
-    Preset {
         name: "Network Contagion",
         description: "Signal spreads through adjacency graph connections",
         config: || SimConfig {
@@ -1927,9 +1802,16 @@ p.color *= 0.7 + spd * 0.5;
             spatial_cell_size: 0.1,
             spatial_resolution: 32,
             spawn: SpawnConfig {
-                shape: SpawnShape::Shell { inner: 0.6, outer: 1.5 },
+                shape: SpawnShape::Shell {
+                    inner: 0.6,
+                    outer: 1.5,
+                },
                 velocity: InitialVelocity::Zero,
-                color_mode: ColorMode::Uniform { r: 1.0, g: 0.8, b: 0.5 },
+                color_mode: ColorMode::Uniform {
+                    r: 1.0,
+                    g: 0.8,
+                    b: 0.5,
+                },
                 ..Default::default()
             },
             rules: vec![
@@ -1971,7 +1853,8 @@ if dist < 0.12 {
     p.position = vec3<f32>(cos(angle) * spawn_dist, 0.0, sin(angle) * spawn_dist);
     p.velocity = vec3<f32>(0.0);
 }
-"#.into(),
+"#
+                    .into(),
                 },
                 // Color based on distance and speed - hot near center
                 RuleConfig::Custom {
@@ -2009,7 +1892,8 @@ if col_dist < 0.2 {
 
 p.color = col;
 p.scale = 0.5 + temp * 0.8;
-"#.into(),
+"#
+                    .into(),
                 },
                 RuleConfig::Drag(0.3),
                 RuleConfig::SpeedLimit { min: 0.0, max: 3.0 },
@@ -2035,6 +1919,498 @@ p.scale = 0.5 + temp * 0.8;
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+        },
+    },
+    Preset {
+        name: "Electromagnetism",
+        description: "Charged particles with Coulomb attraction/repulsion - like charges repel, opposites attract",
+        config: || {
+            use crate::config::{
+                FieldTypeConfig, GlyphColorModeConfig, GlyphModeConfig, GlyphsConfig,
+                InteractionConfig, PostProcessEffect, RuleMatrixCell,
+            };
+
+            // Create interaction matrix for 2 types: positive and negative charges
+            let mut interactions = InteractionConfig::with_num_types(2);
+            interactions.enabled = true;
+            let n = interactions.num_types;
+
+            // Set type names and colors
+            interactions.type_info[0].name = "Positive".to_string();
+            interactions.type_info[0].color = [1.0, 0.3, 0.3]; // Red
+            interactions.type_info[1].name = "Negative".to_string();
+            interactions.type_info[1].color = [0.3, 0.5, 1.0]; // Blue
+
+            // Positive + Positive: Repel (like charges)
+            interactions.matrix[0 * n + 0] = RuleMatrixCell::with_rule(RuleConfig::Separate {
+                radius: 0.25,
+                strength: 3.0,
+            });
+
+            // Positive + Negative: Attract (opposite charges)
+            interactions.matrix[0 * n + 1] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.4,
+                strength: 2.0,
+            });
+
+            // Negative + Positive: Attract (opposite charges)
+            interactions.matrix[1 * n + 0] = RuleMatrixCell::with_rule(RuleConfig::Attract {
+                radius: 0.4,
+                strength: 2.0,
+            });
+
+            // Negative + Negative: Repel (like charges)
+            interactions.matrix[1 * n + 1] = RuleMatrixCell::with_rule(RuleConfig::Separate {
+                radius: 0.25,
+                strength: 3.0,
+            });
+
+            SimConfig {
+                name: "Electromagnetism".into(),
+                particle_count: 3000,
+                bounds: 1.5,
+                particle_size: 0.012,
+                speed: 1.0,
+                spatial_cell_size: 0.15,
+                spatial_resolution: 32,
+                spawn: SpawnConfig {
+                    shape: SpawnShape::Sphere { radius: 1.0 },
+                    velocity: InitialVelocity::RandomDirection { speed: 0.15 },
+                    color_mode: ColorMode::Uniform {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                    },
+                    type_weights: vec![1.0, 1.0], // Equal positive and negative
+                    ..Default::default()
+                },
+                rules: vec![
+                    RuleConfig::Drag(0.8),
+                    RuleConfig::SpeedLimit {
+                        min: 0.0,
+                        max: 10.0,
+                    },
+                    RuleConfig::BounceWalls { restitution: 0.9 },
+                    // Color by charge type and add glow based on speed
+                    RuleConfig::Custom {
+                        code: r#"
+// Color by charge: red = positive, blue = negative
+if p.particle_type == 0u {
+    p.color = vec3<f32>(1.0, 0.2, 0.15);  // Positive - red
+} else {
+    p.color = vec3<f32>(0.15, 0.4, 1.0);  // Negative - blue
+}
+// Brighten fast-moving particles (excited charges)
+let spd = length(p.velocity);
+p.color *= 0.6 + spd * 0.8;
+
+// Write charge to field: positive = +1, negative = -1
+let charge = select(-1.0, 1.0, p.particle_type == 0u);
+field_write(0u, p.position, charge * 0.5);
+"#
+                        .into(),
+                    },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Additive,
+                    background_color: [0.02, 0.02, 0.06],
+                    shape: ParticleShapeConfig::Circle,
+                    trail_length: 8,
+                    connections_enabled: false,
+                    glyphs: GlyphsConfig {
+                        mode: GlyphModeConfig::VectorField { field_index: 0 },
+                        grid_resolution: 8,
+                        scale: 0.15,
+                        color_mode: GlyphColorModeConfig::ByMagnitude,
+                        color: [0.5, 0.8, 1.0],
+                    },
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: vec![FieldConfigEntry {
+                    name: "electric_field".into(),
+                    field_type: FieldTypeConfig::Vector,
+                    resolution: 16,
+                    extent: 1.5,
+                    decay: 0.92,
+                    blur: 0.2,
+                    blur_iterations: 1,
+                }],
+                volume_render: VolumeRenderConfig::default(),
+                particle_fields: Vec::new(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: false,
+                adjacency_max_neighbors: 32,
+                adjacency_radius: 0.15,
+                interactions,
+                post_process: PostProcessConfig {
+                    enabled: true,
+                    effects: vec![
+                        PostProcessEffect::Bloom {
+                            intensity: 0.6,
+                            threshold: 0.4,
+                            radius: 0.004,
+                        },
+                        PostProcessEffect::ChromaticAberration {
+                            intensity: 0.15,
+                            radial: true,
+                        },
+                    ],
+                },
+                emitters: Vec::new(),
+            }
+        },
+    },
+    Preset {
+        name: "Neural Pulse",
+        description: "Neurons fire and propagate signals through synaptic connections",
+        config: || {
+            use crate::config::PostProcessEffect;
+
+            SimConfig {
+                name: "Neural Pulse".into(),
+                particle_count: 1500,
+                bounds: 1.2,
+                particle_size: 0.018,
+                speed: 1.0,
+                spatial_cell_size: 0.15,
+                spatial_resolution: 32,
+                spawn: SpawnConfig {
+                    shape: SpawnShape::Sphere { radius: 1.0 },
+                    velocity: InitialVelocity::Zero,
+                    color_mode: ColorMode::Uniform {
+                        r: 0.2,
+                        g: 0.4,
+                        b: 0.8,
+                    },
+                    ..Default::default()
+                },
+                // Custom particle fields for neural state
+                particle_fields: vec![
+                    ParticleFieldDef {
+                        name: "activation".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                    ParticleFieldDef {
+                        name: "refractory".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                ],
+                rules: vec![
+                    // Slight drift to keep network dynamic
+                    RuleConfig::Wander {
+                        strength: 0.02,
+                        frequency: 0.5,
+                    },
+                    RuleConfig::Drag(3.0),
+                    RuleConfig::BounceWalls { restitution: 0.5 },
+                    // Neurons gently repel to spread out
+                    RuleConfig::Separate {
+                        radius: 0.08,
+                        strength: 0.5,
+                    },
+                    // Neural dynamics - decay, random firing, refractory countdown
+                    RuleConfig::Custom {
+                        code: r#"
+// Slow decay - signals persist long enough to propagate
+p.activation *= 0.96;
+
+// Countdown refractory period
+p.refractory = max(0.0, p.refractory - uniforms.delta_time);
+
+// Pacemaker neurons fire spontaneously (only a few per frame)
+// Use particle index to make some neurons more likely to be pacemakers
+let is_pacemaker = (index % 50u) == 0u;
+let hash = (index * 1103515245u + u32(uniforms.time * 500.0)) ^ (index << 13u);
+let rand = f32(hash & 0xFFFFu) / 65535.0;
+let fire_chance = select(0.0002, 0.008, is_pacemaker);
+if rand < fire_chance && p.refractory <= 0.0 && p.activation < 0.3 {
+    p.activation = 1.0;
+    p.refractory = 0.5;  // Immediately go refractory after spontaneous fire
+}
+"#
+                        .into(),
+                    },
+                    // Propagate signal to neighbors
+                    RuleConfig::NeighborCustom {
+                        code: r#"
+// Receive signals from firing neighbors
+if neighbor_dist < 0.15 && neighbor_dist > 0.01 {
+    // If neighbor just fired and we're receptive
+    if other.activation > 0.8 && other.refractory > 0.4 && p.refractory <= 0.0 {
+        // Receive signal with distance falloff and slight delay via probability
+        let signal_strength = (1.0 - neighbor_dist / 0.15);
+        let delay_hash = (index * 374761393u + u32(uniforms.time * 200.0)) ^ (index >> 3u);
+        let delay_rand = f32(delay_hash & 0xFFu) / 255.0;
+        // Only propagate with probability based on signal strength
+        if delay_rand < signal_strength * 0.7 {
+            p.activation = max(p.activation, 0.85 + delay_rand * 0.15);
+        }
+    }
+}
+"#
+                        .into(),
+                    },
+                    // Post-fire: enter refractory period
+                    RuleConfig::Custom {
+                        code: r#"
+// If we reached threshold, enter refractory period
+if p.activation > 0.8 && p.refractory <= 0.0 {
+    p.activation = 1.0;  // Ensure full fire
+    p.refractory = 0.5;  // Refractory period
+}
+
+// Clamp activation
+p.activation = clamp(p.activation, 0.0, 1.0);
+
+// Color based on neural state
+let base_color = vec3<f32>(0.1, 0.15, 0.35);  // Dark blue resting
+let fire_color = vec3<f32>(1.0, 0.9, 0.4);    // Bright yellow firing
+let refract_color = vec3<f32>(0.5, 0.15, 0.4); // Magenta refractory
+
+var col = base_color;
+if p.activation > 0.2 {
+    // Firing - interpolate to bright
+    let t = (p.activation - 0.2) / 0.8;
+    col = mix(base_color, fire_color, t * t);
+}
+if p.refractory > 0.0 {
+    // In refractory - blend to magenta
+    let r = p.refractory / 0.5;
+    col = mix(col, refract_color, r * 0.7);
+}
+
+p.color = col;
+p.scale = 0.7 + p.activation * 0.8;
+"#
+                        .into(),
+                    },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Additive,
+                    background_color: [0.02, 0.02, 0.05],
+                    shape: ParticleShapeConfig::Circle,
+                    trail_length: 0,
+                    connections_enabled: true,
+                    connections_radius: 0.15,
+                    connections_color: [0.08, 0.12, 0.25],
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: Vec::new(),
+                volume_render: VolumeRenderConfig::default(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: true,
+                adjacency_max_neighbors: 16,
+                adjacency_radius: 0.15,
+                interactions: InteractionConfig::default(),
+                post_process: PostProcessConfig {
+                    enabled: true,
+                    effects: vec![
+                        PostProcessEffect::Bloom {
+                            intensity: 0.7,
+                            threshold: 0.3,
+                            radius: 0.005,
+                        },
+                    ],
+                },
+                emitters: Vec::new(),
+            }
+        },
+    },
+    Preset {
+        name: "Reaction Diffusion",
+        description: "Gray-Scott reaction-diffusion creating Turing patterns",
+        config: || {
+            use crate::config::PostProcessEffect;
+
+            SimConfig {
+                name: "Reaction Diffusion".into(),
+                particle_count: 8000,
+                bounds: 1.0,
+                particle_size: 0.025,
+                speed: 1.0,
+                spatial_cell_size: 0.05,
+                spatial_resolution: 64,
+                spawn: SpawnConfig {
+                    // Flat plane for 2D-like pattern formation
+                    shape: SpawnShape::Plane {
+                        width: 1.8,
+                        depth: 1.8,
+                    },
+                    velocity: InitialVelocity::Zero,
+                    color_mode: ColorMode::Uniform {
+                        r: 0.1,
+                        g: 0.2,
+                        b: 0.4,
+                    },
+                    ..Default::default()
+                },
+                // Chemical concentrations: u (substrate), v (activator)
+                particle_fields: vec![
+                    ParticleFieldDef {
+                        name: "u".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                    ParticleFieldDef {
+                        name: "v".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                    ParticleFieldDef {
+                        name: "u_laplacian".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                    ParticleFieldDef {
+                        name: "v_laplacian".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                ],
+                rules: vec![
+                    // Initialize concentrations (runs every frame but only changes uninitialized particles)
+                    RuleConfig::Custom {
+                        code: r#"
+// Initialize if not yet set (u and v both start at 0)
+if p.u < 0.01 && p.v < 0.01 {
+    p.u = 1.0;
+    p.v = 0.0;
+
+    // Seed some initial v patches based on position
+    let seed_hash = u32((p.position.x + 1.0) * 500.0) ^ u32((p.position.z + 1.0) * 500.0);
+    let seed_rand = f32(seed_hash & 0xFFu) / 255.0;
+
+    // Create several seed regions spread across the plane
+    let d1 = length(p.position.xz - vec2<f32>(0.3, 0.2));
+    let d2 = length(p.position.xz - vec2<f32>(-0.3, -0.3));
+    let d3 = length(p.position.xz - vec2<f32>(-0.4, 0.4));
+    let d4 = length(p.position.xz - vec2<f32>(0.35, -0.35));
+    let d5 = length(p.position.xz);
+
+    let in_seed = d1 < 0.15 || d2 < 0.12 || d3 < 0.1 || d4 < 0.11 || d5 < 0.18;
+    if in_seed {
+        p.v = 0.25 + seed_rand * 0.25;
+        p.u = 0.5;
+        // Color seeds immediately so they're visible
+        p.color = vec3<f32>(0.9, 0.7, 0.3);
+    } else {
+        p.color = vec3<f32>(0.02, 0.05, 0.15);
+    }
+}
+
+// Keep particles flat on the plane
+p.velocity.y = 0.0;
+p.position.y = 0.0;
+"#
+                        .into(),
+                    },
+                    // Very gentle repulsion to keep particles spread evenly
+                    RuleConfig::Separate {
+                        radius: 0.04,
+                        strength: 0.3,
+                    },
+                    RuleConfig::Drag(8.0),
+                    // Compute Laplacian (diffusion term) from neighbors
+                    RuleConfig::NeighborCustom {
+                        code: r#"
+if neighbor_dist < 0.08 && neighbor_dist > 0.001 {
+    // Weight by distance (closer neighbors contribute more)
+    let weight = 1.0 - neighbor_dist / 0.08;
+
+    // Accumulate difference from neighbors (discrete Laplacian)
+    p.u_laplacian += (other.u - p.u) * weight;
+    p.v_laplacian += (other.v - p.v) * weight;
+}
+"#
+                        .into(),
+                    },
+                    // Gray-Scott reaction-diffusion dynamics
+                    RuleConfig::Custom {
+                        code: r#"
+// Gray-Scott parameters - these create different patterns:
+// f=0.055, k=0.062 -> mitosis (splitting spots)
+// f=0.030, k=0.057 -> coral growth
+// f=0.025, k=0.060 -> maze/labyrinth
+// f=0.078, k=0.061 -> spots
+let f = 0.055;  // feed rate
+let k = 0.062;  // kill rate
+
+// Diffusion rates (u diffuses faster than v)
+let Du = 0.4;
+let Dv = 0.2;
+
+// Scale factor for simulation speed
+let dt = uniforms.delta_time * 12.0;
+
+// Reaction: u + 2v -> 3v (autocatalysis)
+let uvv = p.u * p.v * p.v;
+
+// Gray-Scott equations
+let du = Du * p.u_laplacian - uvv + f * (1.0 - p.u);
+let dv = Dv * p.v_laplacian + uvv - (f + k) * p.v;
+
+// Update concentrations
+p.u = clamp(p.u + du * dt, 0.0, 1.0);
+p.v = clamp(p.v + dv * dt, 0.0, 1.0);
+
+// Reset laplacians for next frame
+p.u_laplacian = 0.0;
+p.v_laplacian = 0.0;
+
+// Color based on v concentration (the activator creates the pattern)
+let v_norm = clamp(p.v * 2.5, 0.0, 1.0);
+
+// Beautiful color gradient: deep blue -> teal -> yellow -> white
+var col: vec3<f32>;
+if v_norm < 0.33 {
+    let t = v_norm / 0.33;
+    col = mix(vec3<f32>(0.02, 0.05, 0.15), vec3<f32>(0.0, 0.4, 0.5), t);
+} else if v_norm < 0.66 {
+    let t = (v_norm - 0.33) / 0.33;
+    col = mix(vec3<f32>(0.0, 0.4, 0.5), vec3<f32>(0.9, 0.7, 0.2), t);
+} else {
+    let t = (v_norm - 0.66) / 0.34;
+    col = mix(vec3<f32>(0.9, 0.7, 0.2), vec3<f32>(1.0, 1.0, 0.95), t);
+}
+
+p.color = col;
+p.scale = 0.8 + v_norm * 0.5;
+"#
+                        .into(),
+                    },
+                    RuleConfig::BounceWalls { restitution: 0.0 },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Alpha,
+                    background_color: [0.01, 0.02, 0.05],
+                    shape: ParticleShapeConfig::Circle,
+                    trail_length: 0,
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: Vec::new(),
+                volume_render: VolumeRenderConfig::default(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: true,
+                adjacency_max_neighbors: 32,
+                adjacency_radius: 0.08,
+                interactions: InteractionConfig::default(),
+                post_process: PostProcessConfig {
+                    enabled: true,
+                    effects: vec![
+                        PostProcessEffect::Bloom {
+                            intensity: 0.3,
+                            threshold: 0.5,
+                            radius: 0.003,
+                        },
+                    ],
+                },
+                emitters: Vec::new(),
+            }
         },
     },
 ];

@@ -7,19 +7,19 @@ use eframe::egui;
 use glam::Vec3;
 
 // Use web-time on WASM for Instant compatibility
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
 use rdpe_editor::config::*;
-use rdpe_editor::embedded::{EmbeddedSimulation, SimulationResources, ParsedParticle};
+use rdpe_editor::embedded::{EmbeddedSimulation, ParsedParticle, SimulationResources};
 use rdpe_editor::ui::{
+    AddUniformState, ExportPanelState, InteractionsPanelState, PRESETS, ShaderContext,
     render_custom_panel, render_effects_panel, render_emitters_panel, render_export_button,
     render_export_window, render_fields_panel, render_interactions_panel, render_mouse_panel,
-    render_particle_fields_panel, render_post_process_panel, render_rules_panel, render_spawn_panel,
-    render_stats_panel, render_visuals_panel, render_volume_panel, AddUniformState, ExportPanelState,
-    InteractionsPanelState, ShaderContext, PRESETS,
+    render_particle_fields_panel, render_post_process_panel, render_rules_panel,
+    render_spawn_panel, render_stats_panel, render_visuals_panel, render_volume_panel,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 /// Sidebar tabs for organizing the editor panels
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -129,11 +129,14 @@ fn main() {
             ..Default::default()
         });
 
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }).await.expect("WebGPU adapter required");
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .expect("WebGPU adapter required");
 
         // Request device from adapter
         let (device, queue) = adapter
@@ -385,7 +388,8 @@ impl EditorApp {
 
     fn rebuild_simulation(&mut self, wgpu_render_state: &egui_wgpu::RenderState) {
         // Reinitialize with state preservation (if particle count unchanged)
-        self.simulation.reinitialize(wgpu_render_state, &self.config);
+        self.simulation
+            .reinitialize(wgpu_render_state, &self.config);
         self.needs_rebuild = false;
         self.rebuild_timer = None;
 
@@ -453,13 +457,22 @@ impl eframe::App for EditorApp {
 
                 // Create tinted background colors with brightness
                 let bg_color = egui::Color32::from(egui::ecolor::Hsva::new(
-                    settings.background_hue, tinted_sat, adjusted_base, 1.0
+                    settings.background_hue,
+                    tinted_sat,
+                    adjusted_base,
+                    1.0,
                 ));
                 let bg_darker = egui::Color32::from(egui::ecolor::Hsva::new(
-                    settings.background_hue, tinted_sat, (adjusted_base * 0.85).clamp(0.02, 0.95), 1.0
+                    settings.background_hue,
+                    tinted_sat,
+                    (adjusted_base * 0.85).clamp(0.02, 0.95),
+                    1.0,
                 ));
                 let bg_lighter = egui::Color32::from(egui::ecolor::Hsva::new(
-                    settings.background_hue, tinted_sat * 0.7, (adjusted_base * 1.15).clamp(0.05, 0.98), 1.0
+                    settings.background_hue,
+                    tinted_sat * 0.7,
+                    (adjusted_base * 1.15).clamp(0.05, 0.98),
+                    1.0,
                 ));
 
                 // Apply to various background elements
@@ -481,7 +494,8 @@ impl eframe::App for EditorApp {
                 visuals.window_fill = adjust_color(visuals.window_fill);
                 visuals.extreme_bg_color = adjust_color(visuals.extreme_bg_color);
                 visuals.faint_bg_color = adjust_color(visuals.faint_bg_color);
-                visuals.widgets.noninteractive.bg_fill = adjust_color(visuals.widgets.noninteractive.bg_fill);
+                visuals.widgets.noninteractive.bg_fill =
+                    adjust_color(visuals.widgets.noninteractive.bg_fill);
                 visuals.widgets.inactive.bg_fill = adjust_color(visuals.widgets.inactive.bg_fill);
             }
 
@@ -498,7 +512,10 @@ impl eframe::App for EditorApp {
             let accent = egui::ecolor::Hsva::new(settings.accent_hue, 0.7, 0.8, 1.0);
             let accent_color = egui::Color32::from(accent);
             let accent_dim = egui::Color32::from(egui::ecolor::Hsva::new(
-                settings.accent_hue, 0.5, if settings.dark_mode { 0.5 } else { 0.6 }, 1.0
+                settings.accent_hue,
+                0.5,
+                if settings.dark_mode { 0.5 } else { 0.6 },
+                1.0,
             ));
 
             visuals.selection.bg_fill = accent_color;
@@ -585,8 +602,15 @@ impl eframe::App for EditorApp {
         // Live update: background color (hot-swappable)
         if self.config.visuals.background_color != self.last_background_color {
             if let Some(state) = wgpu_render_state {
-                if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
-                    sim.set_background_color(Vec3::from_array(self.config.visuals.background_color));
+                if let Some(sim) = state
+                    .renderer
+                    .write()
+                    .callback_resources
+                    .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                {
+                    sim.set_background_color(Vec3::from_array(
+                        self.config.visuals.background_color,
+                    ));
                 }
             }
             self.last_background_color = self.config.visuals.background_color;
@@ -595,7 +619,12 @@ impl eframe::App for EditorApp {
         // Live update: grid opacity (hot-swappable)
         if self.config.visuals.spatial_grid_opacity != self.last_grid_opacity {
             if let Some(state) = wgpu_render_state {
-                if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
+                if let Some(sim) = state
+                    .renderer
+                    .write()
+                    .callback_resources
+                    .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                {
                     sim.set_grid_opacity(&state.queue, self.config.visuals.spatial_grid_opacity);
                 }
             }
@@ -606,7 +635,12 @@ impl eframe::App for EditorApp {
         // The actual glyph data updates happen in SimulationResources::prepare()
         if self.config.visuals.glyphs != self.last_glyph_config {
             if let Some(state) = wgpu_render_state {
-                if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
+                if let Some(sim) = state
+                    .renderer
+                    .write()
+                    .callback_resources
+                    .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                {
                     sim.set_glyph_config(self.config.visuals.glyphs.to_glyph_config());
                 }
             }
@@ -615,7 +649,12 @@ impl eframe::App for EditorApp {
 
         // Live update: custom uniform values (hot-swappable)
         if let Some(state) = wgpu_render_state {
-            if let Some(sim) = state.renderer.write().callback_resources.get_mut::<rdpe_editor::embedded::SimulationResources>() {
+            if let Some(sim) = state
+                .renderer
+                .write()
+                .callback_resources
+                .get_mut::<rdpe_editor::embedded::SimulationResources>()
+            {
                 sim.sync_custom_uniforms(&self.config.custom_uniforms);
             }
         }
@@ -627,266 +666,358 @@ impl eframe::App for EditorApp {
 
         // Menu bar - only show when not fullscreen
         if !self.fullscreen_mode {
-        egui::TopBottomPanel::top("menu").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("New").clicked() {
-                        self.config = SimConfig::default();
-                        self.current_file = None;
-                        self.needs_rebuild = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Open...").clicked() {
-                        self.load_config();
-                        ui.close_menu();
-                    }
-                    if ui.button("Save").clicked() {
-                        self.save_config();
-                        ui.close_menu();
-                    }
-                    if ui.button("Save As...").clicked() {
-                        self.save_config_as();
-                        ui.close_menu();
-                    }
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        ui.separator();
-                        if ui.button("Quit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                    }
-                });
-
-                ui.menu_button("Presets", |ui| {
-                    for preset in PRESETS {
-                        if ui.button(preset.name).on_hover_text(preset.description).clicked() {
-                            self.config = (preset.config)();
+            egui::TopBottomPanel::top("menu").show(ctx, |ui| {
+                egui::menu::bar(ui, |ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("New").clicked() {
+                            self.config = SimConfig::default();
                             self.current_file = None;
                             self.needs_rebuild = true;
-                            self.show_status(format!("Loaded preset: {}", preset.name));
                             ui.close_menu();
                         }
-                    }
-                });
-
-                // Options button with popup
-                let options_btn = ui.button("⚙ Options");
-                if options_btn.clicked() {
-                    self.editor_settings.show_options = !self.editor_settings.show_options;
-                }
-
-                // Spacer
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Reset button (full reset with fresh particles)
-                    if ui.button("Reset").on_hover_text("Full reset: regenerate all particles").clicked() {
-                        self.needs_reset = true;
-                    }
-
-                    // Show pending rebuild indicator
-                    if self.rebuild_timer.is_some() {
-                        ui.label(egui::RichText::new("⟳").color(egui::Color32::YELLOW))
-                            .on_hover_text("Rebuild pending...");
-                    }
-
-                    // Pause/Play and Camera controls
-                    if let Some(state) = wgpu_render_state {
-                        let (is_paused, time_scale, auto_orbit, orbit_speed) = {
-                            let resources = state.renderer.read();
-                            resources.callback_resources
-                                .get::<rdpe_editor::embedded::SimulationResources>()
-                                .map(|s| (s.is_paused(), s.time_scale(), s.auto_orbit, s.auto_orbit_speed))
-                                .unwrap_or((false, 1.0, false, 0.3))
-                        };
-
-                        let btn_text = if is_paused { "▶ Play" } else { "⏸ Pause" };
-                        if ui.button(btn_text).clicked() {
-                            if let Some(sim) = state.renderer.write()
-                                .callback_resources
-                                .get_mut::<rdpe_editor::embedded::SimulationResources>()
-                            {
-                                sim.set_paused(!is_paused);
+                        if ui.button("Open...").clicked() {
+                            self.load_config();
+                            ui.close_menu();
+                        }
+                        if ui.button("Save").clicked() {
+                            self.save_config();
+                            ui.close_menu();
+                        }
+                        if ui.button("Save As...").clicked() {
+                            self.save_config_as();
+                            ui.close_menu();
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            ui.separator();
+                            if ui.button("Quit").clicked() {
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                             }
                         }
+                    });
 
-                        // Step button (only when paused)
-                        if is_paused {
-                            if ui.button("⏭ Step").on_hover_text("Advance one frame").clicked() {
-                                if let Some(sim) = state.renderer.write()
+                    ui.menu_button("Presets", |ui| {
+                        for preset in PRESETS {
+                            if ui
+                                .button(preset.name)
+                                .on_hover_text(preset.description)
+                                .clicked()
+                            {
+                                self.config = (preset.config)();
+                                self.current_file = None;
+                                self.needs_rebuild = true;
+                                self.show_status(format!("Loaded preset: {}", preset.name));
+                                ui.close_menu();
+                            }
+                        }
+                    });
+
+                    // Options button with popup
+                    let options_btn = ui.button("⚙ Options");
+                    if options_btn.clicked() {
+                        self.editor_settings.show_options = !self.editor_settings.show_options;
+                    }
+
+                    // Spacer
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Reset button (full reset with fresh particles)
+                        if ui
+                            .button("Reset")
+                            .on_hover_text("Full reset: regenerate all particles")
+                            .clicked()
+                        {
+                            self.needs_reset = true;
+                        }
+
+                        // Show pending rebuild indicator
+                        if self.rebuild_timer.is_some() {
+                            ui.label(egui::RichText::new("⟳").color(egui::Color32::YELLOW))
+                                .on_hover_text("Rebuild pending...");
+                        }
+
+                        // Pause/Play and Camera controls
+                        if let Some(state) = wgpu_render_state {
+                            let (is_paused, time_scale, auto_orbit, orbit_speed) = {
+                                let resources = state.renderer.read();
+                                resources
                                     .callback_resources
-                                    .get_mut::<rdpe_editor::embedded::SimulationResources>()
+                                    .get::<rdpe_editor::embedded::SimulationResources>()
+                                    .map(|s| {
+                                        (
+                                            s.is_paused(),
+                                            s.time_scale(),
+                                            s.auto_orbit,
+                                            s.auto_orbit_speed,
+                                        )
+                                    })
+                                    .unwrap_or((false, 1.0, false, 0.3))
+                            };
+
+                            let btn_text = if is_paused { "▶ Play" } else { "⏸ Pause" };
+                            if ui.button(btn_text).clicked() {
+                                if let Some(sim) = state
+                                    .renderer
+                                    .write()
+                                    .callback_resources
+                                    .get_mut::<rdpe_editor::embedded::SimulationResources>(
+                                ) {
+                                    sim.set_paused(!is_paused);
+                                }
+                            }
+
+                            // Step button (only when paused)
+                            if is_paused {
+                                if ui
+                                    .button("⏭ Step")
+                                    .on_hover_text("Advance one frame")
+                                    .clicked()
                                 {
-                                    sim.step_frame();
+                                    if let Some(sim) = state
+                                        .renderer
+                                        .write()
+                                        .callback_resources
+                                        .get_mut::<rdpe_editor::embedded::SimulationResources>(
+                                    ) {
+                                        sim.step_frame();
+                                    }
+                                }
+                            }
+
+                            // Time scale slider
+                            let mut scale = time_scale;
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut scale, 0.1..=10.0)
+                                        .text("Speed")
+                                        .max_decimals(2),
+                                )
+                                .changed()
+                            {
+                                if let Some(sim) = state
+                                    .renderer
+                                    .write()
+                                    .callback_resources
+                                    .get_mut::<rdpe_editor::embedded::SimulationResources>(
+                                ) {
+                                    sim.set_time_scale(scale);
+                                }
+                            }
+
+                            ui.separator();
+
+                            // Auto-orbit toggle
+                            let orbit_text = if auto_orbit { "◐ Orbit" } else { "○ Orbit" };
+                            if ui
+                                .button(orbit_text)
+                                .on_hover_text("Toggle camera auto-rotation")
+                                .clicked()
+                            {
+                                if let Some(sim) = state
+                                    .renderer
+                                    .write()
+                                    .callback_resources
+                                    .get_mut::<rdpe_editor::embedded::SimulationResources>(
+                                ) {
+                                    sim.auto_orbit = !auto_orbit;
+                                }
+                            }
+
+                            // Orbit speed slider (only show when orbiting)
+                            if auto_orbit {
+                                let mut speed = orbit_speed;
+                                if ui
+                                    .add(
+                                        egui::Slider::new(&mut speed, -1.0..=1.0)
+                                            .text("Speed")
+                                            .max_decimals(2),
+                                    )
+                                    .changed()
+                                {
+                                    if let Some(sim) = state
+                                        .renderer
+                                        .write()
+                                        .callback_resources
+                                        .get_mut::<rdpe_editor::embedded::SimulationResources>(
+                                    ) {
+                                        sim.auto_orbit_speed = speed;
+                                    }
                                 }
                             }
                         }
-
-                        // Time scale slider
-                        let mut scale = time_scale;
-                        if ui.add(egui::Slider::new(&mut scale, 0.1..=3.0).text("Speed").max_decimals(2)).changed() {
-                            if let Some(sim) = state.renderer.write()
-                                .callback_resources
-                                .get_mut::<rdpe_editor::embedded::SimulationResources>()
-                            {
-                                sim.set_time_scale(scale);
-                            }
-                        }
-
-                        ui.separator();
-
-                        // Auto-orbit toggle
-                        let orbit_text = if auto_orbit { "◐ Orbit" } else { "○ Orbit" };
-                        if ui.button(orbit_text).on_hover_text("Toggle camera auto-rotation").clicked() {
-                            if let Some(sim) = state.renderer.write()
-                                .callback_resources
-                                .get_mut::<rdpe_editor::embedded::SimulationResources>()
-                            {
-                                sim.auto_orbit = !auto_orbit;
-                            }
-                        }
-
-                        // Orbit speed slider (only show when orbiting)
-                        if auto_orbit {
-                            let mut speed = orbit_speed;
-                            if ui.add(egui::Slider::new(&mut speed, -1.0..=1.0).text("Speed").max_decimals(2)).changed() {
-                                if let Some(sim) = state.renderer.write()
-                                    .callback_resources
-                                    .get_mut::<rdpe_editor::embedded::SimulationResources>()
-                                {
-                                    sim.auto_orbit_speed = speed;
-                                }
-                            }
-                        }
-                    }
+                    });
                 });
             });
-        });
 
-        // Options popup window
-        if self.editor_settings.show_options {
-            egui::Window::new("Editor Options")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    ui.heading("Appearance");
-                    ui.add_space(8.0);
+            // Options popup window
+            if self.editor_settings.show_options {
+                egui::Window::new("Editor Options")
+                    .collapsible(false)
+                    .resizable(false)
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        ui.heading("Appearance");
+                        ui.add_space(8.0);
 
-                    // Dark/Light mode toggle
-                    ui.horizontal(|ui| {
-                        ui.label("Theme:");
-                        ui.selectable_value(&mut self.editor_settings.dark_mode, true, "Dark");
-                        ui.selectable_value(&mut self.editor_settings.dark_mode, false, "Light");
-                    });
+                        // Dark/Light mode toggle
+                        ui.horizontal(|ui| {
+                            ui.label("Theme:");
+                            ui.selectable_value(&mut self.editor_settings.dark_mode, true, "Dark");
+                            ui.selectable_value(
+                                &mut self.editor_settings.dark_mode,
+                                false,
+                                "Light",
+                            );
+                        });
 
-                    ui.add_space(8.0);
+                        ui.add_space(8.0);
 
-                    // Panel side toggle
-                    ui.horizontal(|ui| {
-                        ui.label("Panel Side:");
-                        ui.selectable_value(&mut self.editor_settings.panel_side, PanelSide::Left, "Left");
-                        ui.selectable_value(&mut self.editor_settings.panel_side, PanelSide::Right, "Right");
-                    });
+                        // Panel side toggle
+                        ui.horizontal(|ui| {
+                            ui.label("Panel Side:");
+                            ui.selectable_value(
+                                &mut self.editor_settings.panel_side,
+                                PanelSide::Left,
+                                "Left",
+                            );
+                            ui.selectable_value(
+                                &mut self.editor_settings.panel_side,
+                                PanelSide::Right,
+                                "Right",
+                            );
+                        });
 
-                    ui.add_space(8.0);
+                        ui.add_space(8.0);
 
-                    // UI Scale (drag value to avoid feedback loop with slider)
-                    ui.horizontal(|ui| {
-                        ui.label("UI Scale:");
-                        ui.add(egui::DragValue::new(&mut self.editor_settings.ui_scale)
-                            .range(0.5..=2.0)
-                            .speed(0.01)
-                            .max_decimals(2));
-                    });
+                        // UI Scale (drag value to avoid feedback loop with slider)
+                        ui.horizontal(|ui| {
+                            ui.label("UI Scale:");
+                            ui.add(
+                                egui::DragValue::new(&mut self.editor_settings.ui_scale)
+                                    .range(0.5..=2.0)
+                                    .speed(0.01)
+                                    .max_decimals(2),
+                            );
+                        });
 
-                    ui.add_space(8.0);
+                        ui.add_space(8.0);
 
-                    // Panel opacity slider
-                    ui.add(egui::Slider::new(&mut self.editor_settings.panel_opacity, 0.3..=1.0)
-                        .text("Panel Opacity"));
+                        // Panel opacity slider
+                        ui.add(
+                            egui::Slider::new(&mut self.editor_settings.panel_opacity, 0.3..=1.0)
+                                .text("Panel Opacity"),
+                        );
 
-                    ui.add_space(4.0);
+                        ui.add_space(4.0);
 
-                    // Brightness slider
-                    ui.add(egui::Slider::new(&mut self.editor_settings.brightness, 0.5..=1.5)
-                        .text("Brightness"));
+                        // Brightness slider
+                        ui.add(
+                            egui::Slider::new(&mut self.editor_settings.brightness, 0.5..=1.5)
+                                .text("Brightness"),
+                        );
 
-                    ui.add_space(8.0);
-                    ui.separator();
-                    ui.add_space(8.0);
+                        ui.add_space(8.0);
+                        ui.separator();
+                        ui.add_space(8.0);
 
-                    // Accent color
-                    ui.label("Accent Color:");
-                    let accent_hue = &mut self.editor_settings.accent_hue;
-                    let accent_preview = egui::ecolor::Hsva::new(*accent_hue, 0.7, 0.8, 1.0);
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(200.0, 16.0), egui::Sense::hover());
-                    ui.painter().rect_filled(rect, 4.0, accent_preview);
-                    ui.add(egui::Slider::new(accent_hue, 0.0..=1.0).text("Hue").show_value(false));
+                        // Accent color
+                        ui.label("Accent Color:");
+                        let accent_hue = &mut self.editor_settings.accent_hue;
+                        let accent_preview = egui::ecolor::Hsva::new(*accent_hue, 0.7, 0.8, 1.0);
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(200.0, 16.0), egui::Sense::hover());
+                        ui.painter().rect_filled(rect, 4.0, accent_preview);
+                        ui.add(
+                            egui::Slider::new(accent_hue, 0.0..=1.0)
+                                .text("Hue")
+                                .show_value(false),
+                        );
 
-                    ui.add_space(8.0);
+                        ui.add_space(8.0);
 
-                    // Background tint
-                    ui.label("Background Tint:");
-                    let bg_hue = &mut self.editor_settings.background_hue;
-                    let bg_tint = &mut self.editor_settings.background_tint;
+                        // Background tint
+                        ui.label("Background Tint:");
+                        let bg_hue = &mut self.editor_settings.background_hue;
+                        let bg_tint = &mut self.editor_settings.background_tint;
 
-                    // Preview with current tint strength applied
-                    let base_value = if self.editor_settings.dark_mode { 0.15 } else { 0.95 };
-                    let tinted_sat = 0.3 * *bg_tint;
-                    let bg_preview = egui::ecolor::Hsva::new(*bg_hue, tinted_sat, base_value, 1.0);
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(200.0, 16.0), egui::Sense::hover());
-                    ui.painter().rect_filled(rect, 4.0, bg_preview);
+                        // Preview with current tint strength applied
+                        let base_value = if self.editor_settings.dark_mode {
+                            0.15
+                        } else {
+                            0.95
+                        };
+                        let tinted_sat = 0.3 * *bg_tint;
+                        let bg_preview =
+                            egui::ecolor::Hsva::new(*bg_hue, tinted_sat, base_value, 1.0);
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(200.0, 16.0), egui::Sense::hover());
+                        ui.painter().rect_filled(rect, 4.0, bg_preview);
 
-                    ui.add(egui::Slider::new(bg_hue, 0.0..=1.0).text("Hue").show_value(false));
-                    ui.add(egui::Slider::new(bg_tint, 0.0..=1.0).text("Strength").show_value(false));
+                        ui.add(
+                            egui::Slider::new(bg_hue, 0.0..=1.0)
+                                .text("Hue")
+                                .show_value(false),
+                        );
+                        ui.add(
+                            egui::Slider::new(bg_tint, 0.0..=1.0)
+                                .text("Strength")
+                                .show_value(false),
+                        );
 
-                    ui.add_space(12.0);
+                        ui.add_space(12.0);
 
-                    // Close button
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Close").clicked() {
-                                self.editor_settings.show_options = false;
-                            }
+                        // Close button
+                        ui.horizontal(|ui| {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.button("Close").clicked() {
+                                        self.editor_settings.show_options = false;
+                                    }
+                                },
+                            );
                         });
                     });
-                });
-        }
+            }
         } // end if !fullscreen_mode for menu bar
 
         // Status bar - only show when not fullscreen
         if !self.fullscreen_mode {
-        egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                // Status message with timeout
-                if let Some((msg, time)) = &self.status_message {
-                    if time.elapsed().as_secs() < 5 {
-                        ui.label(msg);
-                    } else {
-                        self.status_message = None;
+            egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    // Status message with timeout
+                    if let Some((msg, time)) = &self.status_message {
+                        if time.elapsed().as_secs() < 5 {
+                            ui.label(msg);
+                        } else {
+                            self.status_message = None;
+                        }
                     }
-                }
 
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // FPS counter
-                    ui.label(format!("{:.0} FPS", 1.0 / ctx.input(|i| i.stable_dt)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // FPS counter
+                        ui.label(format!("{:.0} FPS", 1.0 / ctx.input(|i| i.stable_dt)));
 
-                    ui.separator();
+                        ui.separator();
 
-                    // Show current file
-                    if let Some(file) = &self.current_file {
-                        ui.label(egui::RichText::new(file).small().weak());
-                    } else {
-                        ui.label(egui::RichText::new("(unsaved)").small().weak());
-                    }
+                        // Show current file
+                        if let Some(file) = &self.current_file {
+                            ui.label(egui::RichText::new(file).small().weak());
+                        } else {
+                            ui.label(egui::RichText::new("(unsaved)").small().weak());
+                        }
+                    });
                 });
             });
-        });
         } // end if !fullscreen_mode for status bar
 
         // Particle Inspector panel (shows when a particle is selected)
         // Get currently selected particle info from GPU
         let selected_info = wgpu_render_state.as_ref().and_then(|state| {
-            state.renderer.read().callback_resources.get::<SimulationResources>()
+            state
+                .renderer
+                .read()
+                .callback_resources
+                .get::<SimulationResources>()
                 .and_then(|sim| {
                     let idx = sim.selected_particle()?;
                     let data = sim.selected_particle_data()?;
@@ -898,7 +1029,9 @@ impl eframe::App for EditorApp {
 
         // Sync editing_particle with selection - continuously update from GPU
         match (&mut self.editing_particle, &selected_info) {
-            (Some((edit_idx, edit_particle)), Some((sel_idx, sel_particle))) if *edit_idx == *sel_idx => {
+            (Some((edit_idx, edit_particle)), Some((sel_idx, sel_particle)))
+                if *edit_idx == *sel_idx =>
+            {
                 // Same particle selected - update with fresh GPU data
                 *edit_particle = sel_particle.clone();
             }
@@ -920,143 +1053,264 @@ impl eframe::App for EditorApp {
         let mut should_clear_selection = false;
         // Only show particle inspector when not in fullscreen mode
         if !self.fullscreen_mode {
-        if let Some((idx, ref mut particle)) = self.editing_particle {
-            let mut particle_changed = false;
-            let mut clear_clicked = false;
+            if let Some((idx, ref mut particle)) = self.editing_particle {
+                let mut particle_changed = false;
+                let mut clear_clicked = false;
 
-            egui::TopBottomPanel::bottom("particle_inspector")
-                .resizable(true)
-                .min_height(80.0)
-                .max_height(250.0)
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.heading(format!("Particle #{}", idx));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("Clear Selection").clicked() {
-                                clear_clicked = true;
-                            }
-                        });
-                    });
-                    ui.separator();
-
-                    egui::ScrollArea::horizontal().show(ui, |ui| {
+                egui::TopBottomPanel::bottom("particle_inspector")
+                    .resizable(true)
+                    .min_height(80.0)
+                    .max_height(250.0)
+                    .show(ctx, |ui| {
                         ui.horizontal(|ui| {
-                            // Position
-                            ui.vertical(|ui| {
-                                ui.label("Position");
-                                ui.horizontal(|ui| {
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.position[0]).speed(0.01).prefix("x: ")).changed();
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.position[1]).speed(0.01).prefix("y: ")).changed();
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.position[2]).speed(0.01).prefix("z: ")).changed();
-                                });
-                            });
+                            ui.heading(format!("Particle #{}", idx));
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.small_button("Clear Selection").clicked() {
+                                        clear_clicked = true;
+                                    }
+                                },
+                            );
+                        });
+                        ui.separator();
 
-                            ui.separator();
-
-                            // Velocity
-                            ui.vertical(|ui| {
-                                ui.label("Velocity");
-                                ui.horizontal(|ui| {
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.velocity[0]).speed(0.01).prefix("x: ")).changed();
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.velocity[1]).speed(0.01).prefix("y: ")).changed();
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.velocity[2]).speed(0.01).prefix("z: ")).changed();
-                                });
-                            });
-
-                            ui.separator();
-
-                            // Color
-                            ui.vertical(|ui| {
-                                ui.label("Color");
-                                let mut color = [particle.color[0], particle.color[1], particle.color[2]];
-                                if ui.color_edit_button_rgb(&mut color).changed() {
-                                    particle.color = color;
-                                    particle_changed = true;
-                                }
-                            });
-
-                            ui.separator();
-
-                            // Scale, Age, Type
-                            ui.vertical(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label("Scale:");
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.scale).speed(0.01).range(0.01..=10.0)).changed();
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label("Age:");
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.age).speed(0.1)).changed();
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.label("Type:");
-                                    particle_changed |= ui.add(egui::DragValue::new(&mut particle.particle_type).range(0..=255)).changed();
-                                });
-                            });
-
-                            ui.separator();
-
-                            // Custom fields
-                            if !particle.custom_fields.is_empty() {
+                        egui::ScrollArea::horizontal().show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                // Position
                                 ui.vertical(|ui| {
-                                    ui.label("Custom");
-                                    for (name, value) in &mut particle.custom_fields {
-                                        ui.horizontal(|ui| {
-                                            ui.label(format!("{}:", name));
-                                            match value {
-                                                rdpe_editor::spawn::FieldValue::F32(v) => {
-                                                    particle_changed |= ui.add(egui::DragValue::new(v).speed(0.01)).changed();
-                                                }
-                                                rdpe_editor::spawn::FieldValue::U32(v) => {
-                                                    particle_changed |= ui.add(egui::DragValue::new(v)).changed();
-                                                }
-                                                rdpe_editor::spawn::FieldValue::I32(v) => {
-                                                    particle_changed |= ui.add(egui::DragValue::new(v)).changed();
-                                                }
-                                                rdpe_editor::spawn::FieldValue::Vec2(v) => {
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x: ")).changed();
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y: ")).changed();
-                                                }
-                                                rdpe_editor::spawn::FieldValue::Vec3(v) => {
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01).prefix("x: ")).changed();
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01).prefix("y: ")).changed();
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01).prefix("z: ")).changed();
-                                                }
-                                                rdpe_editor::spawn::FieldValue::Vec4(v) => {
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[0]).speed(0.01)).changed();
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[1]).speed(0.01)).changed();
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[2]).speed(0.01)).changed();
-                                                    particle_changed |= ui.add(egui::DragValue::new(&mut v[3]).speed(0.01)).changed();
-                                                }
-                                            }
-                                        });
+                                    ui.label("Position");
+                                    ui.horizontal(|ui| {
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.position[0])
+                                                    .speed(0.01)
+                                                    .prefix("x: "),
+                                            )
+                                            .changed();
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.position[1])
+                                                    .speed(0.01)
+                                                    .prefix("y: "),
+                                            )
+                                            .changed();
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.position[2])
+                                                    .speed(0.01)
+                                                    .prefix("z: "),
+                                            )
+                                            .changed();
+                                    });
+                                });
+
+                                ui.separator();
+
+                                // Velocity
+                                ui.vertical(|ui| {
+                                    ui.label("Velocity");
+                                    ui.horizontal(|ui| {
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.velocity[0])
+                                                    .speed(0.01)
+                                                    .prefix("x: "),
+                                            )
+                                            .changed();
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.velocity[1])
+                                                    .speed(0.01)
+                                                    .prefix("y: "),
+                                            )
+                                            .changed();
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.velocity[2])
+                                                    .speed(0.01)
+                                                    .prefix("z: "),
+                                            )
+                                            .changed();
+                                    });
+                                });
+
+                                ui.separator();
+
+                                // Color
+                                ui.vertical(|ui| {
+                                    ui.label("Color");
+                                    let mut color =
+                                        [particle.color[0], particle.color[1], particle.color[2]];
+                                    if ui.color_edit_button_rgb(&mut color).changed() {
+                                        particle.color = color;
+                                        particle_changed = true;
                                     }
                                 });
-                            }
+
+                                ui.separator();
+
+                                // Scale, Age, Type
+                                ui.vertical(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label("Scale:");
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.scale)
+                                                    .speed(0.01)
+                                                    .range(0.01..=10.0),
+                                            )
+                                            .changed();
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Age:");
+                                        particle_changed |= ui
+                                            .add(egui::DragValue::new(&mut particle.age).speed(0.1))
+                                            .changed();
+                                    });
+                                    ui.horizontal(|ui| {
+                                        ui.label("Type:");
+                                        particle_changed |= ui
+                                            .add(
+                                                egui::DragValue::new(&mut particle.particle_type)
+                                                    .range(0..=255),
+                                            )
+                                            .changed();
+                                    });
+                                });
+
+                                ui.separator();
+
+                                // Custom fields
+                                if !particle.custom_fields.is_empty() {
+                                    ui.vertical(|ui| {
+                                        ui.label("Custom");
+                                        for (name, value) in &mut particle.custom_fields {
+                                            ui.horizontal(|ui| {
+                                                ui.label(format!("{}:", name));
+                                                match value {
+                                                    rdpe_editor::spawn::FieldValue::F32(v) => {
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(v).speed(0.01),
+                                                            )
+                                                            .changed();
+                                                    }
+                                                    rdpe_editor::spawn::FieldValue::U32(v) => {
+                                                        particle_changed |= ui
+                                                            .add(egui::DragValue::new(v))
+                                                            .changed();
+                                                    }
+                                                    rdpe_editor::spawn::FieldValue::I32(v) => {
+                                                        particle_changed |= ui
+                                                            .add(egui::DragValue::new(v))
+                                                            .changed();
+                                                    }
+                                                    rdpe_editor::spawn::FieldValue::Vec2(v) => {
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[0])
+                                                                    .speed(0.01)
+                                                                    .prefix("x: "),
+                                                            )
+                                                            .changed();
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[1])
+                                                                    .speed(0.01)
+                                                                    .prefix("y: "),
+                                                            )
+                                                            .changed();
+                                                    }
+                                                    rdpe_editor::spawn::FieldValue::Vec3(v) => {
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[0])
+                                                                    .speed(0.01)
+                                                                    .prefix("x: "),
+                                                            )
+                                                            .changed();
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[1])
+                                                                    .speed(0.01)
+                                                                    .prefix("y: "),
+                                                            )
+                                                            .changed();
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[2])
+                                                                    .speed(0.01)
+                                                                    .prefix("z: "),
+                                                            )
+                                                            .changed();
+                                                    }
+                                                    rdpe_editor::spawn::FieldValue::Vec4(v) => {
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[0])
+                                                                    .speed(0.01),
+                                                            )
+                                                            .changed();
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[1])
+                                                                    .speed(0.01),
+                                                            )
+                                                            .changed();
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[2])
+                                                                    .speed(0.01),
+                                                            )
+                                                            .changed();
+                                                        particle_changed |= ui
+                                                            .add(
+                                                                egui::DragValue::new(&mut v[3])
+                                                                    .speed(0.01),
+                                                            )
+                                                            .changed();
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            });
                         });
                     });
-                });
 
-            // Write changes back to GPU if particle was modified
-            if particle_changed {
-                if let Some(state) = wgpu_render_state {
-                    let layout = self.config.particle_layout();
-                    let bytes = particle.to_bytes(&layout);
-                    if let Some(sim) = state.renderer.read().callback_resources.get::<SimulationResources>() {
-                        sim.write_particle_at(&state.queue, idx, &bytes);
+                // Write changes back to GPU if particle was modified
+                if particle_changed {
+                    if let Some(state) = wgpu_render_state {
+                        let layout = self.config.particle_layout();
+                        let bytes = particle.to_bytes(&layout);
+                        if let Some(sim) = state
+                            .renderer
+                            .read()
+                            .callback_resources
+                            .get::<SimulationResources>()
+                        {
+                            sim.write_particle_at(&state.queue, idx, &bytes);
+                        }
                     }
                 }
-            }
 
-            // Handle clear selection after the closure
-            if clear_clicked {
-                if let Some(state) = wgpu_render_state {
-                    if let Some(sim) = state.renderer.write().callback_resources.get_mut::<SimulationResources>() {
-                        sim.clear_selection();
+                // Handle clear selection after the closure
+                if clear_clicked {
+                    if let Some(state) = wgpu_render_state {
+                        if let Some(sim) = state
+                            .renderer
+                            .write()
+                            .callback_resources
+                            .get_mut::<SimulationResources>()
+                        {
+                            sim.clear_selection();
+                        }
                     }
+                    should_clear_selection = true;
                 }
-                should_clear_selection = true;
             }
-        }
         } // end if !fullscreen_mode for particle inspector
         if should_clear_selection {
             self.editing_particle = None;
@@ -1064,169 +1318,215 @@ impl eframe::App for EditorApp {
 
         // Settings panel (left or right based on settings) - only show when not fullscreen
         if !self.fullscreen_mode {
-        let settings_panel = match self.editor_settings.panel_side {
-            PanelSide::Left => egui::SidePanel::left("settings"),
-            PanelSide::Right => egui::SidePanel::right("settings"),
-        };
-        settings_panel
-            .min_width(350.0)
-            .default_width(400.0)
-            .show(ctx, |ui| {
-                // Simulation name at top (always visible)
-                ui.horizontal(|ui| {
-                    ui.label("Name:");
-                    ui.text_edit_singleline(&mut self.config.name);
-                });
-                ui.separator();
+            let settings_panel = match self.editor_settings.panel_side {
+                PanelSide::Left => egui::SidePanel::left("settings"),
+                PanelSide::Right => egui::SidePanel::right("settings"),
+            };
+            settings_panel
+                .min_width(350.0)
+                .default_width(400.0)
+                .show(ctx, |ui| {
+                    // Simulation name at top (always visible)
+                    ui.horizontal(|ui| {
+                        ui.label("Name:");
+                        ui.text_edit_singleline(&mut self.config.name);
+                    });
+                    ui.separator();
 
-                // Tab bar
-                ui.horizontal_wrapped(|ui| {
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Spawn, "Spawn");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Rules, "Rules");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Interactions, "Types");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Emitters, "Emitters");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Particle, "Particle");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::PostProcess, "Post FX");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Mouse, "Mouse");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Custom, "Custom");
-                    ui.selectable_value(&mut self.selected_tab, SidebarTab::Stats, "Stats");
-                });
-                ui.separator();
+                    // Tab bar
+                    ui.horizontal_wrapped(|ui| {
+                        ui.selectable_value(&mut self.selected_tab, SidebarTab::Spawn, "Spawn");
+                        ui.selectable_value(&mut self.selected_tab, SidebarTab::Rules, "Rules");
+                        ui.selectable_value(
+                            &mut self.selected_tab,
+                            SidebarTab::Interactions,
+                            "Types",
+                        );
+                        ui.selectable_value(
+                            &mut self.selected_tab,
+                            SidebarTab::Emitters,
+                            "Emitters",
+                        );
+                        ui.selectable_value(
+                            &mut self.selected_tab,
+                            SidebarTab::Particle,
+                            "Particle",
+                        );
+                        ui.selectable_value(&mut self.selected_tab, SidebarTab::Fields, "Fields");
+                        ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
+                        ui.selectable_value(
+                            &mut self.selected_tab,
+                            SidebarTab::PostProcess,
+                            "Post FX",
+                        );
+                        ui.selectable_value(&mut self.selected_tab, SidebarTab::Mouse, "Mouse");
+                        ui.selectable_value(&mut self.selected_tab, SidebarTab::Custom, "Custom");
+                        ui.selectable_value(&mut self.selected_tab, SidebarTab::Stats, "Stats");
+                    });
+                    ui.separator();
 
-                // Tab content
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    match self.selected_tab {
-                        SidebarTab::Spawn => {
-                            render_spawn_panel(ui, &mut self.config);
+                    // Tab content
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        match self.selected_tab {
+                            SidebarTab::Spawn => {
+                                render_spawn_panel(ui, &mut self.config);
 
-                            // Spatial settings (if needed)
-                            if self.config.needs_spatial() {
-                                ui.separator();
-                                ui.heading("Spatial Hashing");
-                                ui.add(egui::Slider::new(&mut self.config.spatial_cell_size, 0.01..=0.5)
-                                    .text("Cell Size"));
+                                // Spatial settings (if needed)
+                                if self.config.needs_spatial() {
+                                    ui.separator();
+                                    ui.heading("Spatial Hashing");
+                                    ui.add(
+                                        egui::Slider::new(
+                                            &mut self.config.spatial_cell_size,
+                                            0.01..=0.5,
+                                        )
+                                        .text("Cell Size"),
+                                    );
 
-                                // Resolution must be a power of 2
-                                const VALID_RESOLUTIONS: &[u32] = &[8, 16, 32, 64, 128];
-                                let mut res_idx = VALID_RESOLUTIONS
-                                    .iter()
-                                    .position(|&r| r == self.config.spatial_resolution)
-                                    .unwrap_or(2); // Default to 32
+                                    // Resolution must be a power of 2
+                                    const VALID_RESOLUTIONS: &[u32] = &[8, 16, 32, 64, 128];
+                                    let mut res_idx = VALID_RESOLUTIONS
+                                        .iter()
+                                        .position(|&r| r == self.config.spatial_resolution)
+                                        .unwrap_or(2); // Default to 32
 
-                                egui::ComboBox::from_label("Resolution")
-                                    .selected_text(format!("{}", VALID_RESOLUTIONS[res_idx]))
-                                    .show_ui(ui, |ui| {
-                                        for (i, &res) in VALID_RESOLUTIONS.iter().enumerate() {
-                                            if ui.selectable_value(&mut res_idx, i, format!("{}", res)).clicked() {
-                                                self.config.spatial_resolution = res;
+                                    egui::ComboBox::from_label("Resolution")
+                                        .selected_text(format!("{}", VALID_RESOLUTIONS[res_idx]))
+                                        .show_ui(ui, |ui| {
+                                            for (i, &res) in VALID_RESOLUTIONS.iter().enumerate() {
+                                                if ui
+                                                    .selectable_value(
+                                                        &mut res_idx,
+                                                        i,
+                                                        format!("{}", res),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.config.spatial_resolution = res;
+                                                }
                                             }
-                                        }
-                                    });
+                                        });
+                                }
                             }
-                        }
-                        SidebarTab::Rules => {
-                            let has_neighbor_rules = self.config.rules.iter().any(|r| r.requires_neighbors());
-                            let ctx = ShaderContext {
-                                particle_fields: &self.config.particle_fields,
-                                fields: &self.config.fields,
-                                adjacency_enabled: self.config.adjacency_enabled,
-                                has_neighbor_rules,
-                            };
-                            render_rules_panel(ui, &mut self.config.rules, &ctx);
-                        }
-                        SidebarTab::Interactions => {
-                            // Sync num_types with spawn type_weights
-                            let spawn_types = self.config.spawn.type_weights.len().max(1);
-                            if self.config.interactions.num_types != spawn_types {
-                                self.config.interactions.resize(spawn_types);
+                            SidebarTab::Rules => {
+                                let has_neighbor_rules =
+                                    self.config.rules.iter().any(|r| r.requires_neighbors());
+                                let ctx = ShaderContext {
+                                    particle_fields: &self.config.particle_fields,
+                                    fields: &self.config.fields,
+                                    adjacency_enabled: self.config.adjacency_enabled,
+                                    has_neighbor_rules,
+                                };
+                                render_rules_panel(ui, &mut self.config.rules, &ctx);
                             }
+                            SidebarTab::Interactions => {
+                                // Sync num_types with spawn type_weights
+                                let spawn_types = self.config.spawn.type_weights.len().max(1);
+                                if self.config.interactions.num_types != spawn_types {
+                                    self.config.interactions.resize(spawn_types);
+                                }
 
-                            if render_interactions_panel(ui, &mut self.config.interactions, &mut self.interactions_panel_state) {
-                                self.needs_rebuild = true;
-                            }
-                        }
-                        SidebarTab::Emitters => {
-                            if render_emitters_panel(ui, &mut self.config.emitters) {
-                                self.needs_rebuild = true;
-                            }
-                        }
-                        SidebarTab::Particle => {
-                            render_particle_fields_panel(ui, &mut self.config);
-                        }
-                        SidebarTab::Fields => {
-                            render_fields_panel(ui, &mut self.config.fields, &mut self.config.visuals.glyphs);
-
-                            ui.separator();
-
-                            // Volume rendering panel
-                            let num_fields = self.config.fields.len();
-                            render_volume_panel(ui, &mut self.config.volume_render, num_fields);
-                        }
-                        SidebarTab::Visuals => {
-                            let _visuals_changed = render_visuals_panel(ui, &mut self.config);
-
-                            ui.separator();
-
-                            // Vertex effects
-                            render_effects_panel(ui, &mut self.config.vertex_effects);
-                        }
-                        SidebarTab::PostProcess => {
-                            let pp_changed =
-                                render_post_process_panel(ui, &mut self.config.post_process);
-                            if pp_changed {
-                                self.needs_rebuild = true;
-                            }
-                        }
-                        SidebarTab::Mouse => {
-                            let old_power = self.config.mouse.power;
-                            let mouse_changed = render_mouse_panel(ui, &mut self.config.mouse);
-                            if mouse_changed {
-                                // Check if power changed - this requires shader rebuild
-                                if self.config.mouse.power != old_power {
+                                if render_interactions_panel(
+                                    ui,
+                                    &mut self.config.interactions,
+                                    &mut self.interactions_panel_state,
+                                ) {
                                     self.needs_rebuild = true;
-                                } else {
-                                    // Just config change (radius/strength/color) - update immediately
-                                    if let Some(wgpu_render_state) = frame.wgpu_render_state() {
-                                        if let Some(sim) = wgpu_render_state
-                                            .renderer
-                                            .write()
-                                            .callback_resources
-                                            .get_mut::<SimulationResources>()
-                                        {
-                                            sim.set_mouse_config(self.config.mouse.clone());
+                                }
+                            }
+                            SidebarTab::Emitters => {
+                                if render_emitters_panel(ui, &mut self.config.emitters) {
+                                    self.needs_rebuild = true;
+                                }
+                            }
+                            SidebarTab::Particle => {
+                                render_particle_fields_panel(ui, &mut self.config);
+                            }
+                            SidebarTab::Fields => {
+                                render_fields_panel(
+                                    ui,
+                                    &mut self.config.fields,
+                                    &mut self.config.visuals.glyphs,
+                                );
+
+                                ui.separator();
+
+                                // Volume rendering panel
+                                let num_fields = self.config.fields.len();
+                                render_volume_panel(ui, &mut self.config.volume_render, num_fields);
+                            }
+                            SidebarTab::Visuals => {
+                                let _visuals_changed = render_visuals_panel(ui, &mut self.config);
+
+                                ui.separator();
+
+                                // Vertex effects
+                                render_effects_panel(ui, &mut self.config.vertex_effects);
+                            }
+                            SidebarTab::PostProcess => {
+                                let pp_changed =
+                                    render_post_process_panel(ui, &mut self.config.post_process);
+                                if pp_changed {
+                                    self.needs_rebuild = true;
+                                }
+                            }
+                            SidebarTab::Mouse => {
+                                let old_power = self.config.mouse.power;
+                                let mouse_changed = render_mouse_panel(ui, &mut self.config.mouse);
+                                if mouse_changed {
+                                    // Check if power changed - this requires shader rebuild
+                                    if self.config.mouse.power != old_power {
+                                        self.needs_rebuild = true;
+                                    } else {
+                                        // Just config change (radius/strength/color) - update immediately
+                                        if let Some(wgpu_render_state) = frame.wgpu_render_state() {
+                                            if let Some(sim) = wgpu_render_state
+                                                .renderer
+                                                .write()
+                                                .callback_resources
+                                                .get_mut::<SimulationResources>()
+                                            {
+                                                sim.set_mouse_config(self.config.mouse.clone());
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        SidebarTab::Custom => {
-                            render_custom_panel(
-                                ui,
-                                &mut self.config.custom_uniforms,
-                                &mut self.config.custom_shaders,
-                                &mut self.add_uniform_state,
-                            );
+                            SidebarTab::Custom => {
+                                render_custom_panel(
+                                    ui,
+                                    &mut self.config.custom_uniforms,
+                                    &mut self.config.custom_shaders,
+                                    &mut self.add_uniform_state,
+                                );
 
-                            ui.separator();
+                                ui.separator();
 
-                            // Export button
-                            ui.horizontal(|ui| {
-                                render_export_button(ui, &mut self.export_panel_state, &self.config);
-                            });
-                        }
-                        SidebarTab::Stats => {
-                            // Get stats from simulation resources
-                            if let Some(state) = wgpu_render_state {
-                                if let Some(sim) = state.renderer.read().callback_resources.get::<rdpe_editor::embedded::SimulationResources>() {
-                                    render_stats_panel(ui, sim.stats());
+                                // Export button
+                                ui.horizontal(|ui| {
+                                    render_export_button(
+                                        ui,
+                                        &mut self.export_panel_state,
+                                        &self.config,
+                                    );
+                                });
+                            }
+                            SidebarTab::Stats => {
+                                // Get stats from simulation resources
+                                if let Some(state) = wgpu_render_state {
+                                    if let Some(sim) = state
+                                        .renderer
+                                        .read()
+                                        .callback_resources
+                                        .get::<rdpe_editor::embedded::SimulationResources>(
+                                    ) {
+                                        render_stats_panel(ui, sim.stats());
+                                    }
                                 }
                             }
                         }
-                    }
+                    });
                 });
-            });
         } // end if !fullscreen_mode for right panel
 
         // Central panel: Simulation viewport
