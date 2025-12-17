@@ -19,6 +19,14 @@ pub struct FieldParamsGpu {
     pub _pad: [f32; 2],
 }
 
+/// Time uniforms for custom field update shaders.
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct FieldTimeUniforms {
+    pub time: f32,
+    pub delta_time: f32,
+}
+
 /// GPU state for a single 3D field.
 pub struct SingleFieldGpu {
     /// Atomic write buffer - particles deposit here
@@ -34,6 +42,10 @@ pub struct SingleFieldGpu {
     /// Field index (for future multi-field support)
     #[allow(dead_code)]
     pub index: usize,
+    /// Custom update pipeline (if custom_update code is provided)
+    pub custom_pipeline: Option<wgpu::ComputePipeline>,
+    /// Custom update bind group layout
+    pub custom_bind_group_layout: Option<wgpu::BindGroupLayout>,
 }
 
 impl SingleFieldGpu {
@@ -66,6 +78,14 @@ impl SingleFieldGpu {
             mapped_at_creation: false,
         });
 
+        // Create custom update pipeline if custom code is provided
+        let (custom_pipeline, custom_bind_group_layout) = if let Some(ref code) = config.custom_update {
+            let (pipeline, layout) = create_custom_update_pipeline(device, code, config.is_vector());
+            (Some(pipeline), Some(layout))
+        } else {
+            (None, None)
+        };
+
         Self {
             write_buffer,
             read_buffer_a,
@@ -73,6 +93,8 @@ impl SingleFieldGpu {
             read_is_b: false,
             config: config.clone(),
             index,
+            custom_pipeline,
+            custom_bind_group_layout,
         }
     }
 
@@ -277,20 +299,32 @@ impl FieldSystemGpu {
         }
     }
 
-    /// Run field processing: merge deposits, blur, decay, clear write buffer
+    /// Run field processing: merge deposits, blur/decay or custom update, clear write buffer
+    ///
+    /// If a field has custom_update code, it replaces the blur/decay step with the custom shader.
     pub fn process(
         &mut self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
         _queue: &wgpu::Queue,
+        time: f32,
+        delta_time: f32,
     ) {
+        // Create time uniforms buffer (shared across all fields)
+        let time_uniforms = FieldTimeUniforms { time, delta_time };
+        let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Field Time Uniforms"),
+            contents: bytemuck::bytes_of(&time_uniforms),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+
         for field in &mut self.fields {
             let total_cells = field.config.total_cells();
             let components = field.config.field_type.components();
             let buffer_elements = total_cells * components;
             // Workgroups for merge/clear (process buffer elements)
             let element_workgroups = buffer_elements.div_ceil(256);
-            // Workgroups for blur (process cells, loop over components internally)
+            // Workgroups for blur/custom (process cells, loop over components internally)
             let cell_workgroups = total_cells.div_ceil(256);
 
             // Create params for this field
@@ -339,39 +373,78 @@ impl FieldSystemGpu {
                 pass.dispatch_workgroups(element_workgroups, 1, 1);
             }
 
-            // Step 2: Blur and decay (if enabled)
-            for _ in 0..field.config.blur_iterations {
-                if field.config.blur > 0.0 || field.config.decay < 1.0 {
-                    let blur_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("Field Blur Bind Group"),
-                        layout: &self.blur_decay_bind_group_layout,
-                        entries: &[
-                            wgpu::BindGroupEntry {
-                                binding: 0,
-                                resource: field.current_read_buffer().as_entire_binding(),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 1,
-                                resource: field.blur_target_buffer().as_entire_binding(),
-                            },
-                            wgpu::BindGroupEntry {
-                                binding: 2,
-                                resource: params_buffer.as_entire_binding(),
-                            },
-                        ],
+            // Step 2: Update field - either custom shader or default blur/decay
+            if let (Some(ref pipeline), Some(ref layout)) = (&field.custom_pipeline, &field.custom_bind_group_layout) {
+                // Custom update shader (replaces blur/decay)
+                let custom_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Field Custom Update Bind Group"),
+                    layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: field.current_read_buffer().as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: field.blur_target_buffer().as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: params_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: time_buffer.as_entire_binding(),
+                        },
+                    ],
+                });
+
+                {
+                    let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("Field Custom Update Pass"),
+                        timestamp_writes: None,
                     });
+                    pass.set_pipeline(pipeline);
+                    pass.set_bind_group(0, &custom_bind_group, &[]);
+                    pass.dispatch_workgroups(cell_workgroups, 1, 1);
+                }
 
-                    {
-                        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                            label: Some("Field Blur/Decay Pass"),
-                            timestamp_writes: None,
+                field.swap_buffers();
+            } else {
+                // Default blur and decay (if enabled)
+                for _ in 0..field.config.blur_iterations {
+                    if field.config.blur > 0.0 || field.config.decay < 1.0 {
+                        let blur_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("Field Blur Bind Group"),
+                            layout: &self.blur_decay_bind_group_layout,
+                            entries: &[
+                                wgpu::BindGroupEntry {
+                                    binding: 0,
+                                    resource: field.current_read_buffer().as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: field.blur_target_buffer().as_entire_binding(),
+                                },
+                                wgpu::BindGroupEntry {
+                                    binding: 2,
+                                    resource: params_buffer.as_entire_binding(),
+                                },
+                            ],
                         });
-                        pass.set_pipeline(&self.blur_decay_pipeline);
-                        pass.set_bind_group(0, &blur_bind_group, &[]);
-                        pass.dispatch_workgroups(cell_workgroups, 1, 1);
-                    }
 
-                    field.swap_buffers();
+                        {
+                            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                                label: Some("Field Blur/Decay Pass"),
+                                timestamp_writes: None,
+                            });
+                            pass.set_pipeline(&self.blur_decay_pipeline);
+                            pass.set_bind_group(0, &blur_bind_group, &[]);
+                            pass.dispatch_workgroups(cell_workgroups, 1, 1);
+                        }
+
+                        field.swap_buffers();
+                    }
                 }
             }
 
@@ -629,6 +702,210 @@ fn create_clear_pipeline(
     });
 
     (pipeline, bind_group_layout)
+}
+
+/// Create a custom field update pipeline with user-provided WGSL code.
+fn create_custom_update_pipeline(
+    device: &wgpu::Device,
+    user_code: &str,
+    is_vector: bool,
+) -> (wgpu::ComputePipeline, wgpu::BindGroupLayout) {
+    let shader_src = generate_custom_update_shader(user_code, is_vector);
+
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("Custom Field Update Shader"),
+        source: wgpu::ShaderSource::Wgsl(shader_src.into()),
+    });
+
+    // Same layout as blur/decay: src (read), dst (write), params (uniform), time_uniforms (uniform)
+    let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Custom Field Update Bind Group Layout"),
+        entries: &[
+            // Source buffer
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            // Destination buffer
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            // Field params
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            // Time uniforms
+            wgpu::BindGroupLayoutEntry {
+                binding: 3,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Custom Field Update Pipeline Layout"),
+        bind_group_layouts: &[&bind_group_layout],
+        push_constant_ranges: &[],
+    });
+
+    let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+        label: Some("Custom Field Update Pipeline"),
+        layout: Some(&pipeline_layout),
+        module: &shader,
+        entry_point: Some("main"),
+        compilation_options: Default::default(),
+        cache: None,
+    });
+
+    (pipeline, bind_group_layout)
+}
+
+/// Generate the full WGSL shader for custom field updates.
+fn generate_custom_update_shader(user_code: &str, is_vector: bool) -> String {
+    let value_type = if is_vector { "vec3<f32>" } else { "f32" };
+    let read_neighbor_fn = if is_vector {
+        r#"fn read_neighbor(dx: i32, dy: i32, dz: i32) -> vec3<f32> {
+    let nx = clamp(i32(pos.x) + dx, 0, i32(params.resolution) - 1);
+    let ny = clamp(i32(pos.y) + dy, 0, i32(params.resolution) - 1);
+    let nz = clamp(i32(pos.z) + dz, 0, i32(params.resolution) - 1);
+    let idx = u32(nx) + u32(ny) * params.resolution + u32(nz) * params.resolution * params.resolution;
+    return vec3<f32>(src[idx * 3u], src[idx * 3u + 1u], src[idx * 3u + 2u]);
+}"#
+    } else {
+        r#"fn read_neighbor(dx: i32, dy: i32, dz: i32) -> f32 {
+    let nx = clamp(i32(pos.x) + dx, 0, i32(params.resolution) - 1);
+    let ny = clamp(i32(pos.y) + dy, 0, i32(params.resolution) - 1);
+    let nz = clamp(i32(pos.z) + dz, 0, i32(params.resolution) - 1);
+    let idx = u32(nx) + u32(ny) * params.resolution + u32(nz) * params.resolution * params.resolution;
+    return src[idx];
+}"#
+    };
+
+    let read_value = if is_vector {
+        "let value = vec3<f32>(src[cell_idx * 3u], src[cell_idx * 3u + 1u], src[cell_idx * 3u + 2u]);"
+    } else {
+        "let value = src[cell_idx];"
+    };
+
+    let write_value = if is_vector {
+        r#"dst[cell_idx * 3u] = new_value.x;
+    dst[cell_idx * 3u + 1u] = new_value.y;
+    dst[cell_idx * 3u + 2u] = new_value.z;"#
+    } else {
+        "dst[cell_idx] = new_value;"
+    };
+
+    format!(
+        r#"// Custom Field Update Shader
+
+struct Params {{
+    resolution: u32,
+    total_cells: u32,
+    extent: f32,
+    decay: f32,
+    blur: f32,
+    field_type: u32,
+    _pad1: f32,
+    _pad2: f32,
+}};
+
+struct TimeUniforms {{
+    time: f32,
+    delta_time: f32,
+}};
+
+@group(0) @binding(0)
+var<storage, read> src: array<f32>;
+
+@group(0) @binding(1)
+var<storage, read_write> dst: array<f32>;
+
+@group(0) @binding(2)
+var<uniform> params: Params;
+
+@group(0) @binding(3)
+var<uniform> uniforms: TimeUniforms;
+
+// Global position for read_neighbor to access
+var<private> pos: vec3<u32>;
+
+fn idx_3d(x: u32, y: u32, z: u32) -> u32 {{
+    return x + y * params.resolution + z * params.resolution * params.resolution;
+}}
+
+fn idx_to_3d(idx: u32) -> vec3<u32> {{
+    let res = params.resolution;
+    let z = idx / (res * res);
+    let remainder = idx % (res * res);
+    let y = remainder / res;
+    let x = remainder % res;
+    return vec3<u32>(x, y, z);
+}}
+
+fn cell_to_world(cell_pos: vec3<u32>) -> vec3<f32> {{
+    let res = f32(params.resolution);
+    let normalized = (vec3<f32>(cell_pos) + 0.5) / res;
+    return (normalized * 2.0 - 1.0) * params.extent;
+}}
+
+{read_neighbor_fn}
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
+    let cell_idx = global_id.x;
+    if cell_idx >= params.total_cells {{
+        return;
+    }}
+
+    pos = idx_to_3d(cell_idx);
+    let world_pos = cell_to_world(pos);
+
+    // Read current value
+    {read_value}
+
+    // Initialize new_value (user code should modify this)
+    var new_value: {value_type} = value;
+
+    // --- User code begins ---
+{user_code}
+    // --- User code ends ---
+
+    // Write result
+    {write_value}
+}}
+"#,
+        read_neighbor_fn = read_neighbor_fn,
+        read_value = read_value,
+        write_value = write_value,
+        value_type = value_type,
+        user_code = user_code,
+    )
 }
 
 /// Shader to merge atomic writes into the float field

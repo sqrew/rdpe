@@ -719,10 +719,16 @@ fn field_code(field: &FieldConfigEntry) -> String {
         FieldTypeConfig::Vector => format!("FieldConfig::new_vector({})", field.resolution),
     };
 
-    format!(
+    let mut result = format!(
         "{}\n            .with_extent({:.2})\n            .with_decay({:.3})\n            .with_blur({:.3})\n            .with_blur_iterations({})",
         field_type, field.extent, field.decay, field.blur, field.blur_iterations
-    )
+    );
+
+    if let Some(ref code) = field.custom_update {
+        result.push_str(&format!("\n            .with_custom_update(r#\"{}\"#)", code));
+    }
+
+    result
 }
 
 fn uniform_value_code(value: &UniformValueConfig) -> String {

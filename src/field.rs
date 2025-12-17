@@ -84,6 +84,7 @@ impl FieldType {
 ///
 /// Fields are 3D grids that particles can read from and write to.
 /// Each frame, the field is processed: blur (diffusion), then decay.
+/// Optionally, custom WGSL code can replace the default blur/decay behavior.
 #[derive(Clone, Debug)]
 pub struct FieldConfig {
     /// Grid resolution per axis (total cells = resolution³).
@@ -108,6 +109,31 @@ pub struct FieldConfig {
 
     /// Type of field (Scalar or Vector).
     pub field_type: FieldType,
+
+    /// Custom WGSL code for field updates (replaces blur/decay if set).
+    ///
+    /// Available variables:
+    /// - `cell_idx: u32` - Linear index of current cell
+    /// - `pos: vec3<u32>` - Grid position (x, y, z)
+    /// - `world_pos: vec3<f32>` - World-space position
+    /// - `value: f32` (scalar) or `value: vec3<f32>` (vector) - Current cell value
+    /// - `params.resolution`, `params.extent`, `params.decay`, `params.blur`
+    /// - `uniforms.time`, `uniforms.delta_time`
+    ///
+    /// Helper functions:
+    /// - `read_neighbor(dx: i32, dy: i32, dz: i32) -> f32/vec3<f32>` - Read neighbor cell
+    /// - `idx_3d(x, y, z) -> u32` - Convert 3D coords to linear index
+    ///
+    /// Output: Write to `new_value` (same type as `value`)
+    ///
+    /// Example (reaction-diffusion):
+    /// ```wgsl
+    /// let lap = read_neighbor(-1,0,0) + read_neighbor(1,0,0)
+    ///         + read_neighbor(0,-1,0) + read_neighbor(0,1,0)
+    ///         + read_neighbor(0,0,-1) + read_neighbor(0,0,1) - 6.0 * value;
+    /// new_value = value + lap * 0.1 * uniforms.delta_time;
+    /// ```
+    pub custom_update: Option<String>,
 }
 
 impl FieldConfig {
@@ -140,6 +166,7 @@ impl FieldConfig {
             blur: 0.1,
             blur_iterations: 1,
             field_type: FieldType::Scalar,
+            custom_update: None,
         }
     }
 
@@ -210,6 +237,33 @@ impl FieldConfig {
     pub fn with_blur_iterations(mut self, iterations: u32) -> Self {
         self.blur_iterations = iterations.max(1);
         self
+    }
+
+    /// Set custom WGSL code for field updates.
+    ///
+    /// When set, replaces the default blur/decay behavior with custom logic.
+    /// See [`FieldConfig::custom_update`] for available variables and helpers.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// FieldConfig::new(64)
+    ///     .with_custom_update(r#"
+    ///         // Simple diffusion with custom decay
+    ///         let lap = read_neighbor(-1,0,0) + read_neighbor(1,0,0)
+    ///                 + read_neighbor(0,-1,0) + read_neighbor(0,1,0)
+    ///                 + read_neighbor(0,0,-1) + read_neighbor(0,0,1) - 6.0 * value;
+    ///         new_value = (value + lap * 0.2) * 0.99;
+    ///     "#)
+    /// ```
+    pub fn with_custom_update(mut self, code: impl Into<String>) -> Self {
+        self.custom_update = Some(code.into());
+        self
+    }
+
+    /// Check if this field has custom update logic.
+    pub fn has_custom_update(&self) -> bool {
+        self.custom_update.is_some()
     }
 
     /// Total number of cells in the field.

@@ -51,6 +51,9 @@ pub struct FieldConfigEntry {
     pub blur_iterations: u32,
     /// Field type (Scalar or Vector).
     pub field_type: FieldTypeConfig,
+    /// Custom update shader code (replaces blur/decay if set).
+    #[serde(default)]
+    pub custom_update: Option<String>,
 }
 
 impl Default for FieldConfigEntry {
@@ -63,6 +66,7 @@ impl Default for FieldConfigEntry {
             blur: 0.1,
             blur_iterations: 1,
             field_type: FieldTypeConfig::Scalar,
+            custom_update: None,
         }
     }
 }
@@ -79,6 +83,9 @@ impl FieldConfigEntry {
             .with_decay(self.decay)
             .with_blur(self.blur)
             .with_blur_iterations(self.blur_iterations);
+        if let Some(ref code) = self.custom_update {
+            config = config.with_custom_update(code);
+        }
         config
     }
 }

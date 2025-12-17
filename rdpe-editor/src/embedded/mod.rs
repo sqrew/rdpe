@@ -1026,7 +1026,7 @@ impl SimulationResources {
 
             // Run field processing passes (merge, blur, decay, clear)
             if let Some(ref mut field_system) = self.field_system {
-                field_system.process(device, &mut encoder, queue);
+                field_system.process(device, &mut encoder, queue, self.time, scaled_dt);
 
                 // Update volume render bind group after field buffer swap
                 if let Some(ref mut volume_state) = self.volume_render_state {

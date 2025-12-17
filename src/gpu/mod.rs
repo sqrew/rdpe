@@ -139,6 +139,13 @@ struct Uniforms {
     delta_time: f32,
 }
 
+/// Cached time values for field processing.
+#[derive(Copy, Clone, Default)]
+struct TimeCache {
+    time: f32,
+    delta_time: f32,
+}
+
 /// GPU state for particle simulation and rendering.
 ///
 /// Some buffers are stored but not directly read - they must remain alive
@@ -216,6 +223,8 @@ pub struct GpuState {
     color_offset: Option<u32>,
     alive_offset: u32,
     scale_offset: u32,
+    // Cached time values for field processing
+    time_cache: TimeCache,
 }
 
 impl GpuState {
@@ -1111,6 +1120,8 @@ impl GpuState {
             color_offset,
             alive_offset,
             scale_offset,
+            // Time cache for field processing
+            time_cache: TimeCache::default(),
         })
     }
 
@@ -1420,6 +1431,9 @@ impl GpuState {
     }
 
     fn update_uniforms(&mut self, time: f32, delta_time: f32, custom_uniform_bytes: Option<&[u8]>) {
+        // Cache time values for field processing
+        self.time_cache = TimeCache { time, delta_time };
+
         let aspect = self.config.width as f32 / self.config.height as f32;
         let view = self.camera.view_matrix();
         let proj = Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 100.0);
@@ -1626,7 +1640,7 @@ impl GpuState {
 
         // Field processing pass (merge deposits, blur/decay, clear write buffer)
         if let Some(ref mut field_sys) = self.field_system {
-            field_sys.process(&self.device, &mut encoder, &self.queue);
+            field_sys.process(&self.device, &mut encoder, &self.queue, self.time_cache.time, self.time_cache.delta_time);
 
             // Update volume render bind group after field processing (buffers may have swapped)
             if let Some(ref mut vol) = self.volume_render {
@@ -1981,7 +1995,7 @@ impl GpuState {
 
         // Field processing pass (merge deposits, blur/decay, clear write buffer)
         if let Some(ref mut field_sys) = self.field_system {
-            field_sys.process(&self.device, &mut encoder, &self.queue);
+            field_sys.process(&self.device, &mut encoder, &self.queue, self.time_cache.time, self.time_cache.delta_time);
 
             // Update volume render bind group after field processing (buffers may have swapped)
             if let Some(ref mut vol) = self.volume_render {

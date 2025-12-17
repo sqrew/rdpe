@@ -197,6 +197,62 @@ fn render_field_editor(ui: &mut Ui, field: &mut FieldConfigEntry) -> bool {
         .on_hover_text("Number of blur passes per frame")
         .changed();
 
+    ui.separator();
+
+    // Custom update shader section
+    let has_custom = field.custom_update.is_some();
+    let mut use_custom = has_custom;
+    if ui.checkbox(&mut use_custom, "Custom Update Shader")
+        .on_hover_text("Replace blur/decay with custom WGSL code")
+        .changed()
+    {
+        if use_custom && !has_custom {
+            // Initialize with example code
+            let value_type = if matches!(field.field_type, FieldTypeConfig::Vector) { "vec3<f32>" } else { "f32" };
+            let example = format!(
+                r#"// Custom field update shader
+// Available variables:
+//   value: {} - current cell value
+//   pos: vec3<u32> - cell position (0 to resolution-1)
+//   world_pos: vec3<f32> - world position
+//   uniforms.time: f32 - total time
+//   uniforms.delta_time: f32 - frame delta
+//   params.resolution: u32 - grid resolution
+//   params.decay: f32 - configured decay
+//   params.blur: f32 - configured blur
+//
+// Helper functions:
+//   read_neighbor(dx, dy, dz) - read neighboring cell
+//
+// Set new_value to the result:
+new_value = value * params.decay;"#,
+                value_type
+            );
+            field.custom_update = Some(example);
+            changed = true;
+        } else if !use_custom && has_custom {
+            field.custom_update = None;
+            changed = true;
+        }
+    }
+
+    if let Some(ref mut code) = field.custom_update {
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical()
+            .max_height(200.0)
+            .show(ui, |ui| {
+                if ui.add(
+                    egui::TextEdit::multiline(code)
+                        .font(egui::TextStyle::Monospace)
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(10)
+                ).changed() {
+                    changed = true;
+                }
+            });
+        ui.add_space(4.0);
+    }
+
     // Show usage hint
     ui.separator();
     ui.label(egui::RichText::new("Usage in custom shader:").small().weak());

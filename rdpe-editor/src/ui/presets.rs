@@ -6,7 +6,7 @@ use crate::{
         BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff,
         FieldConfigEntry, FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig,
         PaletteConfig, ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, PostProcessConfig,
-        RuleConfig, SimConfig, SpawnConfig, SpawnShape, UniformValueConfig, VertexEffectConfig,
+        RuleConfig, SimConfig, SpawnConfig, SpawnShape, VertexEffectConfig,
         VisualsConfig, VolumeRenderConfig,
     },
 };
@@ -161,6 +161,7 @@ pub static PRESETS: &[Preset] = &[
                 blur: 0.2,
                 blur_iterations: 2,
                 field_type: FieldTypeConfig::Scalar,
+                custom_update: None,
             }],
             volume_render: VolumeRenderConfig {
                 enabled: true,
@@ -245,6 +246,7 @@ field_write(0u, p.position, 0.5);
                 blur: 0.2,
                 blur_iterations: 1,
                 field_type: FieldTypeConfig::Scalar,
+                custom_update: None,
             }],
             volume_render: VolumeRenderConfig {
                 enabled: true,
@@ -833,6 +835,7 @@ p.velocity = vec3<f32>(0.0, 0.0, 0.0);
                 blur: 0.1,
                 blur_iterations: 1,
                 field_type: FieldTypeConfig::Scalar,
+                custom_update: None,
             }],
             volume_render: VolumeRenderConfig {
                 enabled: true,
@@ -1188,6 +1191,7 @@ p.scale = 0.5 + core_intensity * 1.0;
                 blur: 0.25,
                 blur_iterations: 2,
                 field_type: FieldTypeConfig::Scalar,
+                custom_update: None,
             }],
             volume_render: VolumeRenderConfig {
                 enabled: true,
@@ -2040,6 +2044,7 @@ field_write(0u, p.position, charge * 0.5);
                     decay: 0.92,
                     blur: 0.2,
                     blur_iterations: 1,
+                    custom_update: None,
                 }],
                 volume_render: VolumeRenderConfig::default(),
                 particle_fields: Vec::new(),
@@ -3139,6 +3144,7 @@ if p.age > 0.5 {
                         blur: 0.0,
                         extent: 1.0,
                         blur_iterations: 0,
+                        custom_update: None,
                     },
                 ],
                 volume_render: VolumeRenderConfig::default(),
@@ -3151,5 +3157,138 @@ if p.age > 0.5 {
                 emitters: Vec::new(),
             }
         },
+    },
+    // Custom Field Shader Demo
+    Preset {
+        name: "Morphogenic Field",
+        description: "Reaction-diffusion patterns with custom field shader",
+        config: || SimConfig {
+            name: "Morphogenic Field".into(),
+            particle_count: 3000,
+            bounds: 1.0,
+            particle_size: 0.006,
+            speed: 0.5,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Sphere { radius: 0.4 },
+                velocity: InitialVelocity::RandomDirection { speed: 0.15 },
+                color_mode: ColorMode::ByVelocity,
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::Drag(0.2),
+                RuleConfig::SpeedLimit { min: 0.05, max: 0.4 },
+                RuleConfig::WrapWalls,
+                // Chemotaxis: particles follow field gradient and deposit
+                RuleConfig::Custom {
+                    code: r#"
+// Sample field at offset positions to compute gradient
+let eps = 0.05;
+let fx_pos = field_read(0u, p.position + vec3f(eps, 0.0, 0.0));
+let fx_neg = field_read(0u, p.position - vec3f(eps, 0.0, 0.0));
+let fy_pos = field_read(0u, p.position + vec3f(0.0, eps, 0.0));
+let fy_neg = field_read(0u, p.position - vec3f(0.0, eps, 0.0));
+let fz_pos = field_read(0u, p.position + vec3f(0.0, 0.0, eps));
+let fz_neg = field_read(0u, p.position - vec3f(0.0, 0.0, eps));
+
+// Gradient points toward increasing field values
+let gradient = vec3f(fx_pos - fx_neg, fy_pos - fy_neg, fz_pos - fz_neg) / (2.0 * eps);
+
+// Follow gradient with some randomness
+let grad_strength = 0.6;
+p.velocity += gradient * grad_strength * uniforms.delta_time;
+
+// Deposit to field
+field_write(0u, p.position, 0.3);
+"#.into(),
+                },
+                // Random wandering for organic movement
+                RuleConfig::Wander {
+                    strength: 0.3,
+                    frequency: 2.0,
+                },
+                // Gentle separation
+                RuleConfig::Separate {
+                    radius: 0.025,
+                    strength: 0.8,
+                },
+            ],
+            vertex_effects: Vec::new(),
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Additive,
+                background_color: [0.01, 0.01, 0.02],
+                palette: PaletteConfig::Viridis,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: vec![FieldConfigEntry {
+                name: "morphogen".into(),
+                resolution: 48,
+                extent: 1.2,
+                decay: 0.99,
+                blur: 0.15,
+                blur_iterations: 1,
+                field_type: FieldTypeConfig::Scalar,
+                custom_update: Some(r#"// Reaction-diffusion inspired field update
+// Creates organic, evolving patterns
+
+// Read neighbors for Laplacian (diffusion term)
+let n_px = read_neighbor(1, 0, 0);
+let n_nx = read_neighbor(-1, 0, 0);
+let n_py = read_neighbor(0, 1, 0);
+let n_ny = read_neighbor(0, -1, 0);
+let n_pz = read_neighbor(0, 0, 1);
+let n_nz = read_neighbor(0, 0, -1);
+
+// 3D Laplacian for diffusion
+let laplacian = (n_px + n_nx + n_py + n_ny + n_pz + n_nz) / 6.0 - value;
+
+// Reaction term: bistable dynamics (creates spots)
+let reaction = value * (1.0 - value) * (value - 0.3);
+
+// Time-varying spatial modulation for organic feel
+let phase = uniforms.time * 0.3 + world_pos.x * 2.0 + world_pos.z * 1.5;
+let modulation = 0.02 + 0.015 * sin(phase);
+
+// Combine: diffusion + reaction + feed
+let diffusion_rate = params.blur * 2.5;
+new_value = value + uniforms.delta_time * (
+    diffusion_rate * laplacian +
+    reaction * 5.0 +
+    modulation * (1.0 - value)
+);
+
+// Apply decay and clamp
+new_value = clamp(new_value * params.decay, 0.0, 1.0);"#.into()),
+            }],
+            volume_render: VolumeRenderConfig {
+                enabled: true,
+                field_index: 0,
+                steps: 64,
+                density_scale: 3.5,
+                palette: PaletteConfig::Magma,
+                threshold: 0.03,
+                additive: true,
+            },
+            particle_fields: Vec::new(),
+            mouse: MouseConfig::default(),
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig {
+                enabled: true,
+                effects: vec![
+                    PostProcessEffect::Bloom {
+                        threshold: 0.2,
+                        intensity: 0.4,
+                        radius: 0.003,
+                    },
+                ],
+            },
+            emitters: Vec::new(),
+        }
     },
 ];
