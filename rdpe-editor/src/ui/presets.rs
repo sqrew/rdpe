@@ -1,11 +1,14 @@
 //! Simulation presets
 
-use crate::config::{
-    BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff, FieldConfigEntry,
-    FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig, PaletteConfig,
-    ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, PostProcessConfig, RuleConfig,
-    SimConfig, SpawnConfig, SpawnShape, UniformValueConfig, VertexEffectConfig, VisualsConfig,
-    VolumeRenderConfig,
+use crate::{
+    PostProcessEffect,
+    config::{
+        BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff,
+        FieldConfigEntry, FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig,
+        PaletteConfig, ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, PostProcessConfig,
+        RuleConfig, SimConfig, SpawnConfig, SpawnShape, UniformValueConfig, VertexEffectConfig,
+        VisualsConfig, VolumeRenderConfig,
+    },
 };
 use std::collections::HashMap;
 
@@ -2210,13 +2213,11 @@ p.scale = 0.7 + p.activation * 0.8;
                 interactions: InteractionConfig::default(),
                 post_process: PostProcessConfig {
                     enabled: true,
-                    effects: vec![
-                        PostProcessEffect::Bloom {
-                            intensity: 0.7,
-                            threshold: 0.3,
-                            radius: 0.005,
-                        },
-                    ],
+                    effects: vec![PostProcessEffect::Bloom {
+                        intensity: 0.7,
+                        threshold: 0.3,
+                        radius: 0.005,
+                    }],
                 },
                 emitters: Vec::new(),
             }
@@ -2401,13 +2402,11 @@ p.scale = 0.8 + v_norm * 0.5;
                 interactions: InteractionConfig::default(),
                 post_process: PostProcessConfig {
                     enabled: true,
-                    effects: vec![
-                        PostProcessEffect::Bloom {
-                            intensity: 0.3,
-                            threshold: 0.5,
-                            radius: 0.003,
-                        },
-                    ],
+                    effects: vec![PostProcessEffect::Bloom {
+                        intensity: 0.3,
+                        threshold: 0.5,
+                        radius: 0.003,
+                    }],
                 },
                 emitters: Vec::new(),
             }
@@ -2628,15 +2627,15 @@ p.scale = 0.6 + h * 0.5;
         config: || {
             SimConfig {
                 name: "Murmuration".into(),
-                particle_count: 15000,
-                bounds: 3.0,
-                particle_size: 0.008,
+                particle_count: 10000,
+                bounds: 5.0,
+                particle_size: 0.01,
                 speed: 1.0,
                 spatial_cell_size: 0.2,
                 spatial_resolution: 32,
                 spawn: SpawnConfig {
-                    shape: SpawnShape::Sphere { radius: 0.6 },
-                    velocity: InitialVelocity::RandomDirection { speed: 0.8 },
+                    shape: SpawnShape::Sphere { radius: 1.0 },
+                    velocity: InitialVelocity::RandomDirection { speed: 1.0 },
                     color_mode: ColorMode::Uniform {
                         r: 0.08,
                         g: 0.06,
@@ -2769,21 +2768,21 @@ if p.position.z < -edge + margin {
                     RuleConfig::Custom {
                         code: r#"
 // First 3 particles are leaders - one for each attractor
-let t = uniforms.time * 0.4;
+let leader_t = uniforms.time * 0.4;
 
 if index == 0u {
     // Leader 1 follows primary attractor
-    let a1 = vec3<f32>(sin(t) * 1.2, sin(t * 1.3) * 0.4, cos(t) * 1.2);
+    let a1 = vec3<f32>(sin(leader_t) * 1.2, sin(leader_t * 1.3) * 0.4, cos(leader_t) * 1.2);
     p.velocity = (a1 - p.position) * 3.0;
 }
 if index == 1u {
     // Leader 2 follows secondary attractor
-    let a2 = vec3<f32>(cos(t * 1.7 + 2.0) * 0.9, cos(t * 0.9) * 0.5, sin(t * 1.7 + 2.0) * 0.9);
+    let a2 = vec3<f32>(cos(leader_t * 1.7 + 2.0) * 0.9, cos(leader_t * 0.9) * 0.5, sin(leader_t * 1.7 + 2.0) * 0.9);
     p.velocity = (a2 - p.position) * 3.0;
 }
 if index == 2u {
     // Leader 3 follows tertiary attractor
-    let a3 = vec3<f32>(sin(t * 0.8) * 0.6, sin(t * 1.6) * 0.8, cos(t * 0.8) * 0.6);
+    let a3 = vec3<f32>(sin(leader_t * 0.8) * 0.6, sin(leader_t * 1.6) * 0.8, cos(leader_t * 0.8) * 0.6);
     p.velocity = (a3 - p.position) * 3.0;
 }
 "#
@@ -2830,6 +2829,323 @@ if index < 3u {
                 adjacency_enabled: false,
                 adjacency_max_neighbors: 32,
                 adjacency_radius: 0.4,
+                interactions: InteractionConfig::default(),
+                post_process: PostProcessConfig { enabled: true, effects: vec![PostProcessEffect::default_edge_glow()] },
+                emitters: Vec::new(),
+            }
+        },
+    },
+    Preset {
+        name: "Lava Lamp",
+        description: "Rising and falling blobs with temperature-based buoyancy",
+        config: || {
+            use crate::config::PostProcessEffect;
+
+            SimConfig {
+                name: "Lava Lamp".into(),
+                particle_count: 3000,
+                bounds: 1.5,
+                particle_size: 0.04,
+                speed: 1.0,
+                spatial_cell_size: 0.12,
+                spatial_resolution: 32,
+                spawn: SpawnConfig {
+                    // Start scattered in a tall column
+                    shape: SpawnShape::Cube { size: 0.8 },
+                    velocity: InitialVelocity::Zero,
+                    color_mode: ColorMode::Uniform {
+                        r: 0.9,
+                        g: 0.3,
+                        b: 0.1,
+                    },
+                    ..Default::default()
+                },
+                particle_fields: vec![
+                    ParticleFieldDef {
+                        name: "temp".into(),
+                        field_type: ParticleFieldType::F32,
+                    },
+                ],
+                rules: vec![
+                    // Initialize temperature
+                    RuleConfig::Custom {
+                        code: r#"
+if p.temp < 0.01 {
+    // Start with temperature based on height
+    p.temp = 0.5 + p.position.y * 0.3;
+}
+"#
+                        .into(),
+                    },
+                    // Strong cohesion to form blobs
+                    RuleConfig::Cohere {
+                        radius: 0.2,
+                        strength: 2.5,
+                    },
+                    // Separation to prevent total collapse
+                    RuleConfig::Separate {
+                        radius: 0.06,
+                        strength: 4.0,
+                    },
+                    // Temperature dynamics and buoyancy
+                    RuleConfig::Custom {
+                        code: r#"
+// Heating at bottom, cooling at top
+let height_normalized = (p.position.y + 1.0) / 2.0;  // 0 at bottom, 1 at top
+
+// Heat source at bottom
+if height_normalized < 0.15 {
+    p.temp += 0.8 * uniforms.delta_time;
+}
+// Cooling at top
+if height_normalized > 0.85 {
+    p.temp -= 0.6 * uniforms.delta_time;
+}
+
+// Ambient cooling/heating toward middle temperature
+p.temp = mix(p.temp, 0.5, 0.1 * uniforms.delta_time);
+
+// Clamp temperature
+p.temp = clamp(p.temp, 0.0, 1.0);
+
+// Buoyancy force based on temperature
+// Hot (temp > 0.5) rises, cold (temp < 0.5) sinks
+let buoyancy = (p.temp - 0.5) * 3.0;
+p.velocity.y += buoyancy * uniforms.delta_time;
+"#
+                        .into(),
+                    },
+                    // Viscous drag - lava is thick!
+                    RuleConfig::Drag(3.0),
+                    // Horizontal containment (cylinder shape)
+                    RuleConfig::Custom {
+                        code: r#"
+// Keep in cylindrical bounds
+let horizontal_dist = length(p.position.xz);
+let max_radius = 0.5;
+
+if horizontal_dist > max_radius {
+    let push_back = normalize(p.position.xz) * (horizontal_dist - max_radius) * 5.0;
+    p.velocity.x -= push_back.x * uniforms.delta_time;
+    p.velocity.z -= push_back.y * uniforms.delta_time;
+}
+
+// Vertical bounds with bounce
+if p.position.y < -0.9 {
+    p.position.y = -0.9;
+    p.velocity.y = abs(p.velocity.y) * 0.3;
+    p.temp += 0.1;  // Extra heat from hitting bottom
+}
+if p.position.y > 0.9 {
+    p.position.y = 0.9;
+    p.velocity.y = -abs(p.velocity.y) * 0.3;
+    p.temp -= 0.1;  // Extra cooling at top
+}
+"#
+                        .into(),
+                    },
+                    // Color by temperature
+                    RuleConfig::Custom {
+                        code: r#"
+// Temperature gradient: dark red (cold) -> orange -> yellow (hot)
+let temp_clamped = clamp(p.temp, 0.0, 1.0);
+
+var col: vec3<f32>;
+if temp_clamped < 0.4 {
+    // Cold: dark red/maroon
+    let blend = temp_clamped / 0.4;
+    col = mix(vec3<f32>(0.4, 0.05, 0.08), vec3<f32>(0.8, 0.15, 0.05), blend);
+} else if temp_clamped < 0.7 {
+    // Warm: red to orange
+    let blend = (temp_clamped - 0.4) / 0.3;
+    col = mix(vec3<f32>(0.8, 0.15, 0.05), vec3<f32>(1.0, 0.5, 0.1), blend);
+} else {
+    // Hot: orange to yellow
+    let blend = (temp_clamped - 0.7) / 0.3;
+    col = mix(vec3<f32>(1.0, 0.5, 0.1), vec3<f32>(1.0, 0.85, 0.3), blend);
+}
+
+p.color = col;
+
+// Slightly larger when hot (expansion)
+p.scale = 0.9 + temp_clamped * 0.4;
+"#
+                        .into(),
+                    },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Additive,
+                    background_color: [0.02, 0.01, 0.05],
+                    shape: ParticleShapeConfig::Circle,
+                    trail_length: 0,
+                    // Connections help blobs look more cohesive
+                    connections_enabled: true,
+                    connections_radius: 0.08,
+                    connections_color: [0.6, 0.2, 0.1],
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: Vec::new(),
+                volume_render: VolumeRenderConfig::default(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: false,
+                adjacency_max_neighbors: 32,
+                adjacency_radius: 0.2,
+                interactions: InteractionConfig::default(),
+                post_process: PostProcessConfig {
+                    enabled: true,
+                    effects: vec![
+                        PostProcessEffect::Bloom {
+                            intensity: 0.8,
+                            threshold: 0.3,
+                            radius: 0.01,
+                        },
+                    ],
+                },
+                emitters: Vec::new(),
+            }
+        },
+    },
+    Preset {
+        name: "Game of Life",
+        description: "Conway's Game of Life cellular automaton using 3D field",
+        config: || {
+            SimConfig {
+                name: "Game of Life".into(),
+                // Grid of cells - 40x40 = 1600 particles
+                particle_count: 1600,
+                bounds: 1.2,
+                particle_size: 0.03,
+                speed: 1.0,
+                spatial_cell_size: 0.1,
+                spatial_resolution: 32,
+                spawn: SpawnConfig {
+                    shape: SpawnShape::Plane {
+                        width: 1.6,
+                        depth: 1.6,
+                    },
+                    velocity: InitialVelocity::Zero,
+                    color_mode: ColorMode::Uniform {
+                        r: 0.1,
+                        g: 0.8,
+                        b: 0.3,
+                    },
+                    ..Default::default()
+                },
+                particle_fields: Vec::new(),
+                rules: vec![
+                    // All logic in one rule to avoid sync issues
+                    RuleConfig::Custom {
+                        code: r#"
+// Grid setup
+let grid_size = 40u;
+let cell_size = 1.6 / f32(grid_size);
+
+let gx = index % grid_size;
+let gy = index / grid_size;
+
+// Snap to grid position
+p.position.x = (f32(gx) - f32(grid_size) / 2.0 + 0.5) * cell_size;
+p.position.z = (f32(gy) - f32(grid_size) / 2.0 + 0.5) * cell_size;
+p.position.y = 0.0;
+p.velocity = vec3<f32>(0.0);
+
+// Initialize on first frame
+if uniforms.time < 0.05 {
+    let hash = (index * 1103515245u + 12345u) ^ (index << 13u);
+    let rand_val = f32(hash & 0xFFFFu) / 65535.0;
+    if rand_val < 0.3 {
+        p.age = 1.0;  // alive
+    } else {
+        p.age = 0.0;  // dead
+    }
+}
+
+// Write current state to field
+field_write(0u, p.position, p.age);
+
+// Color based on state
+if p.age > 0.5 {
+    p.color = vec3<f32>(0.2, 0.95, 0.4);
+    p.scale = 1.0;
+} else {
+    p.color = vec3<f32>(0.08, 0.12, 0.08);
+    p.scale = 0.75;
+}
+"#
+                        .into(),
+                    },
+                    // Read neighbors and compute next state
+                    RuleConfig::Custom {
+                        code: r#"
+// Read neighbor states from field (no timing - runs every frame)
+let step = 1.6 / 40.0;
+let px = p.position.x;
+let pz = p.position.z;
+
+// Sample 8 neighbors
+let n1 = field_read(0u, vec3<f32>(px - step, 0.0, pz - step));
+let n2 = field_read(0u, vec3<f32>(px, 0.0, pz - step));
+let n3 = field_read(0u, vec3<f32>(px + step, 0.0, pz - step));
+let n4 = field_read(0u, vec3<f32>(px - step, 0.0, pz));
+let n5 = field_read(0u, vec3<f32>(px + step, 0.0, pz));
+let n6 = field_read(0u, vec3<f32>(px - step, 0.0, pz + step));
+let n7 = field_read(0u, vec3<f32>(px, 0.0, pz + step));
+let n8 = field_read(0u, vec3<f32>(px + step, 0.0, pz + step));
+
+// Count alive neighbors
+var neighbors = 0.0;
+if n1 > 0.5 { neighbors += 1.0; }
+if n2 > 0.5 { neighbors += 1.0; }
+if n3 > 0.5 { neighbors += 1.0; }
+if n4 > 0.5 { neighbors += 1.0; }
+if n5 > 0.5 { neighbors += 1.0; }
+if n6 > 0.5 { neighbors += 1.0; }
+if n7 > 0.5 { neighbors += 1.0; }
+if n8 > 0.5 { neighbors += 1.0; }
+
+// Conway's B3/S23
+if p.age > 0.5 {
+    if neighbors < 1.5 || neighbors > 3.5 {
+        p.age = 0.0;
+    }
+} else {
+    if neighbors > 2.5 && neighbors < 3.5 {
+        p.age = 1.0;
+    }
+}
+"#
+                        .into(),
+                    },
+                ],
+                vertex_effects: Vec::new(),
+                visuals: VisualsConfig {
+                    blend_mode: BlendModeConfig::Alpha,
+                    background_color: [0.02, 0.03, 0.02],
+                    shape: ParticleShapeConfig::Square,
+                    trail_length: 0,
+                    ..Default::default()
+                },
+                custom_uniforms: HashMap::new(),
+                custom_shaders: CustomShaderConfig::default(),
+                fields: vec![
+                    FieldConfigEntry {
+                        name: "life_state".into(),
+                        field_type: FieldTypeConfig::Scalar,
+                        resolution: 40,
+                        decay: 0.0,
+                        blur: 0.0,
+                        extent: 1.0,
+                        blur_iterations: 0,
+                    },
+                ],
+                volume_render: VolumeRenderConfig::default(),
+                mouse: MouseConfig::default(),
+                adjacency_enabled: false,
+                adjacency_max_neighbors: 8,
+                adjacency_radius: 0.1,
                 interactions: InteractionConfig::default(),
                 post_process: PostProcessConfig::default(),
                 emitters: Vec::new(),

@@ -787,7 +787,7 @@ impl eframe::App for EditorApp {
                             let mut scale = time_scale;
                             if ui
                                 .add(
-                                    egui::Slider::new(&mut scale, 0.1..=10.0)
+                                    egui::Slider::new(&mut scale, 0.1..=5.0)
                                         .text("Speed")
                                         .max_decimals(2),
                                 )
