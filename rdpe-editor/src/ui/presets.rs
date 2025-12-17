@@ -6,8 +6,8 @@ use crate::{
         BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff,
         FieldConfigEntry, FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig,
         PaletteConfig, ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, PostProcessConfig,
-        RuleConfig, SimConfig, SpawnConfig, SpawnShape, VertexEffectConfig,
-        VisualsConfig, VolumeRenderConfig,
+        RuleConfig, SimConfig, SpawnConfig, SpawnShape, VertexEffectConfig, VisualsConfig,
+        VolumeRenderConfig,
     },
 };
 use std::collections::HashMap;
@@ -2865,12 +2865,10 @@ if index < 3u {
                     },
                     ..Default::default()
                 },
-                particle_fields: vec![
-                    ParticleFieldDef {
-                        name: "temp".into(),
-                        field_type: ParticleFieldType::F32,
-                    },
-                ],
+                particle_fields: vec![ParticleFieldDef {
+                    name: "temp".into(),
+                    field_type: ParticleFieldType::F32,
+                }],
                 rules: vec![
                     // Initialize temperature
                     RuleConfig::Custom {
@@ -3001,13 +2999,11 @@ p.scale = 0.9 + temp_clamped * 0.4;
                 interactions: InteractionConfig::default(),
                 post_process: PostProcessConfig {
                     enabled: true,
-                    effects: vec![
-                        PostProcessEffect::Bloom {
-                            intensity: 0.8,
-                            threshold: 0.3,
-                            radius: 0.01,
-                        },
-                    ],
+                    effects: vec![PostProcessEffect::Bloom {
+                        intensity: 0.8,
+                        threshold: 0.3,
+                        radius: 0.01,
+                    }],
                 },
                 emitters: Vec::new(),
             }
@@ -3135,18 +3131,16 @@ if p.age > 0.5 {
                 },
                 custom_uniforms: HashMap::new(),
                 custom_shaders: CustomShaderConfig::default(),
-                fields: vec![
-                    FieldConfigEntry {
-                        name: "life_state".into(),
-                        field_type: FieldTypeConfig::Scalar,
-                        resolution: 40,
-                        decay: 0.0,
-                        blur: 0.0,
-                        extent: 1.0,
-                        blur_iterations: 0,
-                        custom_update: None,
-                    },
-                ],
+                fields: vec![FieldConfigEntry {
+                    name: "life_state".into(),
+                    field_type: FieldTypeConfig::Scalar,
+                    resolution: 40,
+                    decay: 0.0,
+                    blur: 0.0,
+                    extent: 1.0,
+                    blur_iterations: 0,
+                    custom_update: None,
+                }],
                 volume_render: VolumeRenderConfig::default(),
                 mouse: MouseConfig::default(),
                 adjacency_enabled: false,
@@ -3178,7 +3172,10 @@ if p.age > 0.5 {
             },
             rules: vec![
                 RuleConfig::Drag(0.2),
-                RuleConfig::SpeedLimit { min: 0.05, max: 0.4 },
+                RuleConfig::SpeedLimit {
+                    min: 0.05,
+                    max: 0.4,
+                },
                 RuleConfig::WrapWalls,
                 // Chemotaxis: particles follow field gradient and deposit
                 RuleConfig::Custom {
@@ -3201,7 +3198,8 @@ p.velocity += gradient * grad_strength * uniforms.delta_time;
 
 // Deposit to field
 field_write(0u, p.position, 0.3);
-"#.into(),
+"#
+                    .into(),
                 },
                 // Random wandering for organic movement
                 RuleConfig::Wander {
@@ -3231,7 +3229,8 @@ field_write(0u, p.position, 0.3);
                 blur: 0.15,
                 blur_iterations: 1,
                 field_type: FieldTypeConfig::Scalar,
-                custom_update: Some(r#"// Reaction-diffusion inspired field update
+                custom_update: Some(
+                    r#"// Reaction-diffusion inspired field update
 // Creates organic, evolving patterns
 
 // Read neighbors for Laplacian (diffusion term)
@@ -3261,14 +3260,16 @@ new_value = value + uniforms.delta_time * (
 );
 
 // Apply decay and clamp
-new_value = clamp(new_value * params.decay, 0.0, 1.0);"#.into()),
+new_value = clamp(new_value * params.decay, 0.0, 1.0);"#
+                        .into(),
+                ),
             }],
             volume_render: VolumeRenderConfig {
                 enabled: true,
                 field_index: 0,
                 steps: 64,
                 density_scale: 3.5,
-                palette: PaletteConfig::Magma,
+                palette: PaletteConfig::Rainbow,
                 threshold: 0.03,
                 additive: true,
             },
@@ -3280,15 +3281,393 @@ new_value = clamp(new_value * params.decay, 0.0, 1.0);"#.into()),
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig {
                 enabled: true,
+                effects: vec![PostProcessEffect::Bloom {
+                    threshold: 0.2,
+                    intensity: 0.4,
+                    radius: 0.003,
+                }],
+            },
+            emitters: Vec::new(),
+        },
+    },
+    // Dramatic visual showcase
+    Preset {
+        name: "Tritium Vortex",
+        description: "Swirling tritium plasma storm with chaotic vortices and electric energy",
+        config: || SimConfig {
+            name: "Tritium Vortex".into(),
+            particle_count: 10000,
+            bounds: 1.0,
+            particle_size: 0.01,
+            speed: 1.0,
+            spatial_cell_size: 0.1,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Shell {
+                    inner: 0.2,
+                    outer: 0.9,
+                },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::ByVelocity,
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::Drag(0.05),
+                RuleConfig::SpeedLimit { min: 0.0, max: 5.0 },
+                RuleConfig::BounceWalls { restitution: 0.8 },
+                // Follow the vector field flow
+                RuleConfig::Custom {
+                    code: r#"
+// Read vector field at particle position
+let flow = field_read(0u, p.position);
+let flow_strength = length(flow);
+
+// Strong acceleration along flow direction
+p.velocity += flow * 4.0 * uniforms.delta_time;
+
+// Add turbulent kick based on local field intensity
+let turb = sin(p.position.x * 10.0 + uniforms.time * 2.0) *
+           cos(p.position.z * 10.0 - uniforms.time * 1.5);
+p.velocity.y += turb * flow_strength * 0.8 * uniforms.delta_time;
+
+// Color by speed (cool blue to hot orange)
+let speed = length(p.velocity);
+let heat = clamp(speed / 1.5, 0.0, 1.0);
+p.color = mix(vec3f(0.1, 0.3, 1.0), vec3f(1.0, 0.3, 0.05), heat);
+"#
+                    .into(),
+                },
+                // Central vortex pull
+                RuleConfig::Vortex {
+                    center: [0.0, 0.0, 0.0],
+                    axis: [0.0, 1.0, 0.0],
+                    strength: 0.8,
+                },
+                // Secondary off-center vortex
+                RuleConfig::Vortex {
+                    center: [0.4, 0.2, 0.0],
+                    axis: [0.3, 0.9, 0.1],
+                    strength: 0.5,
+                },
+                // Pulsing attraction to keep things interesting
+                RuleConfig::Pulse {
+                    point: [0.0, 0.0, 0.0],
+                    strength: 1.5,
+                    frequency: 0.8,
+                    radius: 1.5,
+                },
+            ],
+            vertex_effects: vec![
+                // Stretch particles along velocity
+                VertexEffectConfig::Squash {
+                    axis: [1.0, 0.0, 0.0],
+                    amount: 0.4,
+                },
+                // Add flutter for electric feel
+                VertexEffectConfig::Flutter {
+                    intensity: 0.15,
+                    speed: 25.0,
+                },
+            ],
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Additive,
+                background_color: [0.0, 0.0, 0.02],
+                palette: PaletteConfig::Inferno,
+                trail_length: 4,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: vec![FieldConfigEntry {
+                name: "plasma".into(),
+                resolution: 40,
+                extent: 1.3,
+                decay: 0.92,
+                blur: 0.2,
+                blur_iterations: 1,
+                field_type: FieldTypeConfig::Vector,
+                custom_update: Some(
+                    r#"// Plasma vortex field dynamics
+// Creates swirling, chaotic flow patterns
+
+// Sample neighbors for curl-like computation
+let n_px = read_neighbor(1, 0, 0);
+let n_nx = read_neighbor(-1, 0, 0);
+let n_py = read_neighbor(0, 1, 0);
+let n_ny = read_neighbor(0, -1, 0);
+let n_pz = read_neighbor(0, 0, 1);
+let n_nz = read_neighbor(0, 0, -1);
+
+// Compute curl (rotation) of the field
+let curl = vec3<f32>(
+    (n_py.z - n_ny.z) - (n_pz.y - n_nz.y),
+    (n_pz.x - n_nz.x) - (n_px.z - n_nx.z),
+    (n_px.y - n_nx.y) - (n_py.x - n_ny.x)
+) * 0.5;
+
+// Average neighbors for diffusion
+let avg = (n_px + n_nx + n_py + n_ny + n_pz + n_nz) / 6.0;
+let laplacian = avg - value;
+
+// Time-varying vortex injection points
+let t = uniforms.time;
+let vortex1 = vec3<f32>(sin(t * 0.3) * 0.3, cos(t * 0.2) * 0.2, sin(t * 0.4) * 0.3);
+let vortex2 = vec3<f32>(cos(t * 0.25) * 0.4, sin(t * 0.35) * 0.3, cos(t * 0.3) * 0.2);
+
+// Distance to vortex centers
+let d1 = length(world_pos - vortex1);
+let d2 = length(world_pos - vortex2);
+
+// Inject rotational energy near vortex points
+let inject1 = exp(-d1 * d1 * 8.0) * vec3<f32>(
+    -world_pos.z + vortex1.z,
+    0.3,
+    world_pos.x - vortex1.x
+) * 0.5;
+let inject2 = exp(-d2 * d2 * 10.0) * vec3<f32>(
+    world_pos.z - vortex2.z,
+    -0.2,
+    -world_pos.x + vortex2.x
+) * 0.4;
+
+// Combine: diffusion + curl feedback + vortex injection
+let diffusion_rate = params.blur * 1.5;
+new_value = value + uniforms.delta_time * (
+    diffusion_rate * laplacian +
+    curl * 0.3 +
+    inject1 + inject2
+);
+
+// Apply decay
+new_value = new_value * params.decay;
+
+// Clamp magnitude to prevent explosion
+let mag = length(new_value);
+if mag > 2.0 {
+    new_value = new_value * (2.0 / mag);
+}"#
+                    .into(),
+                ),
+            }],
+            volume_render: VolumeRenderConfig {
+                enabled: true,
+                field_index: 0,
+                steps: 80,
+                density_scale: 2.5,
+                palette: PaletteConfig::Inferno,
+                threshold: 0.02,
+                additive: true,
+            },
+            particle_fields: Vec::new(),
+            mouse: MouseConfig {
+                power: crate::config::MousePower::Attract,
+                radius: 0.3,
+                strength: 2.0,
+                color: [1.0, 0.5, 0.2],
+            },
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig {
+                enabled: true,
                 effects: vec![
                     PostProcessEffect::Bloom {
-                        threshold: 0.2,
+                        threshold: 0.15,
+                        intensity: 0.7,
+                        radius: 0.004,
+                    },
+                    PostProcessEffect::ChromaticAberration {
+                        intensity: 0.003,
+                        radial: true,
+                    },
+                    PostProcessEffect::Vignette {
                         intensity: 0.4,
-                        radius: 0.003,
+                        softness: 0.6,
                     },
                 ],
             },
             emitters: Vec::new(),
-        }
+        },
+    },
+    // Ocean simulation
+    Preset {
+        name: "Ocean Swells",
+        description: "Rolling ocean waves with particles drifting in the currents",
+        config: || SimConfig {
+            name: "Ocean Swells".into(),
+            particle_count: 10000,
+            bounds: 1.0,
+            particle_size: 0.01,
+            speed: 1.0,
+            spatial_cell_size: 0.12,
+            spatial_resolution: 32,
+            spawn: SpawnConfig {
+                shape: SpawnShape::Cube { size: 2.4 },
+                velocity: InitialVelocity::Zero,
+                color_mode: ColorMode::Uniform {
+                    r: 0.3,
+                    g: 0.6,
+                    b: 0.9,
+                },
+                ..Default::default()
+            },
+            rules: vec![
+                RuleConfig::Drag(0.15),
+                RuleConfig::SpeedLimit { min: 0.0, max: 0.6 },
+                // Follow ocean currents
+                RuleConfig::Custom {
+                    code: r#"
+// Sample wave field (scalar = wave height)
+let wave_height = field_read(0u, p.position);
+
+// Sample nearby to get gradient (wave slope)
+let eps = 0.08;
+let hx = field_read(0u, p.position + vec3f(eps, 0.0, 0.0)) -
+         field_read(0u, p.position - vec3f(eps, 0.0, 0.0));
+let hz = field_read(0u, p.position + vec3f(0.0, 0.0, eps)) -
+         field_read(0u, p.position - vec3f(0.0, 0.0, eps));
+
+// Particles move with the wave - circular orbital motion
+// Horizontal push from wave slope, vertical from wave height change
+let wave_push = vec3f(-hx * 0.5, wave_height * 0.3, -hz * 0.5);
+p.velocity += wave_push * uniforms.delta_time;
+
+// Buoyancy - particles float near y=0 surface
+let surface_y = wave_height * 0.3;
+let depth = p.position.y - surface_y;
+p.velocity.y += (-depth * 2.0 - p.velocity.y * 0.5) * uniforms.delta_time;
+
+// Color by depth - lighter near surface, darker below
+let depth_factor = clamp(-depth * 2.0 + 0.5, 0.0, 1.0);
+let deep_color = vec3f(0.05, 0.15, 0.3);
+let surface_color = vec3f(0.4, 0.75, 0.95);
+let foam_color = vec3f(0.8, 0.9, 1.0);
+
+// Add foam on wave peaks
+let foam = smoothstep(0.15, 0.3, wave_height);
+var water_color = mix(deep_color, surface_color, depth_factor);
+water_color = mix(water_color, foam_color, foam * depth_factor);
+p.color = water_color;
+"#
+                    .into(),
+                },
+                // Gentle horizontal drift
+                RuleConfig::Wind {
+                    direction: [0.3, 0.0, 0.1],
+                    strength: 0.05,
+                    turbulence: 0.02,
+                },
+                // Wrap at boundaries for endless ocean feel
+                RuleConfig::WrapWalls,
+            ],
+            vertex_effects: vec![
+                // Gentle bob
+                VertexEffectConfig::Sway {
+                    frequency: 2.0,
+                    amplitude: 0.03,
+                    axis: [0.0, 1.0, 0.0],
+                },
+            ],
+            visuals: VisualsConfig {
+                blend_mode: BlendModeConfig::Alpha,
+                background_color: [0.02, 0.05, 0.12],
+                palette: PaletteConfig::Ocean,
+                shape: ParticleShapeConfig::Circle,
+                trail_length: 0,
+                ..Default::default()
+            },
+            custom_uniforms: HashMap::new(),
+            custom_shaders: CustomShaderConfig::default(),
+            fields: vec![FieldConfigEntry {
+                name: "waves".into(),
+                resolution: 48,
+                extent: 1.6,
+                decay: 0.995,
+                blur: 0.1,
+                blur_iterations: 1,
+                field_type: FieldTypeConfig::Scalar,
+                custom_update: Some(
+                    r#"// Ocean wave propagation
+// Simulates rolling swells using wave equation dynamics
+
+// Read neighbors
+let n_px = read_neighbor(1, 0, 0);
+let n_nx = read_neighbor(-1, 0, 0);
+let n_py = read_neighbor(0, 1, 0);
+let n_ny = read_neighbor(0, -1, 0);
+let n_pz = read_neighbor(0, 0, 1);
+let n_nz = read_neighbor(0, 0, -1);
+
+// Laplacian for wave spreading
+let laplacian = (n_px + n_nx + n_pz + n_nz) / 4.0 - value;
+
+// Wave equation: acceleration proportional to curvature
+// Using simplified integration (value acts as both height and has implicit velocity)
+let wave_speed = 0.4;
+let damping = 0.02;
+
+// Multiple wave sources moving across the ocean
+let t = uniforms.time;
+
+// Primary swell - long rolling waves from one direction
+let swell1_pos = vec3<f32>(sin(t * 0.1) * 2.0, 0.0, -1.5 + t * 0.05);
+let d1 = length(world_pos.xz - swell1_pos.xz);
+let swell1 = sin(d1 * 3.0 - t * 1.5) * exp(-d1 * 0.3) * 0.15;
+
+// Secondary swell - crossing waves
+let swell2_pos = vec3<f32>(-1.5, 0.0, sin(t * 0.08) * 2.0);
+let d2 = length(world_pos.xz - swell2_pos.xz);
+let swell2 = sin(d2 * 4.0 - t * 1.8) * exp(-d2 * 0.4) * 0.1;
+
+// Gentle wind chop - small ripples
+let chop = sin(world_pos.x * 12.0 + t * 3.0) *
+           cos(world_pos.z * 10.0 + t * 2.5) * 0.02;
+
+// Combine wave sources
+let wave_input = swell1 + swell2 + chop;
+
+// Update with wave equation + damping + input
+new_value = value + uniforms.delta_time * (
+    wave_speed * laplacian +
+    (wave_input - value) * 0.5 -
+    value * damping
+);
+
+// Soft clamp
+new_value = clamp(new_value, -0.5, 0.5);"#
+                        .into(),
+                ),
+            }],
+            volume_render: VolumeRenderConfig {
+                enabled: true,
+                field_index: 0,
+                steps: 32,
+                density_scale: 2.0,
+                palette: PaletteConfig::Plasma,
+                threshold: 0.02,
+                additive: false,
+            },
+            particle_fields: Vec::new(),
+            mouse: MouseConfig {
+                power: crate::config::MousePower::Explode,
+                radius: 1.0,
+                strength: 10.0,
+                color: [0.5, 0.8, 1.0],
+            },
+            adjacency_enabled: false,
+            adjacency_max_neighbors: 32,
+            adjacency_radius: 0.1,
+            interactions: InteractionConfig::default(),
+            post_process: PostProcessConfig {
+                enabled: true,
+                effects: vec![PostProcessEffect::Bloom {
+                    threshold: 0.4,
+                    intensity: 0.25,
+                    radius: 0.003,
+                }],
+            },
+            emitters: Vec::new(),
+        },
     },
 ];

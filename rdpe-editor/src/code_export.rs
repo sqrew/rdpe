@@ -79,6 +79,29 @@ pub fn generate_code(config: &SimConfig) -> String {
 
 /// Generate the spawner closure code
 fn spawner_code(spawn: &SpawnConfig) -> String {
+    // If custom spawn is set, include it as a comment (it's GPU-side WGSL, not Rust)
+    if let Some(ref custom_code) = spawn.custom_spawn {
+        let escaped_code = custom_code.lines()
+            .map(|line| format!("        // {}", line))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return format!(
+            r#"        // Custom spawn shader (GPU-side WGSL, runs once at initialization):
+{}
+        // Note: Custom spawn runs on the GPU. The spawner below provides fallback values.
+        .with_spawner(|ctx| {{
+            MetaParticle {{
+                position: ctx.random_in_sphere(1.0),
+                velocity: Vec3::ZERO,
+                color: Vec3::ONE,
+                ..Default::default()
+            }}
+        }})
+"#,
+            escaped_code
+        );
+    }
+
     let position_code = position_spawn_code(&spawn.shape);
     let velocity_code = velocity_spawn_code(&spawn.velocity);
     let color_code = color_spawn_code(&spawn.color_mode);

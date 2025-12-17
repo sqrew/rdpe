@@ -287,6 +287,167 @@ pub fn generate_compute_shader(config: &SimConfig) -> String {
     }
 }
 
+/// Generate spawn initialization compute shader.
+///
+/// This shader runs once at startup to initialize particle positions,
+/// velocities, colors, etc. based on user-provided WGSL code.
+///
+/// Returns None if no custom spawn code is set.
+pub fn generate_spawn_shader(config: &SimConfig) -> Option<String> {
+    let custom_code = config.spawn.custom_spawn.as_ref()?;
+
+    let particle_struct = config.particle_wgsl_struct();
+
+    Some(format!(r#"// ============================================
+// RDPE Spawn Initialization Shader (Generated)
+// ============================================
+
+// Particle struct
+{particle_struct}
+
+// Spawn uniforms
+struct SpawnUniforms {{
+    num_particles: u32,
+    bounds: f32,
+    _pad: vec2<f32>,
+}}
+
+// Bindings
+@group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
+@group(0) @binding(1) var<uniform> spawn_uniforms: SpawnUniforms;
+
+// ============================================
+// Spawn Utility Functions
+// ============================================
+
+// Hash function for deterministic randomness based on particle index
+fn hash_u32(n: u32) -> u32 {{
+    var x = n;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = ((x >> 16u) ^ x) * 0x45d9f3bu;
+    x = (x >> 16u) ^ x;
+    return x;
+}}
+
+// Get a random float [0, 1) from a seed
+fn rand_from_seed(seed: u32) -> f32 {{
+    return f32(seed & 0x00FFFFFFu) / 16777216.0;
+}}
+
+// Get random float [0, 1) with automatic seed advancement
+fn rand(seed: ptr<function, u32>) -> f32 {{
+    *seed = hash_u32(*seed);
+    return rand_from_seed(*seed);
+}}
+
+// Get random float in range [min, max)
+fn rand_range(seed: ptr<function, u32>, min_val: f32, max_val: f32) -> f32 {{
+    return min_val + rand(seed) * (max_val - min_val);
+}}
+
+// Get random point in cube [-radius, radius]
+fn rand_in_cube(seed: ptr<function, u32>, radius: f32) -> vec3<f32> {{
+    return vec3<f32>(
+        (rand(seed) * 2.0 - 1.0) * radius,
+        (rand(seed) * 2.0 - 1.0) * radius,
+        (rand(seed) * 2.0 - 1.0) * radius
+    );
+}}
+
+// Get random point in sphere of given radius (rejection sampling)
+fn rand_in_sphere(seed: ptr<function, u32>, radius: f32) -> vec3<f32> {{
+    // Use fixed iteration count to avoid GPU divergence
+    for (var i = 0; i < 10; i++) {{
+        let p = rand_in_cube(seed, 1.0);
+        if dot(p, p) <= 1.0 {{
+            return p * radius;
+        }}
+    }}
+    // Fallback: normalize a random cube point
+    let p = rand_in_cube(seed, 1.0);
+    let len = length(p);
+    if len > 0.001 {{
+        return p / len * rand(seed) * radius;
+    }}
+    return vec3<f32>(0.0);
+}}
+
+// Get random direction on unit sphere
+fn rand_direction(seed: ptr<function, u32>) -> vec3<f32> {{
+    // Uniform distribution on sphere using spherical coordinates
+    let theta = rand(seed) * 6.283185307; // 2*PI
+    let phi = acos(2.0 * rand(seed) - 1.0);
+    return vec3<f32>(
+        sin(phi) * cos(theta),
+        sin(phi) * sin(theta),
+        cos(phi)
+    );
+}}
+
+// Get random point on sphere shell of given radius
+fn rand_on_sphere(seed: ptr<function, u32>, radius: f32) -> vec3<f32> {{
+    return rand_direction(seed) * radius;
+}}
+
+// HSV to RGB conversion
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3<f32> {{
+    let c = v * s;
+    let hp = h * 6.0;
+    let x = c * (1.0 - abs(hp % 2.0 - 1.0));
+    var rgb: vec3<f32>;
+    if hp < 1.0 {{
+        rgb = vec3<f32>(c, x, 0.0);
+    }} else if hp < 2.0 {{
+        rgb = vec3<f32>(x, c, 0.0);
+    }} else if hp < 3.0 {{
+        rgb = vec3<f32>(0.0, c, x);
+    }} else if hp < 4.0 {{
+        rgb = vec3<f32>(0.0, x, c);
+    }} else if hp < 5.0 {{
+        rgb = vec3<f32>(x, 0.0, c);
+    }} else {{
+        rgb = vec3<f32>(c, 0.0, x);
+    }}
+    let m = v - c;
+    return rgb + vec3<f32>(m);
+}}
+
+// ============================================
+// Spawn Compute Entry Point
+// ============================================
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
+    let index = global_id.x;
+    let num_particles = spawn_uniforms.num_particles;
+    let bounds = spawn_uniforms.bounds;
+
+    if index >= num_particles {{
+        return;
+    }}
+
+    // Initialize random seed from particle index
+    var seed = hash_u32(index * 1103515245u + 12345u);
+
+    // Get mutable reference to particle
+    var p = particles[index];
+
+    // Normalized index [0, 1]
+    let t = f32(index) / f32(max(num_particles - 1u, 1u));
+
+    // --- User spawn code begins ---
+{custom_code}
+    // --- User spawn code ends ---
+
+    // Ensure particle is alive
+    p.alive = 1u;
+
+    // Write back
+    particles[index] = p;
+}}
+"#))
+}
+
 /// Generate simple compute shader (no spatial hashing).
 fn generate_compute_shader_simple(config: &SimConfig, rules: &[Rule], particle_struct: &str) -> String {
     // Generate rule code

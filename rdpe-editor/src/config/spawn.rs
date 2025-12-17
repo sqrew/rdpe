@@ -121,6 +121,16 @@ pub struct SpawnConfig {
     /// `[0.8, 0.2]` means 80% type 0, 20% type 1.
     #[serde(default)]
     pub type_weights: Vec<f32>,
+    /// Custom WGSL spawn code that runs once at initialization.
+    /// If set, replaces the default spawn shape/velocity logic.
+    /// Available variables:
+    /// - `index`: u32 - particle index (0 to num_particles-1)
+    /// - `num_particles`: u32 - total particle count
+    /// - `seed`: u32 - random seed based on index
+    /// - `bounds`: f32 - simulation bounds
+    /// User code should set: p.position, p.velocity, p.color, p.scale
+    #[serde(default)]
+    pub custom_spawn: Option<String>,
 }
 
 impl Default for SpawnConfig {
@@ -132,6 +142,14 @@ impl Default for SpawnConfig {
             energy_range: (1.0, 1.0),
             color_mode: ColorMode::default(),
             type_weights: vec![1.0], // All type 0 by default
+            custom_spawn: None,
         }
+    }
+}
+
+impl SpawnConfig {
+    /// Returns true if custom spawn code is set
+    pub fn has_custom_spawn(&self) -> bool {
+        self.custom_spawn.is_some()
     }
 }

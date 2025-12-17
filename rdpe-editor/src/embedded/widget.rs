@@ -120,6 +120,9 @@ impl EmbeddedSimulation {
         // Clear any previous error
         self.shader_error = None;
 
+        // Generate spawn shader if custom spawn is set
+        let spawn_shader = shader_gen::generate_spawn_shader(config);
+
         let field_registry = config.to_field_registry();
         let particle_wgsl_struct = config.particle_wgsl_struct();
         let wireframe_mesh = config.visuals.wireframe.to_mesh();
@@ -156,6 +159,8 @@ impl EmbeddedSimulation {
             &config.post_process,
             0, // Viewport size not known yet, will be set on first show()
             0,
+            spawn_shader.as_deref(),
+            config.bounds,
         );
 
         wgpu_render_state
@@ -221,10 +226,21 @@ impl EmbeddedSimulation {
         };
 
         // Generate particle data (use existing or new)
+        // Note: If custom spawn is set and we're preserving particles, don't re-run spawn
+        // since particles already have proper values from a previous spawn pass
+        let had_existing_particles = existing_particles.is_some();
         let particle_data = if let Some(data) = existing_particles {
             data
         } else {
             spawn::generate_particles(config)
+        };
+
+        // Generate spawn shader if custom spawn is set
+        // Only enable spawn pass if we're generating new particles
+        let spawn_shader = if !had_existing_particles {
+            shader_gen::generate_spawn_shader(config)
+        } else {
+            None // Don't re-spawn if preserving existing particles
         };
 
         // Create new resources
@@ -264,6 +280,8 @@ impl EmbeddedSimulation {
             &config.post_process,
             0, // Viewport size not known yet, will be set on first show()
             0,
+            spawn_shader.as_deref(),
+            config.bounds,
         );
 
         // Replace resources
@@ -324,6 +342,9 @@ impl EmbeddedSimulation {
         // Always generate fresh particles
         let particle_data = spawn::generate_particles(config);
 
+        // Generate spawn shader if custom spawn is set (always run on reset)
+        let spawn_shader = shader_gen::generate_spawn_shader(config);
+
         // Create new resources
         let field_registry = config.to_field_registry();
         let particle_wgsl_struct = config.particle_wgsl_struct();
@@ -361,6 +382,8 @@ impl EmbeddedSimulation {
             &config.post_process,
             0, // Viewport size not known yet, will be set on first show()
             0,
+            spawn_shader.as_deref(),
+            config.bounds,
         );
 
         // Replace resources

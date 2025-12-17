@@ -271,6 +271,15 @@ pub struct SimulationResources {
     post_process_enabled: bool,
     post_process_config: PostProcessConfig,
     surface_format: wgpu::TextureFormat,
+
+    // Custom spawn initialization (optional)
+    spawn_pipeline: Option<wgpu::ComputePipeline>,
+    spawn_bind_group: Option<wgpu::BindGroup>,
+    spawn_uniform_buffer: Option<wgpu::Buffer>,
+    /// True if spawn pass should run (set at init, cleared after running)
+    needs_spawn_init: bool,
+    /// Cached bounds for spawn uniform
+    spawn_bounds: f32,
 }
 
 impl SimulationResources {
@@ -309,6 +318,8 @@ impl SimulationResources {
         post_process_config: &PostProcessConfig,
         viewport_width: u32,
         viewport_height: u32,
+        spawn_shader_src: Option<&str>,
+        bounds: f32,
     ) -> Self {
         let particle_stride = layout.stride;
         // Create particle buffer
@@ -844,6 +855,97 @@ impl SimulationResources {
             None
         };
 
+        // Create spawn pipeline if custom spawn shader is provided
+        let (spawn_pipeline, spawn_bind_group, spawn_uniform_buffer, needs_spawn_init) =
+            if let Some(spawn_src) = spawn_shader_src {
+                // Create spawn uniform buffer (num_particles: u32, bounds: f32, _pad: vec2)
+                let spawn_uniforms: [f32; 4] = [
+                    f32::from_bits(num_particles), // u32 as bits
+                    bounds,
+                    0.0, // padding
+                    0.0, // padding
+                ];
+                let spawn_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Spawn Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&spawn_uniforms),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                });
+
+                // Create spawn bind group layout
+                let spawn_bind_group_layout =
+                    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                        label: Some("Spawn Bind Group Layout"),
+                        entries: &[
+                            // Particles (storage, read-write)
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 0,
+                                visibility: wgpu::ShaderStages::COMPUTE,
+                                ty: wgpu::BindingType::Buffer {
+                                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                                    has_dynamic_offset: false,
+                                    min_binding_size: None,
+                                },
+                                count: None,
+                            },
+                            // Spawn uniforms
+                            wgpu::BindGroupLayoutEntry {
+                                binding: 1,
+                                visibility: wgpu::ShaderStages::COMPUTE,
+                                ty: wgpu::BindingType::Buffer {
+                                    ty: wgpu::BufferBindingType::Uniform,
+                                    has_dynamic_offset: false,
+                                    min_binding_size: None,
+                                },
+                                count: None,
+                            },
+                        ],
+                    });
+
+                // Create spawn bind group
+                let spawn_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Spawn Bind Group"),
+                    layout: &spawn_bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: particle_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: spawn_uniform_buffer.as_entire_binding(),
+                        },
+                    ],
+                });
+
+                // Create spawn pipeline layout
+                let spawn_pipeline_layout =
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("Spawn Pipeline Layout"),
+                        bind_group_layouts: &[&spawn_bind_group_layout],
+                        push_constant_ranges: &[],
+                    });
+
+                // Create spawn shader module
+                let spawn_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("Spawn Shader"),
+                    source: wgpu::ShaderSource::Wgsl(spawn_src.into()),
+                });
+
+                // Create spawn compute pipeline
+                let spawn_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("Spawn Pipeline"),
+                    layout: Some(&spawn_pipeline_layout),
+                    module: &spawn_shader,
+                    entry_point: Some("main"),
+                    compilation_options: Default::default(),
+                    cache: None,
+                });
+
+                (Some(spawn_pipeline), Some(spawn_bind_group), Some(spawn_uniform_buffer), true)
+            } else {
+                (None, None, None, false)
+            };
+
         Self {
             compute_pipeline,
             render_pipeline,
@@ -898,6 +1000,11 @@ impl SimulationResources {
             post_process_enabled: post_process_config.enabled,
             post_process_config: post_process_config.clone(),
             surface_format: target_format,
+            spawn_pipeline,
+            spawn_bind_group,
+            spawn_uniform_buffer,
+            needs_spawn_init,
+            spawn_bounds: bounds,
         }
     }
 
@@ -974,6 +1081,32 @@ impl SimulationResources {
                 viewport_height,
                 &self.post_process_config,
             ));
+        }
+
+        // Run spawn initialization pass if needed (once at startup)
+        let mut spawn_command_buffers = Vec::new();
+        if self.needs_spawn_init {
+            if let (Some(ref pipeline), Some(ref bind_group)) =
+                (&self.spawn_pipeline, &self.spawn_bind_group)
+            {
+                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Spawn Encoder"),
+                });
+
+                {
+                    let mut spawn_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("Spawn Initialization"),
+                        timestamp_writes: None,
+                    });
+                    spawn_pass.set_pipeline(pipeline);
+                    spawn_pass.set_bind_group(0, bind_group, &[]);
+                    let workgroups = self.num_particles.div_ceil(WORKGROUP_SIZE);
+                    spawn_pass.dispatch_workgroups(workgroups, 1, 1);
+                }
+
+                spawn_command_buffers.push(encoder.finish());
+            }
+            self.needs_spawn_init = false;
         }
 
         // Run compute pass if simulation should run
@@ -1115,7 +1248,9 @@ impl SimulationResources {
             }
         }
 
-        command_buffers
+        // Spawn command buffers should run first, then regular command buffers
+        spawn_command_buffers.extend(command_buffers);
+        spawn_command_buffers
     }
 
     /// Internal method to paint the scene (used by both direct rendering and post-process)
@@ -1603,6 +1738,22 @@ impl SimulationResources {
         self.camera_distance = 3.0;
         self.camera_yaw = 0.0;
         self.camera_pitch = 0.3;
+    }
+
+    /// Trigger respawn pass to reinitialize all particles using the custom spawn shader.
+    ///
+    /// This only has an effect if a custom spawn shader was provided at creation.
+    /// Call this when the user wants to reset particles to their initial spawn pattern.
+    pub fn respawn(&mut self) {
+        if self.spawn_pipeline.is_some() {
+            self.needs_spawn_init = true;
+            self.time = 0.0; // Reset time on respawn
+        }
+    }
+
+    /// Check if custom spawn is enabled.
+    pub fn has_custom_spawn(&self) -> bool {
+        self.spawn_pipeline.is_some()
     }
 
     /// Request picking at viewport coordinates.

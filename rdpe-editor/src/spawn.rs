@@ -13,11 +13,20 @@ use rand::Rng;
 ///
 /// Returns a byte buffer containing GPU-ready particle data.
 /// The layout is determined dynamically from config.particle_layout().
+///
+/// If custom_spawn is set, particles are created with minimal initialization
+/// (alive=1, everything else zero) and will be properly initialized by a
+/// GPU spawn compute shader.
 pub fn generate_particles(config: &SimConfig) -> Vec<u8> {
-    let mut rng = rand::thread_rng();
     let spawn = &config.spawn;
     let layout = config.particle_layout();
 
+    // If custom spawn is enabled, generate skeleton particles for GPU initialization
+    if spawn.custom_spawn.is_some() {
+        return generate_skeleton_particles(config, &layout);
+    }
+
+    let mut rng = rand::thread_rng();
     let mut data = Vec::with_capacity(config.particle_count as usize * layout.stride);
 
     for i in 0..config.particle_count {
@@ -127,6 +136,30 @@ pub fn generate_particles(config: &SimConfig) -> Vec<u8> {
             particle_type,
         );
         data.extend_from_slice(&particle_bytes);
+    }
+
+    data
+}
+
+/// Generate skeleton particles for GPU-based custom spawn initialization.
+///
+/// Creates particles with alive=1 and scale=1.0, but position/velocity/color
+/// at zero. The GPU spawn shader will set proper values based on user code.
+fn generate_skeleton_particles(config: &SimConfig, layout: &ParticleLayout) -> Vec<u8> {
+    let mut data = Vec::with_capacity(config.particle_count as usize * layout.stride);
+
+    for _ in 0..config.particle_count {
+        let mut bytes = vec![0u8; layout.stride];
+
+        // Set alive = 1 so particles are active
+        write_u32(&mut bytes, layout.alive_offset, 1);
+        // Set scale = 1.0 as default
+        write_f32(&mut bytes, layout.scale_offset, 1.0);
+        // Position, velocity, color start at zero - GPU will set them
+        // Age starts at 0
+        // particle_type starts at 0
+
+        data.extend_from_slice(&bytes);
     }
 
     data
