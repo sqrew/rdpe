@@ -44,38 +44,46 @@ impl ConnectionVisualization {
         num_particles: u32,
         radius: f32,
         color: [f32; 3],
+        thickness: f32,
         particle_stride: usize,
         target_format: wgpu::TextureFormat,
     ) -> Self {
-        let max_connections = num_particles * 8;
+        // Each particle gets a fixed number of connection slots for deterministic results
+        let max_connections_per_particle: u32 = 8;
+        let max_connections = num_particles * max_connections_per_particle;
         let particle_stride_vec4 = particle_stride / 16;
 
         // Connection buffer: stores line segments as vec4 pairs
+        // Initialize with zeros to ensure no undefined behavior on first frame
         let buffer_size = (max_connections as usize) * 32; // 2 vec4s per connection
-        let connection_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let connection_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Connection Buffer"),
-            size: buffer_size as u64,
+            contents: &vec![0u8; buffer_size],
             usage: wgpu::BufferUsages::STORAGE,
-            mapped_at_creation: false,
         });
 
-        // Atomic counter
+        // Atomic counter (kept for compatibility but not used in deterministic mode)
         let count_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Connection Count Buffer"),
             contents: &[0u8; 4],
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Params buffer
-        let params_data: [f32; 4] = [radius, f32::from_bits(max_connections), f32::from_bits(num_particles), 0.0];
+        // Params buffer: [radius, max_connections, num_particles, max_per_particle]
+        let params_data: [u32; 4] = [
+            radius.to_bits(),
+            max_connections,
+            num_particles,
+            max_connections_per_particle,
+        ];
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Connection Params Buffer"),
             contents: bytemuck::cast_slice(&params_data),
             usage: wgpu::BufferUsages::UNIFORM,
         });
 
-        // Create compute shader
-        let compute_shader_src = Self::generate_compute_shader(particle_stride_vec4);
+        // Create compute shader with deterministic slot allocation
+        let compute_shader_src = Self::generate_compute_shader(particle_stride_vec4, max_connections_per_particle);
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Connection Compute Shader"),
             source: wgpu::ShaderSource::Wgsl(compute_shader_src.into()),
@@ -126,8 +134,8 @@ impl ConnectionVisualization {
             cache: None,
         });
 
-        // Create render shader with color
-        let render_shader_src = generate_connection_render_shader(color);
+        // Create render shader with color and thickness
+        let render_shader_src = generate_connection_render_shader(color, thickness);
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Connection Render Shader"),
             source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
@@ -198,12 +206,15 @@ impl ConnectionVisualization {
         }
     }
 
-    fn generate_compute_shader(particle_stride_vec4: usize) -> String {
+    fn generate_compute_shader(particle_stride_vec4: usize, max_connections_per_particle: u32) -> String {
+        // BRUTE FORCE VERSION: O(n²) but completely deterministic
+        // This bypasses the spatial hash entirely to test if it's the cause of flickering
         format!(r#"
 struct ConnectionParams {{
     radius: f32,
     max_connections: u32,
     num_particles: u32,
+    max_per_particle: u32,
 }};
 
 struct SpatialParams {{
@@ -212,35 +223,6 @@ struct SpatialParams {{
     num_particles: u32,
     max_neighbors: u32,
 }};
-
-fn morton_encode_10bit(x: u32, y: u32, z: u32) -> u32 {{
-    var xx = x & 0x3FFu;
-    var yy = y & 0x3FFu;
-    var zz = z & 0x3FFu;
-    xx = (xx | (xx << 16u)) & 0x030000FFu;
-    xx = (xx | (xx << 8u)) & 0x0300F00Fu;
-    xx = (xx | (xx << 4u)) & 0x030C30C3u;
-    xx = (xx | (xx << 2u)) & 0x09249249u;
-    yy = (yy | (yy << 16u)) & 0x030000FFu;
-    yy = (yy | (yy << 8u)) & 0x0300F00Fu;
-    yy = (yy | (yy << 4u)) & 0x030C30C3u;
-    yy = (yy | (yy << 2u)) & 0x09249249u;
-    zz = (zz | (zz << 16u)) & 0x030000FFu;
-    zz = (zz | (zz << 8u)) & 0x0300F00Fu;
-    zz = (zz | (zz << 4u)) & 0x030C30C3u;
-    zz = (zz | (zz << 2u)) & 0x09249249u;
-    return xx | (yy << 1u) | (zz << 2u);
-}}
-
-fn pos_to_cell(pos: vec3<f32>, cell_size: f32, grid_res: u32) -> vec3<i32> {{
-    let half_grid = f32(grid_res) * 0.5;
-    let grid_pos = (pos / cell_size) + half_grid;
-    return vec3<i32>(
-        clamp(i32(floor(grid_pos.x)), 0, i32(grid_res) - 1),
-        clamp(i32(floor(grid_pos.y)), 0, i32(grid_res) - 1),
-        clamp(i32(floor(grid_pos.z)), 0, i32(grid_res) - 1)
-    );
-}}
 
 @group(0) @binding(0) var<storage, read> particles: array<vec4<f32>>;
 @group(0) @binding(1) var<storage, read_write> connections: array<vec4<f32>>;
@@ -259,47 +241,58 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
     }}
 
     let my_pos = particles[idx * {particle_stride_vec4}u].xyz;
-    let my_cell = pos_to_cell(my_pos, spatial.cell_size, spatial.grid_resolution);
-    let radius_sq = params.radius * params.radius;
+    // Add small epsilon to radius to prevent flickering at boundary due to float precision
+    let radius_with_epsilon = params.radius * 1.001;
+    let radius_sq = radius_with_epsilon * radius_with_epsilon;
 
-    for (var dx = -1; dx <= 1; dx++) {{
-        for (var dy = -1; dy <= 1; dy++) {{
-            for (var dz = -1; dz <= 1; dz++) {{
-                let neighbor_cell = my_cell + vec3<i32>(dx, dy, dz);
-                if neighbor_cell.x < 0 || neighbor_cell.x >= i32(spatial.grid_resolution) ||
-                   neighbor_cell.y < 0 || neighbor_cell.y >= i32(spatial.grid_resolution) ||
-                   neighbor_cell.z < 0 || neighbor_cell.z >= i32(spatial.grid_resolution) {{
-                    continue;
-                }}
-                let morton = morton_encode_10bit(u32(neighbor_cell.x), u32(neighbor_cell.y), u32(neighbor_cell.z));
-                let start = cell_start[morton];
-                let end = cell_end[morton];
-                if start == 0xFFFFFFFFu {{
-                    continue;
-                }}
-                for (var j = start; j < end; j++) {{
-                    let other_idx = sorted_indices[j];
-                    if other_idx <= idx {{
-                        continue;
-                    }}
-                    let other_pos = particles[other_idx * {particle_stride_vec4}u].xyz;
-                    let diff = other_pos - my_pos;
-                    let dist_sq = dot(diff, diff);
-                    if dist_sq < radius_sq && dist_sq > 0.0001 {{
-                        let conn_idx = atomicAdd(&connection_count, 1u);
-                        if conn_idx < params.max_connections {{
-                            let dist = sqrt(dist_sq);
-                            let alpha = 1.0 - dist / params.radius;
-                            connections[conn_idx * 2u] = vec4<f32>(my_pos, alpha);
-                            connections[conn_idx * 2u + 1u] = vec4<f32>(other_pos, 0.0);
-                        }}
-                    }}
-                }}
-            }}
+    // Each particle has dedicated slots for its connections (deterministic)
+    let my_slot_base = idx * {max_per_particle}u;
+
+    // BRUTE FORCE: Iterate through ALL particles in index order
+    // This is O(n²) but completely deterministic - no spatial hash involved
+    // We iterate from idx+1 to num_particles to only create connections from lower to higher index
+    var neighbor_data: array<vec4<f32>, {max_per_particle}>;  // xyz = other_pos, w = dist_sq
+    var neighbor_count = 0u;
+
+    for (var other_idx = idx + 1u; other_idx < params.num_particles; other_idx++) {{
+        // Early exit if we've found enough neighbors
+        if neighbor_count >= {max_per_particle}u {{
+            break;
+        }}
+
+        let other_pos = particles[other_idx * {particle_stride_vec4}u].xyz;
+        let diff = other_pos - my_pos;
+        let dist_sq = dot(diff, diff);
+
+        if dist_sq < radius_sq && dist_sq > 0.0001 {{
+            // Since we iterate in index order, first N found are the lowest-indexed neighbors
+            neighbor_data[neighbor_count] = vec4<f32>(other_pos, dist_sq);
+            neighbor_count += 1u;
+        }}
+    }}
+
+    // Write to deterministic slots
+    for (var i = 0u; i < neighbor_count; i++) {{
+        let slot = my_slot_base + i;
+        if slot * 2u + 1u < params.max_connections * 2u {{
+            let other_pos = neighbor_data[i].xyz;
+            let dist = sqrt(neighbor_data[i].w);
+            let alpha = 1.0 - dist / params.radius;
+            connections[slot * 2u] = vec4<f32>(my_pos, alpha);
+            connections[slot * 2u + 1u] = vec4<f32>(other_pos, 0.0);
+        }}
+    }}
+
+    // Clear unused slots for this particle (both vec4s)
+    for (var i = neighbor_count; i < {max_per_particle}u; i++) {{
+        let slot = my_slot_base + i;
+        if slot * 2u + 1u < params.max_connections * 2u {{
+            connections[slot * 2u] = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+            connections[slot * 2u + 1u] = vec4<f32>(0.0, 0.0, 0.0, 0.0);
         }}
     }}
 }}
-"#, particle_stride_vec4 = particle_stride_vec4)
+"#, particle_stride_vec4 = particle_stride_vec4, max_per_particle = max_connections_per_particle)
     }
 
     pub(crate) fn compute(&self, encoder: &mut wgpu::CommandEncoder, queue: &wgpu::Queue) {
@@ -331,7 +324,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {{
 /// # Arguments
 ///
 /// * `color` - RGB color values for the connection lines (range 0.0-1.0)
-pub(crate) fn generate_connection_render_shader(color: [f32; 3]) -> String {
+/// * `thickness` - Line thickness multiplier (1.0 = default 0.003 world units)
+pub(crate) fn generate_connection_render_shader(color: [f32; 3], thickness: f32) -> String {
+    let line_thickness = 0.003 * thickness;
     format!(r#"
 struct Uniforms {{
     view_proj: mat4x4<f32>,
@@ -373,7 +368,7 @@ fn vs_main(
     if length(perp) < 0.001 {{
         perp = cross(line_dir, vec3<f32>(1.0, 0.0, 0.0));
     }}
-    perp = normalize(perp) * 0.003;
+    perp = normalize(perp) * {};
 
     var pos: vec3<f32>;
     switch vertex_index {{
@@ -395,5 +390,5 @@ fn vs_main(
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
     return vec4<f32>({}, {}, {}, in.alpha);
 }}
-"#, color[0], color[1], color[2])
+"#, line_thickness, color[0], color[1], color[2])
 }

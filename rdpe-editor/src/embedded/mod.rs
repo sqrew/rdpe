@@ -307,10 +307,13 @@ impl SimulationResources {
         connections_enabled: bool,
         connections_radius: f32,
         connections_color: [f32; 3],
+        connections_thickness: f32,
         wireframe_mesh: Option<&rdpe::WireframeMesh>,
         wireframe_thickness: f32,
         particle_size: f32,
         trail_length: u32,
+        trail_start_color: [f32; 3],
+        trail_end_color: [f32; 3],
         mouse_config: MouseConfig,
         adjacency_enabled: bool,
         adjacency_max_neighbors: u32,
@@ -415,6 +418,7 @@ impl SimulationResources {
                     num_particles,
                     connections_radius,
                     connections_color,
+                    connections_thickness,
                     particle_stride,
                     target_format,
                 )
@@ -453,6 +457,8 @@ impl SimulationResources {
                 particle_stride,
                 layout.alive_offset as u32,
                 target_format,
+                trail_start_color,
+                trail_end_color,
             ))
         } else {
             None
@@ -1111,19 +1117,39 @@ impl SimulationResources {
 
         // Run compute pass if simulation should run
         let mut command_buffers = if should_run {
+            let mut buffers = Vec::new();
+
+            // PHASE 1: Spatial hashing (separate command buffer for explicit sync)
+            if let Some(ref spatial) = self.spatial {
+                let mut spatial_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Spatial Hash Encoder"),
+                });
+                spatial.execute(&mut spatial_encoder, queue);
+                buffers.push(spatial_encoder.finish());
+            }
+
+            // PHASE 2: Adjacency + Connections (after spatial hash completes)
+            // Using separate command buffer forces GPU to complete spatial hash first
+            if self.adjacency.is_some() || self.connections.is_some() {
+                let mut adj_conn_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Adjacency/Connection Encoder"),
+                });
+
+                if let Some(ref adjacency) = self.adjacency {
+                    adjacency.execute(&mut adj_conn_encoder);
+                }
+
+                if let Some(ref connections) = self.connections {
+                    connections.compute(&mut adj_conn_encoder, queue);
+                }
+
+                buffers.push(adj_conn_encoder.finish());
+            }
+
+            // PHASE 3: Main compute pass
             let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Compute Encoder"),
             });
-
-            // Run spatial hashing passes (if enabled) before particle compute
-            if let Some(ref spatial) = self.spatial {
-                spatial.execute(&mut encoder, queue);
-            }
-
-            // Run adjacency pass (after spatial, before particle compute)
-            if let Some(ref adjacency) = self.adjacency {
-                adjacency.execute(&mut encoder);
-            }
 
             // Run particle compute pass
             {
@@ -1167,17 +1193,13 @@ impl SimulationResources {
                 }
             }
 
-            // Run connection finding compute pass (after spatial update)
-            if let Some(ref connections) = self.connections {
-                connections.compute(&mut encoder, queue);
-            }
-
             // Run trail update compute pass
             if let Some(ref trails) = self.trails {
                 trails.compute(&mut encoder);
             }
 
-            vec![encoder.finish()]
+            buffers.push(encoder.finish());
+            buffers
         } else {
             vec![]
         };

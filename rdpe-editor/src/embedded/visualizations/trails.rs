@@ -57,34 +57,37 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 "#;
 
-const TRAIL_RENDER_SHADER: &str = r#"
-struct Uniforms {
+/// Generate trail render shader with configurable gradient colors.
+fn generate_trail_render_shader(start_color: [f32; 3], end_color: [f32; 3]) -> String {
+    format!(r#"
+struct Uniforms {{
     view_proj: mat4x4<f32>,
     time: f32,
     delta_time: f32,
-};
+}};
 
-struct TrailParams {
+struct TrailParams {{
     num_particles: u32,
     trail_length: u32,
     particle_stride: u32,
     alive_offset: u32,
-};
+}};
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var<storage, read> trails: array<vec4<f32>>;
 @group(0) @binding(2) var<uniform> params: TrailParams;
 
-struct VertexOutput {
+struct VertexOutput {{
     @builtin(position) clip_position: vec4<f32>,
     @location(0) alpha: f32,
-};
+    @location(1) segment_t: f32,
+}};
 
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
     @builtin(instance_index) instance_index: u32,
-) -> VertexOutput {
+) -> VertexOutput {{
     var out: VertexOutput;
 
     // Decode particle index and segment index from instance
@@ -100,11 +103,12 @@ fn vs_main(
     let pos_b = trails[trail_base + segment_idx + 1u];
 
     // Check if segment is valid (both ends have alpha > 0)
-    if pos_a.w < 0.001 || pos_b.w < 0.001 {
+    if pos_a.w < 0.001 || pos_b.w < 0.001 {{
         out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
         out.alpha = 0.0;
+        out.segment_t = 0.0;
         return out;
-    }
+    }}
 
     // Calculate alpha based on segment position (fade toward end)
     let segment_t = f32(segment_idx) / f32(segments_per_particle);
@@ -114,44 +118,52 @@ fn vs_main(
     let line_dir = pos_b.xyz - pos_a.xyz;
     let line_len = length(line_dir);
 
-    if line_len < 0.0001 {
+    if line_len < 0.0001 {{
         out.clip_position = vec4<f32>(0.0, 0.0, -1000.0, 1.0);
         out.alpha = 0.0;
+        out.segment_t = 0.0;
         return out;
-    }
+    }}
 
     let dir = line_dir / line_len;
 
     // Perpendicular for line thickness (thinner for older segments)
     let thickness = 0.003 * (1.0 - segment_t * 0.7);
     var perp = cross(dir, vec3<f32>(0.0, 1.0, 0.0));
-    if length(perp) < 0.001 {
+    if length(perp) < 0.001 {{
         perp = cross(dir, vec3<f32>(1.0, 0.0, 0.0));
-    }
+    }}
     perp = normalize(perp) * thickness;
 
     // Build quad vertices
     var pos: vec3<f32>;
-    switch vertex_index {
-        case 0u: { pos = pos_a.xyz - perp; }
-        case 1u: { pos = pos_a.xyz + perp; }
-        case 2u: { pos = pos_b.xyz - perp; }
-        case 3u: { pos = pos_a.xyz + perp; }
-        case 4u: { pos = pos_b.xyz - perp; }
-        default: { pos = pos_b.xyz + perp; }
-    }
+    switch vertex_index {{
+        case 0u: {{ pos = pos_a.xyz - perp; }}
+        case 1u: {{ pos = pos_a.xyz + perp; }}
+        case 2u: {{ pos = pos_b.xyz - perp; }}
+        case 3u: {{ pos = pos_a.xyz + perp; }}
+        case 4u: {{ pos = pos_b.xyz - perp; }}
+        default: {{ pos = pos_b.xyz + perp; }}
+    }}
 
     out.clip_position = uniforms.view_proj * vec4<f32>(pos, 1.0);
     out.alpha = base_alpha * min(pos_a.w, pos_b.w);
+    out.segment_t = segment_t;
 
     return out;
-}
+}}
 
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(0.7, 0.85, 1.0, in.alpha * 0.6);
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
+    // Interpolate between start and end colors based on segment position
+    let start_color = vec3<f32>({}, {}, {});
+    let end_color = vec3<f32>({}, {}, {});
+    let color = mix(start_color, end_color, in.segment_t);
+    return vec4<f32>(color, in.alpha * 0.6);
+}}
+"#, start_color[0], start_color[1], start_color[2],
+    end_color[0], end_color[1], end_color[2])
 }
-"#;
 
 /// GPU-accelerated trail visualization for particle systems.
 ///
@@ -187,6 +199,8 @@ impl TrailVisualization {
         particle_stride: usize,
         alive_offset: u32,
         target_format: wgpu::TextureFormat,
+        start_color: [f32; 3],
+        end_color: [f32; 3],
     ) -> Self {
         let particle_stride_u32 = particle_stride / 4;
 
@@ -278,10 +292,11 @@ impl TrailVisualization {
             cache: None,
         });
 
-        // Create render shader
+        // Create render shader with gradient colors
+        let render_shader_src = generate_trail_render_shader(start_color, end_color);
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Trail Render Shader"),
-            source: wgpu::ShaderSource::Wgsl(TRAIL_RENDER_SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
         });
 
         // Render bind group layout

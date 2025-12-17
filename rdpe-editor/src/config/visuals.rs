@@ -572,10 +572,18 @@ pub struct VisualsConfig {
     pub color_mapping: ColorMappingConfig,
     pub background_color: [f32; 3],
     pub trail_length: u32,
+    /// Start color for trails (near particle). If None, uses particle color.
+    #[serde(default)]
+    pub trail_start_color: Option<[f32; 3]>,
+    /// End color for trails (tail). If None, fades to transparent.
+    #[serde(default)]
+    pub trail_end_color: Option<[f32; 3]>,
     pub connections_enabled: bool,
     pub connections_radius: f32,
     #[serde(default = "default_connections_color")]
     pub connections_color: [f32; 3],
+    #[serde(default = "default_connections_thickness")]
+    pub connections_thickness: f32,
     pub velocity_stretch: bool,
     pub velocity_stretch_factor: f32,
     pub spatial_grid_opacity: f32,
@@ -596,9 +604,12 @@ impl Default for VisualsConfig {
             color_mapping: ColorMappingConfig::None,
             background_color: [0.02, 0.02, 0.05],
             trail_length: 0,
+            trail_start_color: None,
+            trail_end_color: None,
             connections_enabled: false,
             connections_radius: 0.1,
             connections_color: [0.5, 0.7, 1.0],
+            connections_thickness: 1.0,
             velocity_stretch: false,
             velocity_stretch_factor: 2.0,
             spatial_grid_opacity: 0.0,
@@ -615,6 +626,10 @@ fn default_wireframe_thickness() -> f32 {
 
 fn default_connections_color() -> [f32; 3] {
     [0.5, 0.7, 1.0]  // Light blue (matches original hardcoded value)
+}
+
+fn default_connections_thickness() -> f32 {
+    1.0
 }
 
 /// Vertex effect configuration for visual enhancements

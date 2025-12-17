@@ -253,10 +253,39 @@ pub fn render_visuals_panel(ui: &mut egui::Ui, config: &mut SimConfig) -> bool {
     // Trail Length
     ui.add(egui::Slider::new(&mut visuals.trail_length, 0..=50).text("Trail Length"));
 
+    // Trail gradient colors (show when trails are enabled)
+    if visuals.trail_length > 0 {
+        // Enable/disable custom trail colors
+        let has_custom_trail_colors = visuals.trail_start_color.is_some();
+        let mut enable_gradient = has_custom_trail_colors;
+        if ui.checkbox(&mut enable_gradient, "Trail Gradient")
+            .on_hover_text("Customize trail start and end colors")
+            .changed()
+        {
+            if enable_gradient && visuals.trail_start_color.is_none() {
+                visuals.trail_start_color = Some([0.7, 0.85, 1.0]);
+                visuals.trail_end_color = Some([0.2, 0.3, 0.5]);
+            } else if !enable_gradient {
+                visuals.trail_start_color = None;
+                visuals.trail_end_color = None;
+            }
+        }
+
+        if let (Some(start), Some(end)) = (&mut visuals.trail_start_color, &mut visuals.trail_end_color) {
+            ui.horizontal(|ui| {
+                ui.label("Start:");
+                ui.color_edit_button_rgb(start);
+                ui.label("End:");
+                ui.color_edit_button_rgb(end);
+            });
+        }
+    }
+
     // Connections
     ui.checkbox(&mut visuals.connections_enabled, "Connections");
     if visuals.connections_enabled {
         ui.add(egui::Slider::new(&mut visuals.connections_radius, 0.01..=0.5).text("Connection Radius"));
+        ui.add(egui::Slider::new(&mut visuals.connections_thickness, 0.5..=5.0).text("Connection Thickness"));
         ui.horizontal(|ui| {
             ui.label("Connection Color:");
             ui.color_edit_button_rgb(&mut visuals.connections_color);
