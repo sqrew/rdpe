@@ -3,7 +3,7 @@
 //! This module generates WGSL compute and render shaders from SimConfig,
 //! using the actual rdpe rule system for proper behavior.
 
-use crate::config::{SimConfig, ParticleShapeConfig, PaletteConfig, ColorMappingConfig, MousePower};
+use crate::config::{SimConfig, ParticleShapeConfig, PaletteConfig, ColorMappingConfig, MousePower, MAX_LIGHTS};
 use rdpe::Rule;
 
 /// Generate field declarations and helper functions from config.
@@ -260,6 +260,116 @@ fn generate_custom_uniform_fields(config: &SimConfig) -> String {
         fields.push_str(&format!("    {}: {},\n", name, value.wgsl_type()));
     }
     fields
+}
+
+/// Generate lighting uniform struct and binding declarations.
+fn generate_lighting_uniforms(config: &SimConfig) -> String {
+    if !config.lighting.enabled {
+        return String::new();
+    }
+
+    format!(
+        r#"
+// ============================================
+// Lighting Uniforms
+// ============================================
+struct Light {{
+    position: vec4<f32>,      // xyz = position, w = intensity
+    color: vec4<f32>,         // xyz = color, w = falloff
+    direction: vec4<f32>,     // xyz = direction (spot only), w = angle (spot) or -1 (point)
+}}
+
+struct LightingUniforms {{
+    camera_pos: vec4<f32>,    // xyz = camera position, w = unused
+    camera_right: vec4<f32>,  // xyz = camera right vector, w = unused
+    camera_up: vec4<f32>,     // xyz = camera up vector, w = unused
+    ambient: vec4<f32>,       // xyz = color, w = intensity
+    num_lights: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+    lights: array<Light, {max_lights}>,
+}}
+
+@group(1) @binding(0) var<uniform> lighting: LightingUniforms;
+"#,
+        max_lights = MAX_LIGHTS
+    )
+}
+
+/// Generate sphere impostor lighting calculation code for fragment shader.
+fn generate_lighting_code(config: &SimConfig) -> String {
+    if !config.lighting.enabled {
+        return String::new();
+    }
+
+    r#"
+    // ============================================
+    // Sphere Impostor Lighting
+    // ============================================
+    // Calculate sphere impostor normal from UV
+    let uv_centered = (uv - 0.5) * 2.0;  // Range [-1, 1]
+    let z_sq = 1.0 - dot(uv_centered, uv_centered);
+
+    if z_sq > 0.0 {
+        // We're inside the sphere
+        let normal_local = vec3<f32>(uv_centered.x, uv_centered.y, sqrt(z_sq));
+
+        // Transform normal to world space (billboard faces camera)
+        // normal_local.z points toward camera, x/y are screen-aligned
+        let cam_right = lighting.camera_right.xyz;
+        let cam_up = lighting.camera_up.xyz;
+        let cam_forward = normalize(lighting.camera_pos.xyz - in.world_pos);
+        let normal = normalize(
+            normal_local.x * cam_right +
+            normal_local.y * cam_up +
+            normal_local.z * cam_forward
+        );
+
+        // Start with ambient lighting
+        var lit_color = frag_color * lighting.ambient.xyz * lighting.ambient.w;
+
+        // Apply each light
+        for (var i = 0u; i < lighting.num_lights; i++) {
+            let light = lighting.lights[i];
+            let light_pos = light.position.xyz;
+            let light_intensity = light.position.w;
+            let light_color = light.color.xyz;
+            let light_falloff = light.color.w;
+            let is_spot = light.direction.w >= 0.0;
+
+            let to_light = light_pos - in.world_pos;
+            let dist = length(to_light);
+            let light_dir = to_light / max(dist, 0.0001);
+
+            // Distance attenuation
+            let attenuation = 1.0 / (1.0 + light_falloff * dist * dist);
+
+            // Spot cone factor (if applicable)
+            var spot_factor = 1.0;
+            if is_spot {
+                let spot_dir = normalize(light.direction.xyz);
+                let spot_angle = light.direction.w;
+                let cos_angle = dot(-light_dir, spot_dir);
+                let inner_cos = cos(spot_angle * 0.8);
+                let outer_cos = cos(spot_angle);
+                spot_factor = smoothstep(outer_cos, inner_cos, cos_angle);
+            }
+
+            // Diffuse lighting with sphere impostor normal
+            let diffuse = max(dot(normal, light_dir), 0.0);
+
+            // Specular (simple Blinn-Phong)
+            let view_dir = cam_forward;
+            let half_vec = normalize(light_dir + view_dir);
+            let specular = pow(max(dot(normal, half_vec), 0.0), 32.0) * 0.3;
+
+            lit_color += frag_color * light_color * light_intensity * (diffuse + specular) * attenuation * spot_factor;
+        }
+
+        frag_color = lit_color;
+    }
+"#.to_string()
 }
 
 /// Generate compute shader from simulation config.
@@ -1098,6 +1208,27 @@ pub fn generate_render_shader(config: &SimConfig) -> String {
             indent_code(&config.custom_shaders.fragment_code, "    "))
     };
 
+    // Generate lighting code
+    let lighting_uniforms = generate_lighting_uniforms(config);
+    let lighting_code = generate_lighting_code(config);
+
+    // Conditional world_pos output for lighting
+    let world_pos_output = if config.lighting.enabled {
+        "    @location(3) world_pos: vec3<f32>,"
+    } else {
+        ""
+    };
+    let world_pos_zero = if config.lighting.enabled {
+        "        out.world_pos = vec3<f32>(0.0);"
+    } else {
+        ""
+    };
+    let world_pos_assign = if config.lighting.enabled {
+        "    out.world_pos = particle_pos + pos_offset;"
+    } else {
+        ""
+    };
+
     format!(r#"
 // ============================================
 // RDPE Render Shader (Generated)
@@ -1114,10 +1245,12 @@ struct VertexOutput {{
     @location(0) color: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) alpha: f32,
+{world_pos_output}
 }}
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 {palette_code}
+{lighting_uniforms}
 @vertex
 fn vs_main(
     @builtin(vertex_index) vertex_index: u32,
@@ -1137,6 +1270,7 @@ fn vs_main(
         out.color = vec3<f32>(0.0);
         out.uv = vec2<f32>(0.0);
         out.alpha = 0.0;
+{world_pos_zero}
         return out;
     }}
 
@@ -1191,6 +1325,7 @@ fn vs_main(
     out.color = color_mod;
     out.uv = uv;
     out.alpha = 1.0;
+{world_pos_assign}
     return out;
 }}
 
@@ -1206,6 +1341,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
 
     // Shape rendering
 {shape_code}
+{lighting_code}
 {custom_fragment_code}
     return vec4<f32>(frag_color * alpha, alpha);
 }}
@@ -1219,6 +1355,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {{
         velocity_stretch_code = velocity_stretch_code,
         shape_code = indent_code(shape_code, "    "),
         custom_fragment_code = custom_fragment_code,
+        lighting_uniforms = lighting_uniforms,
+        lighting_code = indent_code(&lighting_code, "    "),
+        world_pos_output = world_pos_output,
+        world_pos_zero = world_pos_zero,
+        world_pos_assign = world_pos_assign,
     )
 }
 

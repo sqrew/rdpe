@@ -4,10 +4,10 @@ use crate::{
     PostProcessEffect,
     config::{
         BlendModeConfig, ColorMappingConfig, ColorMode, CustomShaderConfig, Falloff,
-        FieldConfigEntry, FieldTypeConfig, InitialVelocity, InteractionConfig, MouseConfig,
-        PaletteConfig, ParticleFieldDef, ParticleFieldType, ParticleShapeConfig, PostProcessConfig,
-        RuleConfig, SimConfig, SpawnConfig, SpawnShape, VertexEffectConfig, VisualsConfig,
-        VolumeRenderConfig,
+        FieldConfigEntry, FieldTypeConfig, InitialVelocity, InteractionConfig, LightingConfig,
+        MouseConfig, PaletteConfig, ParticleFieldDef, ParticleFieldType, ParticleShapeConfig,
+        PostProcessConfig, RuleConfig, SimConfig, SpawnConfig, SpawnShape, VertexEffectConfig,
+        VisualsConfig, VolumeRenderConfig,
     },
 };
 use std::collections::HashMap;
@@ -65,6 +65,7 @@ pub static PRESETS: &[Preset] = &[
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -106,6 +107,7 @@ pub static PRESETS: &[Preset] = &[
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -180,6 +182,7 @@ pub static PRESETS: &[Preset] = &[
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -265,6 +268,7 @@ field_write(0u, p.position, 0.5);
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     // === New presets from examples ===
@@ -335,6 +339,7 @@ field_write(0u, p.position, 0.5);
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -517,6 +522,7 @@ p.color *= shimmer;
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -610,6 +616,7 @@ if t < 0.2 {
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -732,6 +739,7 @@ if p.particle_type == 0u && other.particle_type == 1u {
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -853,6 +861,7 @@ p.velocity = vec3<f32>(0.0, 0.0, 0.0);
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -941,6 +950,7 @@ p.color *= smoothstep(0.0, 0.3, height) * (1.0 - smoothstep(0.7, 1.0, height));
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -1005,6 +1015,7 @@ p.scale = 0.5 + glow * 0.5;
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -1078,6 +1089,7 @@ if p.position.y > 1.4 {
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -1210,6 +1222,7 @@ p.scale = 0.5 + core_intensity * 1.0;
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -1368,6 +1381,7 @@ if is_bell {
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -1520,6 +1534,7 @@ if abs(p.position.z) > 1.0 { p.position.z *= 0.95; }
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -1637,6 +1652,7 @@ p.scale = 1.0 + p.signal * 0.5;
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -1794,6 +1810,7 @@ p.color *= 0.7 + spd * 0.5;
                 interactions,
                 post_process: PostProcessConfig::default(),
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -1926,6 +1943,7 @@ p.scale = 0.5 + temp * 0.8;
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     Preset {
@@ -2068,6 +2086,7 @@ field_write(0u, p.position, charge * 0.5);
                     ],
                 },
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -2225,6 +2244,7 @@ p.scale = 0.7 + p.activation * 0.8;
                     }],
                 },
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -2414,6 +2434,7 @@ p.scale = 0.8 + v_norm * 0.5;
                     }],
                 },
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -2623,6 +2644,7 @@ p.scale = 0.6 + h * 0.5;
                     ],
                 },
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -2837,6 +2859,7 @@ if index < 3u {
                 interactions: InteractionConfig::default(),
                 post_process: PostProcessConfig { enabled: true, effects: vec![PostProcessEffect::default_edge_glow()] },
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -3006,6 +3029,7 @@ p.scale = 0.9 + temp_clamped * 0.4;
                     }],
                 },
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -3149,6 +3173,7 @@ if p.age > 0.5 {
                 interactions: InteractionConfig::default(),
                 post_process: PostProcessConfig::default(),
                 emitters: Vec::new(),
+                lighting: LightingConfig::default(),
             }
         },
     },
@@ -3288,6 +3313,7 @@ new_value = clamp(new_value * params.decay, 0.0, 1.0);"#
                 }],
             },
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     // Dramatic visual showcase
@@ -3488,6 +3514,7 @@ if mag > 2.0 {
                 ],
             },
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
     // Ocean simulation
@@ -3668,6 +3695,7 @@ new_value = clamp(new_value, -0.5, 0.5);"#
                 }],
             },
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         },
     },
 ];

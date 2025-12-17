@@ -18,8 +18,8 @@ pub use picking::{PickingRequest, PickingState};
 pub use widget::EmbeddedSimulation;
 
 use crate::config::{
-    BlendModeConfig, MouseConfig, ParticleLayout, PostProcessConfig, UniformValueConfig,
-    VolumeRenderConfig,
+    BlendModeConfig, LightingConfig, LightType, MouseConfig, ParticleLayout, PostProcessConfig,
+    UniformValueConfig, VolumeRenderConfig, MAX_LIGHTS,
 };
 use post_process::PostProcessState;
 use bytemuck::{Pod, Zeroable};
@@ -94,6 +94,67 @@ pub struct MouseUniforms {
 }
 
 const MOUSE_UNIFORMS_SIZE: usize = std::mem::size_of::<MouseUniforms>();
+
+/// Single light data in GPU format.
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct LightUniform {
+    /// xyz = position, w = intensity
+    pub position: [f32; 4],
+    /// xyz = color, w = falloff
+    pub color: [f32; 4],
+    /// xyz = direction (spot only), w = angle (spot) or -1 (point)
+    pub direction: [f32; 4],
+}
+
+impl Default for LightUniform {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0, 0.0],
+            color: [1.0, 1.0, 1.0, 0.5],
+            direction: [0.0, -1.0, 0.0, -1.0],
+        }
+    }
+}
+
+/// Lighting uniforms passed to render shaders.
+#[repr(C)]
+#[derive(Copy, Clone, Pod, Zeroable)]
+pub struct LightingUniforms {
+    /// xyz = camera position, w = unused
+    pub camera_pos: [f32; 4],
+    /// xyz = camera right vector, w = unused
+    pub camera_right: [f32; 4],
+    /// xyz = camera up vector, w = unused
+    pub camera_up: [f32; 4],
+    /// xyz = ambient color, w = ambient intensity
+    pub ambient: [f32; 4],
+    /// Number of active lights
+    pub num_lights: u32,
+    pub _pad0: u32,
+    pub _pad1: u32,
+    pub _pad2: u32,
+    /// Array of lights (fixed size for GPU compatibility)
+    pub lights: [LightUniform; MAX_LIGHTS],
+}
+
+impl Default for LightingUniforms {
+    fn default() -> Self {
+        Self {
+            camera_pos: [0.0, 0.0, 3.0, 0.0],
+            camera_right: [1.0, 0.0, 0.0, 0.0],
+            camera_up: [0.0, 1.0, 0.0, 0.0],
+            ambient: [1.0, 1.0, 1.0, 0.2],
+            num_lights: 0,
+            _pad0: 0,
+            _pad1: 0,
+            _pad2: 0,
+            lights: [LightUniform::default(); MAX_LIGHTS],
+        }
+    }
+}
+
+const LIGHTING_UNIFORMS_SIZE: usize = std::mem::size_of::<LightingUniforms>();
 
 /// Current mouse state for the simulation.
 #[derive(Clone, Debug, Default)]
@@ -172,6 +233,58 @@ fn build_uniform_data(
     data.resize(final_size, 0u8);
 
     data
+}
+
+/// Build lighting uniform data from lighting config and camera info.
+fn build_lighting_uniforms(
+    camera_pos: Vec3,
+    camera_right: Vec3,
+    camera_up: Vec3,
+    config: &LightingConfig,
+) -> LightingUniforms {
+    let mut uniforms = LightingUniforms {
+        camera_pos: [camera_pos.x, camera_pos.y, camera_pos.z, 0.0],
+        camera_right: [camera_right.x, camera_right.y, camera_right.z, 0.0],
+        camera_up: [camera_up.x, camera_up.y, camera_up.z, 0.0],
+        ambient: [
+            config.ambient_color[0],
+            config.ambient_color[1],
+            config.ambient_color[2],
+            config.ambient_intensity,
+        ],
+        num_lights: 0,
+        _pad0: 0,
+        _pad1: 0,
+        _pad2: 0,
+        lights: [LightUniform::default(); MAX_LIGHTS],
+    };
+
+    // Copy enabled lights
+    for (i, light) in config.lights.iter().filter(|l| l.enabled).take(MAX_LIGHTS).enumerate() {
+        let (direction, angle) = match &light.light_type {
+            LightType::Point => ([0.0, -1.0, 0.0], -1.0), // -1 angle means point light
+            LightType::Spot { direction, angle } => (*direction, *angle),
+        };
+
+        uniforms.lights[i] = LightUniform {
+            position: [
+                light.position[0],
+                light.position[1],
+                light.position[2],
+                light.intensity,
+            ],
+            color: [
+                light.color[0],
+                light.color[1],
+                light.color[2],
+                light.falloff,
+            ],
+            direction: [direction[0], direction[1], direction[2], angle],
+        };
+        uniforms.num_lights += 1;
+    }
+
+    uniforms
 }
 
 pub struct SimulationResources {
@@ -266,6 +379,12 @@ pub struct SimulationResources {
     mouse_state: MouseState,
     mouse_config: MouseConfig,
 
+    // Lighting (optional)
+    lighting_enabled: bool,
+    lighting_config: LightingConfig,
+    lighting_buffer: Option<wgpu::Buffer>,
+    lighting_bind_group: Option<wgpu::BindGroup>,
+
     // Post-processing (optional)
     post_process: Option<PostProcessState>,
     post_process_enabled: bool,
@@ -315,6 +434,7 @@ impl SimulationResources {
         trail_start_color: [f32; 3],
         trail_end_color: [f32; 3],
         mouse_config: MouseConfig,
+        lighting_config: &LightingConfig,
         adjacency_enabled: bool,
         adjacency_max_neighbors: u32,
         adjacency_radius: f32,
@@ -708,7 +828,7 @@ impl SimulationResources {
             cache: None,
         });
 
-        // Create render bind group layout
+        // Create render bind group layout (group 0: uniforms)
         let render_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Render Bind Group Layout"),
@@ -733,18 +853,70 @@ impl SimulationResources {
             }],
         });
 
+        // Create lighting bind group layout and resources (group 1: lighting) if enabled
+        let lighting_enabled = lighting_config.enabled;
+        let (lighting_buffer, lighting_bind_group, lighting_bind_group_layout) = if lighting_enabled
+        {
+            let lighting_bind_group_layout =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Lighting Bind Group Layout"),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+
+            let lighting_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Lighting Uniform Buffer"),
+                size: LIGHTING_UNIFORMS_SIZE as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            let lighting_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Lighting Bind Group"),
+                layout: &lighting_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: lighting_buffer.as_entire_binding(),
+                }],
+            });
+
+            (
+                Some(lighting_buffer),
+                Some(lighting_bind_group),
+                Some(lighting_bind_group_layout),
+            )
+        } else {
+            (None, None, None)
+        };
+
         // Create render pipeline
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Render Shader"),
             source: wgpu::ShaderSource::Wgsl(render_shader_src.into()),
         });
 
-        let render_pipeline_layout =
+        // Pipeline layout depends on whether lighting is enabled
+        let render_pipeline_layout = if let Some(ref lighting_layout) = lighting_bind_group_layout {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[&render_bind_group_layout, lighting_layout],
+                push_constant_ranges: &[],
+            })
+        } else {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[&render_bind_group_layout],
                 push_constant_ranges: &[],
-            });
+            })
+        };
 
         // Get particle offsets from layout
         let velocity_offset = layout.velocity_offset;
@@ -1002,6 +1174,10 @@ impl SimulationResources {
             particle_layout: layout.clone(),
             mouse_state: MouseState::default(),
             mouse_config,
+            lighting_enabled,
+            lighting_config: lighting_config.clone(),
+            lighting_buffer,
+            lighting_bind_group,
             post_process,
             post_process_enabled: post_process_config.enabled,
             post_process_config: post_process_config.clone(),
@@ -1070,6 +1246,25 @@ impl SimulationResources {
             &self.custom_uniforms,
         );
         queue.write_buffer(&self.uniform_buffer, 0, &uniform_data);
+
+        // Update lighting uniforms if enabled
+        if self.lighting_enabled {
+            if let Some(ref lighting_buffer) = self.lighting_buffer {
+                // Extract camera vectors from view matrix
+                // View matrix columns are: right, up, forward (negated for look-at)
+                let view_inv = view.inverse();
+                let camera_right = Vec3::new(view_inv.col(0).x, view_inv.col(0).y, view_inv.col(0).z);
+                let camera_up = Vec3::new(view_inv.col(1).x, view_inv.col(1).y, view_inv.col(1).z);
+
+                let lighting_uniforms = build_lighting_uniforms(
+                    eye,
+                    camera_right,
+                    camera_up,
+                    &self.lighting_config,
+                );
+                queue.write_buffer(lighting_buffer, 0, bytemuck::bytes_of(&lighting_uniforms));
+            }
+        }
 
         // Update post-process state (resize, uniforms)
         if let Some(ref mut pp) = self.post_process {
@@ -1300,6 +1495,10 @@ impl SimulationResources {
         } else {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.render_bind_group, &[]);
+            // Set lighting bind group if enabled
+            if let Some(ref lighting_bind_group) = self.lighting_bind_group {
+                render_pass.set_bind_group(1, lighting_bind_group, &[]);
+            }
             render_pass.set_vertex_buffer(0, self.particle_buffer.slice(..));
             // Draw 4 vertices (quad) per particle instance
             render_pass.draw(0..4, 0..self.num_particles);
@@ -1713,6 +1912,17 @@ impl SimulationResources {
     /// Get current mouse config.
     pub fn mouse_config(&self) -> &MouseConfig {
         &self.mouse_config
+    }
+
+    /// Update lighting configuration (parameters only, not enabled/disabled state).
+    /// This allows real-time updates to light positions, colors, etc. without shader rebuild.
+    pub fn set_lighting_config(&mut self, config: LightingConfig) {
+        self.lighting_config = config;
+    }
+
+    /// Get current lighting config.
+    pub fn lighting_config(&self) -> &LightingConfig {
+        &self.lighting_config
     }
 
     /// Rotate camera.

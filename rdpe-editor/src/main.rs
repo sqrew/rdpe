@@ -12,8 +12,8 @@ use rdpe_editor::embedded::{EmbeddedSimulation, ParsedParticle, SimulationResour
 use rdpe_editor::ui::{
     AddUniformState, ExportPanelState, InteractionsPanelState, PRESETS, ShaderContext,
     render_custom_panel, render_effects_panel, render_emitters_panel, render_export_button,
-    render_export_window, render_fields_panel, render_interactions_panel, render_mouse_panel,
-    render_particle_fields_panel, render_post_process_panel, render_rules_panel,
+    render_export_window, render_fields_panel, render_interactions_panel, render_lighting_panel,
+    render_mouse_panel, render_particle_fields_panel, render_post_process_panel, render_rules_panel,
     render_spawn_panel, render_stats_panel, render_visuals_panel, render_volume_panel,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -32,6 +32,7 @@ enum SidebarTab {
     Particle,
     Fields,
     Visuals,
+    Lighting,
     PostProcess,
     Mouse,
     Custom,
@@ -567,6 +568,7 @@ impl eframe::App for EditorApp {
                 || self.config.fields != self.previous_config.fields
                 || self.config.particle_fields != self.previous_config.particle_fields
                 || self.config.volume_render != self.previous_config.volume_render
+                || self.config.lighting != self.previous_config.lighting
         };
 
         if config_changed {
@@ -1356,6 +1358,11 @@ impl eframe::App for EditorApp {
                         ui.selectable_value(&mut self.selected_tab, SidebarTab::Visuals, "Visuals");
                         ui.selectable_value(
                             &mut self.selected_tab,
+                            SidebarTab::Lighting,
+                            "Lighting",
+                        );
+                        ui.selectable_value(
+                            &mut self.selected_tab,
                             SidebarTab::PostProcess,
                             "Post FX",
                         );
@@ -1462,6 +1469,28 @@ impl eframe::App for EditorApp {
 
                                 // Vertex effects
                                 render_effects_panel(ui, &mut self.config.vertex_effects);
+                            }
+                            SidebarTab::Lighting => {
+                                let old_enabled = self.config.lighting.enabled;
+                                let lighting_changed = render_lighting_panel(ui, &mut self.config.lighting);
+                                if lighting_changed {
+                                    // Only rebuild if enabled state changed (shader code changes)
+                                    if self.config.lighting.enabled != old_enabled {
+                                        self.needs_rebuild = true;
+                                    } else {
+                                        // Just parameter change - update immediately without rebuild
+                                        if let Some(wgpu_render_state) = frame.wgpu_render_state() {
+                                            if let Some(sim) = wgpu_render_state
+                                                .renderer
+                                                .write()
+                                                .callback_resources
+                                                .get_mut::<SimulationResources>()
+                                            {
+                                                sim.set_lighting_config(self.config.lighting.clone());
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             SidebarTab::PostProcess => {
                                 let pp_changed =

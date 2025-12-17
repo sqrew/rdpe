@@ -6,6 +6,7 @@
 mod emitters;
 mod fields;
 mod interactions;
+mod lighting;
 mod mouse;
 mod particle_fields;
 mod post_process;
@@ -24,6 +25,7 @@ use std::path::Path;
 pub use emitters::EmitterConfig;
 pub use fields::{CustomShaderConfig, FieldConfigEntry, FieldTypeConfig};
 pub use interactions::{InteractionConfig, RuleMatrixCell, RuleMatrixPreset, ParticleTypeInfo, DEFAULT_NUM_TYPES, MAX_NUM_TYPES};
+pub use lighting::{LightConfig, LightType, LightingConfig, MAX_LIGHTS};
 pub use mouse::{MouseConfig, MousePower};
 pub use particle_fields::{ParticleFieldDef, ParticleFieldInfo, ParticleFieldType, ParticleLayout};
 pub use post_process::{PostProcessConfig, PostProcessEffect};
@@ -112,6 +114,9 @@ pub struct SimConfig {
     /// Particle emitters for runtime spawning.
     #[serde(default)]
     pub emitters: Vec<EmitterConfig>,
+    /// Lighting configuration for particle shading.
+    #[serde(default)]
+    pub lighting: LightingConfig,
 }
 
 impl Default for SimConfig {
@@ -144,6 +149,7 @@ impl Default for SimConfig {
             interactions: InteractionConfig::default(),
             post_process: PostProcessConfig::default(),
             emitters: Vec::new(),
+            lighting: LightingConfig::default(),
         }
     }
 }
