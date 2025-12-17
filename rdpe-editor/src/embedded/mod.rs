@@ -547,6 +547,50 @@ impl SimulationResources {
             None
         };
 
+        // Create lighting buffer early so wireframe can use it
+        let lighting_enabled = lighting_config.enabled;
+        let (lighting_buffer, lighting_bind_group, lighting_bind_group_layout) = if lighting_enabled
+        {
+            let lighting_bind_group_layout =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Lighting Bind Group Layout"),
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                });
+
+            let lighting_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Lighting Uniform Buffer"),
+                size: LIGHTING_UNIFORMS_SIZE as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            let lighting_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Lighting Bind Group"),
+                layout: &lighting_bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: lighting_buffer.as_entire_binding(),
+                }],
+            });
+
+            (
+                Some(lighting_buffer),
+                Some(lighting_bind_group),
+                Some(lighting_bind_group_layout),
+            )
+        } else {
+            (None, None, None)
+        };
+
         // Create wireframe visualization if mesh is provided
         let wireframe = wireframe_mesh.map(|mesh| {
             WireframeVisualization::new(
@@ -563,6 +607,8 @@ impl SimulationResources {
                 layout.scale_offset as u32,
                 target_format,
                 blend_mode,
+                lighting_enabled,
+                lighting_buffer.as_ref(),
             )
         });
 
@@ -852,50 +898,6 @@ impl SimulationResources {
                 resource: uniform_buffer.as_entire_binding(),
             }],
         });
-
-        // Create lighting bind group layout and resources (group 1: lighting) if enabled
-        let lighting_enabled = lighting_config.enabled;
-        let (lighting_buffer, lighting_bind_group, lighting_bind_group_layout) = if lighting_enabled
-        {
-            let lighting_bind_group_layout =
-                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Lighting Bind Group Layout"),
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
-
-            let lighting_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Lighting Uniform Buffer"),
-                size: LIGHTING_UNIFORMS_SIZE as u64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-
-            let lighting_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Lighting Bind Group"),
-                layout: &lighting_bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: lighting_buffer.as_entire_binding(),
-                }],
-            });
-
-            (
-                Some(lighting_buffer),
-                Some(lighting_bind_group),
-                Some(lighting_bind_group_layout),
-            )
-        } else {
-            (None, None, None)
-        };
 
         // Create render pipeline
         let render_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
