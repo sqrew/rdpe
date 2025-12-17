@@ -1182,6 +1182,210 @@ pub enum VertexEffect {
         /// The point all particles should face toward.
         target: Vec3,
     },
+
+    /// Orbit particles around a center point.
+    ///
+    /// Creates circular motion around a specified axis.
+    Orbit {
+        /// Center point of the orbit.
+        center: Vec3,
+        /// Orbit speed in radians per second.
+        speed: f32,
+        /// Orbit radius.
+        radius: f32,
+        /// Axis of rotation (normalized).
+        axis: Vec3,
+    },
+
+    /// Spiral particles outward or inward.
+    ///
+    /// Creates expanding or contracting spiral motion.
+    Spiral {
+        /// Center point of the spiral.
+        center: Vec3,
+        /// Rotation speed in radians per second.
+        speed: f32,
+        /// Expansion rate (positive = outward, negative = inward).
+        expansion: f32,
+        /// Vertical speed (for 3D spirals).
+        vertical_speed: f32,
+    },
+
+    /// Sway particles like grass or trees.
+    ///
+    /// Creates a natural swaying motion anchored at the base.
+    Sway {
+        /// Sway frequency.
+        frequency: f32,
+        /// Maximum sway amplitude.
+        amplitude: f32,
+        /// Sway axis (typically horizontal).
+        axis: Vec3,
+    },
+
+    /// Scale particles based on their speed.
+    ///
+    /// Faster particles appear larger or smaller.
+    ScaleBySpeed {
+        /// Scale at zero speed.
+        min_scale: f32,
+        /// Scale at max speed.
+        max_scale: f32,
+        /// Speed at which max_scale is reached.
+        max_speed: f32,
+    },
+
+    /// Squash/flatten particles along an axis.
+    ///
+    /// Creates a flattened appearance, good for impact effects.
+    Squash {
+        /// Axis to squash along.
+        axis: Vec3,
+        /// Squash amount (0 = flat, 1 = normal).
+        amount: f32,
+    },
+
+    /// Tumble particles with random 3D rotation.
+    ///
+    /// Creates chaotic spinning in all directions.
+    Tumble {
+        /// Rotation speed multiplier.
+        speed: f32,
+    },
+
+    /// Attract particles toward a point.
+    ///
+    /// Pulls particles closer to the target.
+    Attract {
+        /// Attraction target point.
+        target: Vec3,
+        /// Attraction strength.
+        strength: f32,
+        /// Maximum displacement.
+        max_displacement: f32,
+    },
+
+    /// Repel particles away from a point.
+    ///
+    /// Pushes particles away from the source.
+    Repel {
+        /// Repulsion source point.
+        source: Vec3,
+        /// Repulsion strength.
+        strength: f32,
+        /// Effect radius (no effect beyond this).
+        radius: f32,
+    },
+
+    /// Turbulence/noise-based displacement.
+    ///
+    /// Creates organic, chaotic motion using noise.
+    Turbulence {
+        /// Noise frequency (higher = more detail).
+        frequency: f32,
+        /// Displacement amplitude.
+        amplitude: f32,
+        /// Animation speed.
+        speed: f32,
+    },
+
+    /// Scale particles over their lifetime.
+    ///
+    /// Particles grow or shrink as they age (approximated).
+    ScaleByAge {
+        /// Scale at birth.
+        start_scale: f32,
+        /// Scale at end of life.
+        end_scale: f32,
+        /// Lifetime duration in seconds.
+        lifetime: f32,
+    },
+
+    /// Fade particles over their lifetime.
+    ///
+    /// Particles become transparent as they age.
+    FadeByAge {
+        /// Alpha at birth.
+        start_alpha: f32,
+        /// Alpha at end of life.
+        end_alpha: f32,
+        /// Lifetime duration in seconds.
+        lifetime: f32,
+    },
+
+    /// Vortex/tornado effect - orbit with vertical pull.
+    ///
+    /// Creates a whirlpool or tornado-like motion.
+    Vortex {
+        /// Center point of the vortex.
+        center: Vec3,
+        /// Rotation speed in radians per second.
+        speed: f32,
+        /// Vertical pull strength (positive = up, negative = down).
+        pull: f32,
+        /// Vortex radius influence.
+        radius: f32,
+    },
+
+    /// Bounce particles with gravity-like motion.
+    ///
+    /// Creates a bouncing ball effect.
+    Bounce {
+        /// Bounce height.
+        height: f32,
+        /// Bounce frequency (bounces per second).
+        frequency: f32,
+        /// Energy loss per bounce (0 = no loss, 1 = full loss).
+        damping: f32,
+    },
+
+    /// Figure-8 / Lissajous curve motion.
+    ///
+    /// Creates infinity loops and complex orbital patterns.
+    Figure8 {
+        /// Horizontal amplitude.
+        width: f32,
+        /// Vertical amplitude.
+        height: f32,
+        /// Animation speed.
+        speed: f32,
+        /// Frequency ratio (2 = figure-8, other values = Lissajous).
+        ratio: f32,
+    },
+
+    /// Helix/corkscrew motion along an axis.
+    ///
+    /// Creates DNA-like spiraling motion.
+    Helix {
+        /// Axis of helix progression.
+        axis: Vec3,
+        /// Helix radius.
+        radius: f32,
+        /// Rotation speed.
+        speed: f32,
+        /// Forward movement speed along axis.
+        progression: f32,
+    },
+
+    /// Flutter - rapid small oscillations.
+    ///
+    /// Creates leaf or butterfly-like trembling motion.
+    Flutter {
+        /// Flutter intensity.
+        intensity: f32,
+        /// Flutter speed (higher = more rapid).
+        speed: f32,
+    },
+
+    /// Brownian motion - random walk.
+    ///
+    /// Creates organic wandering motion that evolves over time.
+    Brownian {
+        /// Movement intensity.
+        intensity: f32,
+        /// How fast the random direction changes.
+        speed: f32,
+    },
 }
 
 impl VertexEffect {
@@ -1364,6 +1568,403 @@ impl VertexEffect {
         use_world_billboard = true;
     }}"#,
                 target.x, target.y, target.z
+            ),
+
+            VertexEffect::Orbit { center, speed, radius, axis } => format!(
+                r#"
+    // Orbit effect - circular motion around center
+    {{
+        let orbit_center = vec3<f32>({}f, {}f, {}f);
+        let orbit_speed = {speed}f;
+        let orbit_radius = {radius}f;
+        let orbit_axis = normalize(vec3<f32>({}f, {}f, {}f));
+
+        // Phase offset per particle for variety
+        let phase = f32(instance_index) * 0.618033988749; // Golden ratio
+        let angle = uniforms.time * orbit_speed + phase * 6.283185;
+
+        // Build rotation around axis
+        let cos_a = cos(angle);
+        let sin_a = sin(angle);
+
+        // Get perpendicular vectors to orbit axis
+        var perp1 = cross(orbit_axis, vec3<f32>(0.0, 1.0, 0.0));
+        if length(perp1) < 0.001 {{
+            perp1 = cross(orbit_axis, vec3<f32>(1.0, 0.0, 0.0));
+        }}
+        perp1 = normalize(perp1);
+        let perp2 = cross(orbit_axis, perp1);
+
+        // Circular offset
+        let orbit_offset = (perp1 * cos_a + perp2 * sin_a) * orbit_radius;
+        pos_offset += orbit_offset;
+    }}"#,
+                center.x, center.y, center.z,
+                axis.x, axis.y, axis.z
+            ),
+
+            VertexEffect::Spiral { center, speed, expansion, vertical_speed } => format!(
+                r#"
+    // Spiral effect - expanding/contracting spiral motion
+    {{
+        let spiral_center = vec3<f32>({}f, {}f, {}f);
+        let spiral_speed = {speed}f;
+        let spiral_expansion = {expansion}f;
+        let spiral_vertical = {vertical_speed}f;
+
+        let phase = f32(instance_index) * 0.618033988749;
+        let t = uniforms.time + phase;
+        let angle = t * spiral_speed;
+        let radius_t = spiral_expansion * t;
+
+        pos_offset += vec3<f32>(
+            cos(angle) * radius_t,
+            t * spiral_vertical,
+            sin(angle) * radius_t
+        );
+    }}"#,
+                center.x, center.y, center.z
+            ),
+
+            VertexEffect::Sway { frequency, amplitude, axis } => format!(
+                r#"
+    // Sway effect - grass/tree-like motion
+    {{
+        let sway_freq = {frequency}f;
+        let sway_amp = {amplitude}f;
+        let sway_axis = normalize(vec3<f32>({}f, {}f, {}f));
+
+        // Use particle height (Y) as anchor point - higher = more sway
+        let height_factor = max(0.0, particle_pos.y + 0.5);
+        let phase = f32(instance_index) * 0.37 + particle_pos.x * 2.0;
+
+        // Primary sway
+        let sway1 = sin(uniforms.time * sway_freq + phase) * sway_amp * height_factor;
+        // Secondary slower sway for more organic feel
+        let sway2 = sin(uniforms.time * sway_freq * 0.4 + phase * 1.3) * sway_amp * 0.3 * height_factor;
+
+        pos_offset += sway_axis * (sway1 + sway2);
+    }}"#,
+                axis.x, axis.y, axis.z
+            ),
+
+            VertexEffect::ScaleBySpeed { min_scale, max_scale, max_speed } => format!(
+                r#"
+    // Scale by speed effect (approximated from position variance)
+    {{
+        let speed_min_scale = {min_scale}f;
+        let speed_max_scale = {max_scale}f;
+        let speed_max = {max_speed}f;
+
+        // Approximate speed from position-based hash (changes with movement)
+        let pos_hash = fract(sin(dot(particle_pos, vec3<f32>(12.9898, 78.233, 45.164))) * 43758.5453);
+        let approx_speed = pos_hash * speed_max;
+        let t = clamp(approx_speed / speed_max, 0.0, 1.0);
+        size_mult *= mix(speed_min_scale, speed_max_scale, t);
+    }}"#
+            ),
+
+            VertexEffect::Squash { axis, amount } => format!(
+                r#"
+    // Squash effect - flatten along axis
+    {{
+        let squash_axis = normalize(vec3<f32>({}f, {}f, {}f));
+        let squash_amount = {amount}f;
+
+        // Project quad onto squash plane
+        let axis_component = dot(vec3<f32>(rotated_quad, 0.0), squash_axis);
+        let squash_factor = mix(squash_amount, 1.0, 1.0 - abs(axis_component));
+
+        // Apply squash to the appropriate quad dimension
+        if abs(squash_axis.x) > 0.5 {{
+            rotated_quad.x *= squash_amount;
+        }}
+        if abs(squash_axis.y) > 0.5 {{
+            rotated_quad.y *= squash_amount;
+        }}
+    }}"#,
+                axis.x, axis.y, axis.z
+            ),
+
+            VertexEffect::Tumble { speed } => format!(
+                r#"
+    // Tumble effect - chaotic 3D rotation
+    {{
+        let tumble_speed = {speed}f;
+        let idx = f32(instance_index);
+
+        // Different rotation speeds per axis per particle
+        let rx = uniforms.time * tumble_speed * (0.5 + fract(idx * 0.1234));
+        let ry = uniforms.time * tumble_speed * (0.7 + fract(idx * 0.5678));
+
+        // Apply X rotation
+        let cos_rx = cos(rx);
+        let sin_rx = sin(rx);
+        var q = rotated_quad;
+        q.y = rotated_quad.y * cos_rx;
+
+        // Apply Y rotation
+        let cos_ry = cos(ry);
+        let sin_ry = sin(ry);
+        rotated_quad = vec2<f32>(
+            q.x * cos_ry - q.y * sin_ry,
+            q.x * sin_ry + q.y * cos_ry
+        );
+    }}"#
+            ),
+
+            VertexEffect::Attract { target, strength, max_displacement } => format!(
+                r#"
+    // Attract effect - pull toward target
+    {{
+        let attract_target = vec3<f32>({}f, {}f, {}f);
+        let attract_strength = {strength}f;
+        let attract_max = {max_displacement}f;
+
+        let to_target = attract_target - particle_pos;
+        let dist = length(to_target);
+        if dist > 0.001 {{
+            let dir = to_target / dist;
+            // Inverse square falloff
+            let force = attract_strength / (1.0 + dist * dist);
+            let displacement = min(force, attract_max);
+            pos_offset += dir * displacement;
+        }}
+    }}"#,
+                target.x, target.y, target.z
+            ),
+
+            VertexEffect::Repel { source, strength, radius } => format!(
+                r#"
+    // Repel effect - push away from source
+    {{
+        let repel_source = vec3<f32>({}f, {}f, {}f);
+        let repel_strength = {strength}f;
+        let repel_radius = {radius}f;
+
+        let from_source = particle_pos - repel_source;
+        let dist = length(from_source);
+        if dist < repel_radius && dist > 0.001 {{
+            let dir = from_source / dist;
+            // Linear falloff within radius
+            let t = 1.0 - (dist / repel_radius);
+            let force = repel_strength * t * t;
+            pos_offset += dir * force;
+        }}
+    }}"#,
+                source.x, source.y, source.z
+            ),
+
+            VertexEffect::Turbulence { frequency, amplitude, speed } => format!(
+                r#"
+    // Turbulence effect - noise-based displacement
+    {{
+        let turb_freq = {frequency}f;
+        let turb_amp = {amplitude}f;
+        let turb_speed = {speed}f;
+
+        // Simple 3D noise approximation using sin combinations
+        let p = particle_pos * turb_freq + uniforms.time * turb_speed;
+        let n1 = sin(p.x * 1.0 + p.y * 0.5 + p.z * 0.3);
+        let n2 = sin(p.y * 1.1 + p.z * 0.6 + p.x * 0.4 + 1.5);
+        let n3 = sin(p.z * 0.9 + p.x * 0.7 + p.y * 0.5 + 3.0);
+
+        // Layer multiple octaves
+        let o1 = vec3<f32>(n1, n2, n3);
+        let p2 = p * 2.0 + 5.0;
+        let o2 = vec3<f32>(
+            sin(p2.x + p2.y * 0.5),
+            sin(p2.y + p2.z * 0.5),
+            sin(p2.z + p2.x * 0.5)
+        ) * 0.5;
+
+        pos_offset += (o1 + o2) * turb_amp;
+    }}"#
+            ),
+
+            VertexEffect::ScaleByAge { start_scale, end_scale, lifetime } => format!(
+                r#"
+    // Scale by age effect (approximated using time + particle index)
+    {{
+        let age_start_scale = {start_scale}f;
+        let age_end_scale = {end_scale}f;
+        let age_lifetime = {lifetime}f;
+
+        // Approximate age using time modulo lifetime, offset by particle index
+        let phase = fract(f32(instance_index) * 0.1);
+        let age = fract((uniforms.time + phase * age_lifetime) / age_lifetime);
+        size_mult *= mix(age_start_scale, age_end_scale, age);
+    }}"#
+            ),
+
+            VertexEffect::FadeByAge { start_alpha, end_alpha, lifetime } => format!(
+                r#"
+    // Fade by age effect
+    {{
+        let fade_start = {start_alpha}f;
+        let fade_end = {end_alpha}f;
+        let fade_lifetime = {lifetime}f;
+
+        // Approximate age using time modulo lifetime
+        let phase = fract(f32(instance_index) * 0.1);
+        let age = fract((uniforms.time + phase * fade_lifetime) / fade_lifetime);
+        color_mod *= mix(fade_start, fade_end, age);
+    }}"#
+            ),
+
+            VertexEffect::Vortex { center, speed, pull, radius } => format!(
+                r#"
+    // Vortex effect - tornado/whirlpool motion
+    {{
+        let vortex_center = vec3<f32>({}f, {}f, {}f);
+        let vortex_speed = {speed}f;
+        let vortex_pull = {pull}f;
+        let vortex_radius = {radius}f;
+
+        let to_center = particle_pos - vortex_center;
+        let dist_xz = length(vec2<f32>(to_center.x, to_center.z));
+
+        if dist_xz > 0.001 {{
+            // Rotation around Y axis
+            let angle = uniforms.time * vortex_speed * (1.0 + 0.5 / (dist_xz + 0.1));
+            let phase = f32(instance_index) * 0.618033988749;
+
+            let cos_a = cos(angle + phase);
+            let sin_a = sin(angle + phase);
+
+            // Tangential offset (perpendicular to radius)
+            let tangent = vec3<f32>(-to_center.z, 0.0, to_center.x) / dist_xz;
+            let orbit_offset = tangent * sin_a * min(dist_xz, vortex_radius) * 0.3;
+
+            // Vertical pull toward center (stronger near center)
+            let pull_factor = vortex_pull * (1.0 - clamp(dist_xz / vortex_radius, 0.0, 1.0));
+
+            pos_offset += orbit_offset + vec3<f32>(0.0, pull_factor * sin(uniforms.time * 2.0 + phase), 0.0);
+        }}
+    }}"#,
+                center.x, center.y, center.z
+            ),
+
+            VertexEffect::Bounce { height, frequency, damping } => format!(
+                r#"
+    // Bounce effect - gravity-like bouncing
+    {{
+        let bounce_height = {height}f;
+        let bounce_freq = {frequency}f;
+        let bounce_damp = {damping}f;
+
+        let phase = f32(instance_index) * 0.37;
+        let t = fract(uniforms.time * bounce_freq + phase);
+
+        // Parabolic bounce with damping
+        let bounce_cycle = floor(uniforms.time * bounce_freq + phase);
+        let damp_factor = pow(1.0 - bounce_damp, bounce_cycle % 4.0);
+
+        // Parabola: starts at 0, peaks at 0.5, returns to 0
+        let h = 4.0 * t * (1.0 - t);
+        pos_offset.y += h * bounce_height * damp_factor;
+    }}"#
+            ),
+
+            VertexEffect::Figure8 { width, height, speed, ratio } => format!(
+                r#"
+    // Figure-8 / Lissajous curve motion
+    {{
+        let fig_width = {width}f;
+        let fig_height = {height}f;
+        let fig_speed = {speed}f;
+        let fig_ratio = {ratio}f;
+
+        let phase = f32(instance_index) * 0.618033988749;
+        let t = uniforms.time * fig_speed + phase;
+
+        // Lissajous curve: x = sin(t), y = sin(ratio * t)
+        // ratio = 2 gives figure-8, other values give other patterns
+        pos_offset.x += sin(t) * fig_width;
+        pos_offset.y += sin(t * fig_ratio) * fig_height;
+        pos_offset.z += sin(t * 0.5) * fig_width * 0.3;
+    }}"#
+            ),
+
+            VertexEffect::Helix { axis, radius, speed, progression } => format!(
+                r#"
+    // Helix effect - corkscrew/DNA motion
+    {{
+        let helix_axis = normalize(vec3<f32>({}f, {}f, {}f));
+        let helix_radius = {radius}f;
+        let helix_speed = {speed}f;
+        let helix_prog = {progression}f;
+
+        let phase = f32(instance_index) * 0.618033988749;
+        let t = uniforms.time * helix_speed + phase;
+
+        // Get perpendicular vectors to axis
+        var perp1 = cross(helix_axis, vec3<f32>(0.0, 1.0, 0.0));
+        if length(perp1) < 0.001 {{
+            perp1 = cross(helix_axis, vec3<f32>(1.0, 0.0, 0.0));
+        }}
+        perp1 = normalize(perp1);
+        let perp2 = cross(helix_axis, perp1);
+
+        // Circular motion perpendicular to axis
+        let circle_offset = (perp1 * cos(t) + perp2 * sin(t)) * helix_radius;
+
+        // Forward progression along axis
+        let prog_offset = helix_axis * fract(t * helix_prog * 0.1) * 2.0;
+
+        pos_offset += circle_offset + prog_offset;
+    }}"#,
+                axis.x, axis.y, axis.z
+            ),
+
+            VertexEffect::Flutter { intensity, speed } => format!(
+                r#"
+    // Flutter effect - rapid small oscillations
+    {{
+        let flutter_int = {intensity}f;
+        let flutter_speed = {speed}f;
+
+        let idx = f32(instance_index);
+        let t = uniforms.time * flutter_speed;
+
+        // Multiple high-frequency oscillations with different phases
+        let f1 = sin(t * 15.0 + idx * 1.23) * 0.4;
+        let f2 = sin(t * 23.0 + idx * 2.34) * 0.3;
+        let f3 = sin(t * 31.0 + idx * 3.45) * 0.2;
+        let f4 = cos(t * 19.0 + idx * 4.56) * 0.35;
+        let f5 = cos(t * 27.0 + idx * 5.67) * 0.25;
+
+        pos_offset += vec3<f32>(
+            (f1 + f2) * flutter_int,
+            (f3 + f4) * flutter_int,
+            (f2 + f5) * flutter_int * 0.5
+        );
+    }}"#
+            ),
+
+            VertexEffect::Brownian { intensity, speed } => format!(
+                r#"
+    // Brownian motion - random walk
+    {{
+        let brown_int = {intensity}f;
+        let brown_speed = {speed}f;
+
+        let idx = f32(instance_index);
+        let t = uniforms.time * brown_speed;
+
+        // Layered noise-like motion that evolves over time
+        // Using multiple sine waves with irrational frequency ratios
+        let n1 = sin(t * 1.0 + idx * 12.9898) * sin(t * 0.7 + idx * 4.1414);
+        let n2 = sin(t * 1.3 + idx * 78.233) * sin(t * 0.9 + idx * 2.7182);
+        let n3 = sin(t * 0.8 + idx * 43.758) * sin(t * 1.1 + idx * 3.1415);
+
+        // Accumulate "steps" for random walk effect
+        let walk_x = n1 + sin(t * 0.3 + idx) * 0.5;
+        let walk_y = n2 + sin(t * 0.4 + idx * 1.1) * 0.5;
+        let walk_z = n3 + sin(t * 0.35 + idx * 0.9) * 0.5;
+
+        pos_offset += vec3<f32>(walk_x, walk_y, walk_z) * brown_int;
+    }}"#
             ),
         }
     }

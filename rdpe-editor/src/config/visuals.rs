@@ -631,6 +631,28 @@ pub enum VertexEffectConfig {
     BillboardCylindrical { axis: [f32; 3] },
     BillboardFixed { forward: [f32; 3], up: [f32; 3] },
     FacePoint { target: [f32; 3] },
+    // Motion-based effects
+    Orbit { center: [f32; 3], speed: f32, radius: f32, axis: [f32; 3] },
+    Spiral { center: [f32; 3], speed: f32, expansion: f32, vertical_speed: f32 },
+    Sway { frequency: f32, amplitude: f32, axis: [f32; 3] },
+    // Scale/Transform effects
+    ScaleBySpeed { min_scale: f32, max_scale: f32, max_speed: f32 },
+    Squash { axis: [f32; 3], amount: f32 },
+    Tumble { speed: f32 },
+    // Position effects
+    Attract { target: [f32; 3], strength: f32, max_displacement: f32 },
+    Repel { source: [f32; 3], strength: f32, radius: f32 },
+    Turbulence { frequency: f32, amplitude: f32, speed: f32 },
+    // Time-based effects
+    ScaleByAge { start_scale: f32, end_scale: f32, lifetime: f32 },
+    FadeByAge { start_alpha: f32, end_alpha: f32, lifetime: f32 },
+    // Additional motion effects
+    Vortex { center: [f32; 3], speed: f32, pull: f32, radius: f32 },
+    Bounce { height: f32, frequency: f32, damping: f32 },
+    Figure8 { width: f32, height: f32, speed: f32, ratio: f32 },
+    Helix { axis: [f32; 3], radius: f32, speed: f32, progression: f32 },
+    Flutter { intensity: f32, speed: f32 },
+    Brownian { intensity: f32, speed: f32 },
 }
 
 impl VertexEffectConfig {
@@ -647,6 +669,28 @@ impl VertexEffectConfig {
             VertexEffectConfig::BillboardCylindrical { .. } => "Billboard Cylindrical",
             VertexEffectConfig::BillboardFixed { .. } => "Billboard Fixed",
             VertexEffectConfig::FacePoint { .. } => "Face Point",
+            // Motion-based
+            VertexEffectConfig::Orbit { .. } => "Orbit",
+            VertexEffectConfig::Spiral { .. } => "Spiral",
+            VertexEffectConfig::Sway { .. } => "Sway",
+            // Scale/Transform
+            VertexEffectConfig::ScaleBySpeed { .. } => "Scale By Speed",
+            VertexEffectConfig::Squash { .. } => "Squash",
+            VertexEffectConfig::Tumble { .. } => "Tumble",
+            // Position
+            VertexEffectConfig::Attract { .. } => "Attract",
+            VertexEffectConfig::Repel { .. } => "Repel",
+            VertexEffectConfig::Turbulence { .. } => "Turbulence",
+            // Time-based
+            VertexEffectConfig::ScaleByAge { .. } => "Scale By Age",
+            VertexEffectConfig::FadeByAge { .. } => "Fade By Age",
+            // Additional motion
+            VertexEffectConfig::Vortex { .. } => "Vortex",
+            VertexEffectConfig::Bounce { .. } => "Bounce",
+            VertexEffectConfig::Figure8 { .. } => "Figure 8",
+            VertexEffectConfig::Helix { .. } => "Helix",
+            VertexEffectConfig::Flutter { .. } => "Flutter",
+            VertexEffectConfig::Brownian { .. } => "Brownian",
         }
     }
 
@@ -693,6 +737,94 @@ impl VertexEffectConfig {
             },
             VertexEffectConfig::FacePoint { target } => VertexEffect::FacePoint {
                 target: Vec3::from_array(*target),
+            },
+            // Motion-based effects
+            VertexEffectConfig::Orbit { center, speed, radius, axis } => VertexEffect::Orbit {
+                center: Vec3::from_array(*center),
+                speed: *speed,
+                radius: *radius,
+                axis: Vec3::from_array(*axis),
+            },
+            VertexEffectConfig::Spiral { center, speed, expansion, vertical_speed } => VertexEffect::Spiral {
+                center: Vec3::from_array(*center),
+                speed: *speed,
+                expansion: *expansion,
+                vertical_speed: *vertical_speed,
+            },
+            VertexEffectConfig::Sway { frequency, amplitude, axis } => VertexEffect::Sway {
+                frequency: *frequency,
+                amplitude: *amplitude,
+                axis: Vec3::from_array(*axis),
+            },
+            // Scale/Transform effects
+            VertexEffectConfig::ScaleBySpeed { min_scale, max_scale, max_speed } => VertexEffect::ScaleBySpeed {
+                min_scale: *min_scale,
+                max_scale: *max_scale,
+                max_speed: *max_speed,
+            },
+            VertexEffectConfig::Squash { axis, amount } => VertexEffect::Squash {
+                axis: Vec3::from_array(*axis),
+                amount: *amount,
+            },
+            VertexEffectConfig::Tumble { speed } => VertexEffect::Tumble { speed: *speed },
+            // Position effects
+            VertexEffectConfig::Attract { target, strength, max_displacement } => VertexEffect::Attract {
+                target: Vec3::from_array(*target),
+                strength: *strength,
+                max_displacement: *max_displacement,
+            },
+            VertexEffectConfig::Repel { source, strength, radius } => VertexEffect::Repel {
+                source: Vec3::from_array(*source),
+                strength: *strength,
+                radius: *radius,
+            },
+            VertexEffectConfig::Turbulence { frequency, amplitude, speed } => VertexEffect::Turbulence {
+                frequency: *frequency,
+                amplitude: *amplitude,
+                speed: *speed,
+            },
+            // Time-based effects
+            VertexEffectConfig::ScaleByAge { start_scale, end_scale, lifetime } => VertexEffect::ScaleByAge {
+                start_scale: *start_scale,
+                end_scale: *end_scale,
+                lifetime: *lifetime,
+            },
+            VertexEffectConfig::FadeByAge { start_alpha, end_alpha, lifetime } => VertexEffect::FadeByAge {
+                start_alpha: *start_alpha,
+                end_alpha: *end_alpha,
+                lifetime: *lifetime,
+            },
+            // Additional motion effects
+            VertexEffectConfig::Vortex { center, speed, pull, radius } => VertexEffect::Vortex {
+                center: Vec3::from_array(*center),
+                speed: *speed,
+                pull: *pull,
+                radius: *radius,
+            },
+            VertexEffectConfig::Bounce { height, frequency, damping } => VertexEffect::Bounce {
+                height: *height,
+                frequency: *frequency,
+                damping: *damping,
+            },
+            VertexEffectConfig::Figure8 { width, height, speed, ratio } => VertexEffect::Figure8 {
+                width: *width,
+                height: *height,
+                speed: *speed,
+                ratio: *ratio,
+            },
+            VertexEffectConfig::Helix { axis, radius, speed, progression } => VertexEffect::Helix {
+                axis: Vec3::from_array(*axis),
+                radius: *radius,
+                speed: *speed,
+                progression: *progression,
+            },
+            VertexEffectConfig::Flutter { intensity, speed } => VertexEffect::Flutter {
+                intensity: *intensity,
+                speed: *speed,
+            },
+            VertexEffectConfig::Brownian { intensity, speed } => VertexEffect::Brownian {
+                intensity: *intensity,
+                speed: *speed,
             },
         }
     }

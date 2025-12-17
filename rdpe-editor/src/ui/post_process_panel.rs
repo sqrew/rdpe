@@ -35,6 +35,10 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
         ui.menu_button("+ Add...", |ui| {
             ui.set_min_width(150.0);
 
+            // Wrap in scroll area with max height to prevent overflow
+            egui::ScrollArea::vertical()
+                .max_height(400.0)
+                .show(ui, |ui| {
             ui.label(egui::RichText::new("Glow & Light").small().strong());
             if ui.button("Bloom").clicked() {
                 config.effects.push(PostProcessEffect::default_bloom());
@@ -220,6 +224,7 @@ pub fn render_post_process_panel(ui: &mut egui::Ui, config: &mut PostProcessConf
                 changed = true;
                 ui.close_menu();
             }
+                }); // end ScrollArea
         });
     });
 
