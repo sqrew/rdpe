@@ -2350,7 +2350,6 @@ impl<P: ParticleTrait + 'static> ApplicationHandler for App<P> {
                 Err(e) => {
                     eprintln!("Failed to initialize GPU: {}", e);
                     event_loop.exit();
-                    return;
                 }
             }
         }

@@ -16,8 +16,7 @@ The fastest way to create simulations:
 cargo run --release --package rdpe-editor
 ```
 
-<!-- TODO: Replace with editor screenshot -->
-<!-- ![RDPE Editor](assets/editor.png) -->
+![RDPE Editor](assets/editor-blackhole.png)
 
 ### What You Get
 
