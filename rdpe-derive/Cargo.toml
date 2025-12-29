@@ -4,6 +4,7 @@ description = "Derive macros for RDPE"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/sqrew/rdpe"
 
 [lib]
 proc-macro = true

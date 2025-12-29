@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Visual editor for RDPE particle simulations"
 license = "MIT"
+repository = "https://github.com/sqrew/rdpe"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -21,7 +22,7 @@ name = "rdpe-runner"
 path = "src/bin/runner.rs"
 
 [dependencies]
-rdpe = { path = "..", features = ["egui"] }
+rdpe = { path = "..", version = "0.1.0", features = ["egui"] }
 eframe = { version = "0.31", optional = true, default-features = false, features = ["wgpu", "wayland", "x11", "accesskit"] }
 egui = { version = "0.31", optional = true }
 egui-wgpu = { version = "0.31", optional = true }
