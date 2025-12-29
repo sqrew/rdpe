@@ -13,7 +13,7 @@ Design particle systems visually, or build them in code. RDPE generates optimize
 The fastest way to create simulations:
 
 ```bash
-cargo run --release --package rdpe-editor
+cargo run --release --package rdpe-editor --bin rdpe-editor
 ```
 
 ![RDPE Editor](assets/editor-blackhole.png)
